@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.7.7';
+const VERSION = '0.8.0';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -260,7 +260,7 @@ const randomToken = (n=32) => crypto.randomBytes(n).toString('base64url');
 const sha = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 
 
-// v0.7.7 — cifrado de contenido compatible con BLAF / CO-CHI.
+// v0.8.0 — cifrado de contenido compatible con BLAF / CO-CHI.
 // El Manager trabaja en claro dentro de la sesión ADMIN; el JSON público se guarda cifrado.
 const CONTENT_CIPHER_KEY_TEXT = process.env.COCHI_CONTENT_KEY || 'R0JyelFiaDBzZFJWdGtRVTJ4RzZFSVlE';
 function contentCipherKey(){
@@ -474,7 +474,12 @@ function panelSessionFromReq(req){
   db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),row.panel_device_id);
   return {blocked:false,account:a,panelDeviceId:row.panel_device_id};
 }
-function requirePanel(req,res){const s=panelSessionFromReq(req);if(!s){sendJson(res,401,{error:'Panel no activado'});return null;}if(s.blocked){sendJson(res,423,{error:'Panel bloqueado',reason:s.reason,blockReason:s.account?.block_reason||''});return null;}return s;}
+function blockerInfo(account){
+  if(!account?.blocked_by_account_id)return {blockedByName:'',blockedByRole:''};
+  const b=accountRaw(account.blocked_by_account_id);
+  return b?{blockedByName:b.name||'',blockedByRole:roles[b.role_level]||''}:{blockedByName:'',blockedByRole:''};
+}
+function requirePanel(req,res){const st=panelSessionFromReq(req);if(!st){sendJson(res,401,{error:'Panel no activado'});return null;}if(st.blocked){const bi=blockerInfo(st.account);sendJson(res,423,{error:'Panel bloqueado',reason:st.reason,blockReason:st.account?.block_reason||'',...bi});return null;}return st;}
 function requireAdmin(req,res){const s=requirePanel(req,res);if(!s)return null;if(s.account.role_level!==1){sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede realizar esta acción'});return null;}return s;}
 
 function activePromotionFor(level){
@@ -593,7 +598,7 @@ async function route(req,res){
     const b=await readJson(req),code=String(b.code||'').trim().toUpperCase(),uid=String(b.deviceUid||'').trim(),name=String(b.deviceName||'Dispositivo').trim().slice(0,120);
     if(uid.length<8)return sendJson(res,400,{error:'Identificador de dispositivo inválido'});
     let a=db.prepare('SELECT * FROM accounts WHERE activation_code=?').get(code); if(!a)return sendJson(res,404,{error:'Código de activación inválido'});
-    a=accountPublic(a);const state=accountAccessState(a);if(!state.ok)return sendJson(res,423,{error:'Ficha bloqueada',reason:state.reason});
+    a=accountPublic(a);const state=accountAccessState(a);if(!state.ok){const bi=blockerInfo(a);return sendJson(res,423,{error:'Ficha bloqueada',reason:state.reason,blockReason:a.block_reason||'',...bi});}
     let pd=db.prepare('SELECT * FROM panel_devices WHERE account_id=? AND device_uid=?').get(a.id,uid);
     let secret=null;
     if(!pd){
@@ -618,7 +623,7 @@ async function route(req,res){
     const pd=db.prepare(`SELECT pd.id panel_device_id,pd.account_id panel_account_id,pd.device_uid,pd.device_name,pd.secret_hash,pd.active device_active,a.* FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.device_uid=? AND pd.active=1`).get(uid);
     if(!pd)return sendJson(res,401,{error:'Dispositivo PANEL no reconocido'});
     const a=Buffer.from(pd.secret_hash,'hex'),bb=Buffer.from(sha(secret),'hex'); if(a.length!==bb.length||!crypto.timingSafeEqual(a,bb))return sendJson(res,401,{error:'Credencial de dispositivo inválida'});
-    const acc=accountPublic(accountRaw(pd.panel_account_id));const st=accountAccessState(acc);if(!st.ok)return sendJson(res,423,{error:'Ficha bloqueada',reason:st.reason});
+    const acc=accountPublic(accountRaw(pd.panel_account_id));const st=accountAccessState(acc);if(!st.ok){const bi=blockerInfo(acc);return sendJson(res,423,{error:'Ficha bloqueada',reason:st.reason,blockReason:acc.block_reason||'',...bi});}
     const s=createPanelSession(pd.panel_device_id);db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),pd.panel_device_id);
     return sendJson(res,200,{ok:true,account:acc,expiresAt:s.expiresAt},{'Set-Cookie':sessionCookie(s.token)});
   }
@@ -971,7 +976,7 @@ async function route(req,res){
     const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
     if(importMatch&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});
-      try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.7'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const encrypted=JSON.parse(text);const json=decryptManagedContent(encrypted);return sendJson(res,200,{json,stats:contentStats(json),sourceUrl:src.url,editorMode:'decrypted'});}catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
+      try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.8.0'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const encrypted=JSON.parse(text);const json=decryptManagedContent(encrypted);return sendJson(res,200,{json,stats:contentStats(json),sourceUrl:src.url,editorMode:'decrypted'});}catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
     }
 
     if(p==='/api/admin/sources'&&m==='GET'){
