@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.6.2';
+const VERSION = '0.7.0';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -133,6 +133,12 @@ CREATE TABLE IF NOT EXISTS sources (
   updated_at TEXT NOT NULL
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS managed_content (
+  source_key TEXT PRIMARY KEY,
+  json_text TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS promotions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -228,6 +234,7 @@ const sha = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 for (const [key,label] of [['tv1','TV1'],['tv2','TV2'],['movies','Películas'],['series','Series']]) {
   db.prepare('INSERT OR IGNORE INTO sources(source_key,label,url,enabled,updated_at) VALUES (?,?,?,?,?)')
     .run(key,label,'',1,nowIso());
+  db.prepare('INSERT OR IGNORE INTO managed_content(source_key,json_text,updated_at) VALUES (?,?,?)').run(key,'',nowIso());
 }
 
 for (const [key,value] of [['demos_enabled','0'],['adult_lock_enabled','0'],['adult_max_attempts',String(DEFAULT_ADULT_MAX_ATTEMPTS)],['adult_pin_hash','']]) {
@@ -455,6 +462,9 @@ async function route(req,res){
       .run(name,String(b.contact||'').trim(),String(b.notes||'').trim(),code,t,t);
     return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,role:'ADMINISTRACIÓN'});
   }
+
+  const publicContent=p.match(/^\/api\/content\/(tv1|tv2|movies|series)$/);
+  if(publicContent&&m==='GET'){const r=db.prepare('SELECT json_text,updated_at FROM managed_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});try{return sendJson(res,200,JSON.parse(r.json_text),{'Cache-Control':'no-cache, no-store, must-revalidate'});}catch{return sendJson(res,500,{error:'Contenido guardado inválido'});}}
 
   // Activación del PANEL por código. Máximo 2 dispositivos por ficha.
   if(p==='/api/panel/activate'&&m==='POST'){
@@ -774,6 +784,18 @@ async function route(req,res){
     const pm=p.match(/^\/api\/admin\/promotions\/(\d+)$/);
     if(pm&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});const x=db.prepare('SELECT * FROM promotions WHERE id=?').get(Number(pm[1]));if(!x)return sendJson(res,404,{error:'Promoción no encontrada'});const b=await readJson(req);db.prepare('UPDATE promotions SET name=?,percent_bonus=?,active=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():x.name,b.percentBonus!==undefined?Number(b.percentBonus):x.percent_bonus,b.active!==undefined?(b.active?1:0):x.active,nowIso(),x.id);return sendJson(res,200,{ok:true});
+    }
+
+    const contentMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)$/);
+    if(contentMatch&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const r=db.prepare('SELECT * FROM managed_content WHERE source_key=?').get(contentMatch[1]);let json=null;if(r?.json_text){try{json=JSON.parse(r.json_text)}catch{}}return sendJson(res,200,{key:contentMatch[1],json,updatedAt:r?.updated_at||null});
+    }
+    if(contentMatch&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const b=await readJson(req);if(b.json===undefined)return sendJson(res,400,{error:'Falta json'});let text;try{text=JSON.stringify(b.json)}catch{return sendJson(res,400,{error:'JSON inválido'});}if(Buffer.byteLength(text,'utf8')>25*1024*1024)return sendJson(res,413,{error:'JSON demasiado grande (máximo 25 MB)'});db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(text,nowIso(),contentMatch[1]);audit(actor.id,'managed_content_saved','content',null,contentMatch[1]);return sendJson(res,200,{ok:true});
+    }
+    const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
+    if(importMatch&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.0'},signal:AbortSignal.timeout(15000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const json=JSON.parse(text);return sendJson(res,200,{json,sourceUrl:src.url});}catch(e){return sendJson(res,502,{error:'No se pudo importar la fuente: '+e.message});}
     }
 
     if(p==='/api/admin/sources'&&m==='GET'){
