@@ -19,7 +19,7 @@ const CLIENT_CREDIT_COST = 1;
 const CLIENT_DAYS = 30;
 const RENEW_WINDOW_DAYS = 10;
 const MIN_CREDIT_TRANSFER = 10;
-const DEMO_DURATION_MINUTES = 60;
+const DEMO_DURATION_MINUTES = 10;
 const DEFAULT_ADULT_MAX_ATTEMPTS = 5;
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || IS_PRODUCTION;
