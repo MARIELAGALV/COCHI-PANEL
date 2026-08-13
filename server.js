@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.7.0';
+const VERSION = '0.7.2';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -20,6 +20,7 @@ const CLIENT_DAYS = 30;
 const RENEW_WINDOW_DAYS = 10;
 const MIN_CREDIT_TRANSFER = 10;
 const DEMO_DURATION_MINUTES = 10;
+const DEMO_ALLOWED_MINUTES = [10, 60];
 const DEFAULT_ADULT_MAX_ATTEMPTS = 5;
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || IS_PRODUCTION;
@@ -205,6 +206,19 @@ CREATE TABLE IF NOT EXISTS device_demos (
   FOREIGN KEY(granted_by_account_id) REFERENCES accounts(id) ON DELETE RESTRICT
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS deleted_clients_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  original_client_id INTEGER NOT NULL,
+  client_name TEXT NOT NULL,
+  owner_account_id INTEGER,
+  owner_name TEXT NOT NULL DEFAULT '',
+  expired_at TEXT,
+  deleted_at TEXT NOT NULL,
+  deleted_by_account_id INTEGER,
+  delete_reason TEXT NOT NULL DEFAULT '',
+  automatic INTEGER NOT NULL DEFAULT 0
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS security_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor_account_id INTEGER NOT NULL,
@@ -278,6 +292,32 @@ function getSetting(key,fallback=''){const r=db.prepare('SELECT setting_value FR
 function setSetting(key,value){db.prepare(`INSERT INTO settings(setting_key,setting_value,updated_at) VALUES (?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at`).run(key,String(value),nowIso());}
 function boolSetting(key,fallback=false){return getSetting(key,fallback?'1':'0')==='1';}
 function audit(actorId,action,targetType,targetId=null,detail=''){db.prepare('INSERT INTO security_audit(actor_account_id,action,target_type,target_id,detail,created_at) VALUES (?,?,?,?,?,?)').run(actorId,action,targetType,targetId,detail,nowIso());}
+
+function deleteClientRecord(clientId,{actorId=null,reason='Eliminación manual',automatic=false}={}){
+  const c=db.prepare(`SELECT c.*,a.name owner_name FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.id=?`).get(clientId);
+  if(!c)return false;
+  const deviceIds=db.prepare('SELECT id FROM client_devices WHERE client_id=?').all(clientId).map(x=>x.id);
+  db.exec('BEGIN');
+  try{
+    db.prepare('INSERT INTO deleted_clients_history(original_client_id,client_name,owner_account_id,owner_name,expired_at,deleted_at,deleted_by_account_id,delete_reason,automatic) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(c.id,c.name,c.owner_account_id,c.owner_name,c.expires_at,nowIso(),actorId,reason,automatic?1:0);
+    for(const id of deviceIds){
+      db.prepare('DELETE FROM client_sessions WHERE device_id=?').run(id);
+      db.prepare('DELETE FROM device_demos WHERE device_id=?').run(id);
+    }
+    db.prepare('DELETE FROM client_devices WHERE client_id=?').run(clientId);
+    db.prepare('DELETE FROM clients WHERE id=?').run(clientId);
+    db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+  if(actorId) audit(actorId,'client_deleted','client',clientId,`${c.name}; ${reason}`);
+  return true;
+}
+function cleanupExpiredClients(){
+  const cutoff=new Date(Date.now()-15*86400000).toISOString();
+  const rows=db.prepare('SELECT id,name FROM clients WHERE expires_at IS NOT NULL AND expires_at<?').all(cutoff);
+  for(const c of rows){try{deleteClientRecord(c.id,{reason:'Vencido hace más de 15 días',automatic:true});console.log(`[limpieza] Cliente eliminado: ${c.name} (#${c.id})`);}catch(e){console.error('[limpieza] No se pudo eliminar cliente',c.id,e.message);}}
+  return rows.length;
+}
 function validPin(pin){return /^\d{4,8}$/.test(String(pin||''));}
 function hashPin(pin){const salt=crypto.randomBytes(16).toString('hex');const hash=crypto.scryptSync(String(pin),salt,32).toString('hex');return `scrypt$${salt}$${hash}`;}
 function verifyPin(pin,stored){
@@ -452,7 +492,7 @@ async function route(req,res){
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
   if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',serverTime:nowIso()});
-  if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
+  if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
     if(Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)!==0)return sendJson(res,409,{error:'El panel ya fue configurado'});
@@ -501,7 +541,7 @@ async function route(req,res){
     return sendJson(res,200,{ok:true,account:acc,expiresAt:s.expiresAt},{'Set-Cookie':sessionCookie(s.token)});
   }
   if(p==='/api/panel/me'&&m==='GET'){
-    const s=requirePanel(req,res);if(!s)return;return sendJson(res,200,{account:accountPublic(accountRaw(s.account.id)),limits:{panelDevices:2,clientDevices:2,clientDays:30,renewWindowDays:10,minCreditTransfer:MIN_CREDIT_TRANSFER,demoMinutes:DEMO_DURATION_MINUTES},features:{demosEnabled:boolSetting('demos_enabled',false)}});
+    const s=requirePanel(req,res);if(!s)return;return sendJson(res,200,{account:accountPublic(accountRaw(s.account.id)),limits:{panelDevices:2,clientDevices:2,clientDays:30,renewWindowDays:10,minCreditTransfer:MIN_CREDIT_TRANSFER,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES},features:{demosEnabled:boolSetting('demos_enabled',false)}});
   }
   if(p==='/api/panel/logout'&&m==='POST'){
     const tok=parseCookies(req).cochi_panel_session;if(tok)db.prepare('DELETE FROM panel_sessions WHERE token_hash=?').run(sha(tok));
@@ -554,7 +594,7 @@ async function route(req,res){
       const directClients=actor.role_level===1?Number(db.prepare('SELECT COUNT(*) n FROM clients').get().n):Number(db.prepare('SELECT COUNT(*) n FROM clients WHERE owner_account_id=?').get(actor.id).n);
       const pending=actor.role_level===1?Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE status='pending'").get().n):Number(db.prepare("SELECT COUNT(*) n FROM client_devices cd JOIN clients c ON c.id=cd.client_id WHERE cd.status='pending' AND c.owner_account_id=?").get(actor.id).n);
       const promo=activePromotionFor(actor.role_level);
-      return sendJson(res,200,{role:roles[actor.role_level],credits:actor.credits,creditsUnlimited:actor.role_level===1,minCreditTransfer:MIN_CREDIT_TRANSFER,directAccounts,directClients,pendingClientDevices:pending,demosEnabled:boolSetting('demos_enabled',false),demoMinutes:DEMO_DURATION_MINUTES,demoCanGrant:actor.role_level===1,activePromotion:promo?{name:promo.name,percent:promo.percent_bonus,endsAt:promo.ends_at}:null});
+      return sendJson(res,200,{role:roles[actor.role_level],credits:actor.credits,creditsUnlimited:actor.role_level===1,minCreditTransfer:MIN_CREDIT_TRANSFER,directAccounts,directClients,pendingClientDevices:pending,demosEnabled:boolSetting('demos_enabled',false),demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,demoCanGrant:actor.role_level===1,activePromotion:promo?{name:promo.name,percent:promo.percent_bonus,endsAt:promo.ends_at}:null});
     }
 
     if(p==='/api/admin/accounts'&&m==='GET'){
@@ -644,6 +684,17 @@ async function route(req,res){
       const c=clientRow(Number(cm[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés editar clientes directos'});const b=await readJson(req);let owner=c.owner_account_id;if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.ownerAccountId!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede mover clientes'});
       db.prepare('UPDATE clients SET name=?,owner_account_id=?,notes=?,active=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():c.name,owner,b.notes!==undefined?String(b.notes).trim():c.notes,b.active!==undefined?(b.active?1:0):c.active,nowIso(),c.id);return sendJson(res,200,{ok:true});
     }
+    if(cm&&m==='DELETE'){
+      const c=clientRow(Number(cm[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});
+      if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés eliminar tus propios clientes'});
+      const b=await readJson(req);if(String(b.confirm||'')!=='ELIMINAR')return sendJson(res,400,{error:'Falta confirmación de eliminación'});
+      deleteClientRecord(c.id,{actorId:actor.id,reason:String(b.reason||'Eliminación manual').trim()||'Eliminación manual'});
+      return sendJson(res,200,{ok:true,deletedClientId:c.id});
+    }
+    if(p==='/api/admin/deleted-clients'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede ver el historial de eliminados'});
+      return sendJson(res,200,{items:db.prepare('SELECT * FROM deleted_clients_history ORDER BY id DESC LIMIT 300').all()});
+    }
     const renew=p.match(/^\/api\/admin\/clients\/(\d+)\/renew$/);
     if(renew&&m==='POST'){
       const c=clientRow(Number(renew[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés renovar clientes directos'});
@@ -702,10 +753,10 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona demos'});
       const enabled=boolSetting('demos_enabled',false),canGrant=true;
       let demos;if(actor.role_level===1)demos=db.prepare(`SELECT dd.*,cd.activation_code,cd.device_name,cd.device_uid,c.name client_name,a.name granted_by_name FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id JOIN clients c ON c.id=dd.client_id JOIN accounts a ON a.id=dd.granted_by_account_id ORDER BY dd.started_at DESC LIMIT 150`).all();else demos=db.prepare(`SELECT dd.*,cd.activation_code,cd.device_name,cd.device_uid,c.name client_name,a.name granted_by_name FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id JOIN clients c ON c.id=dd.client_id JOIN accounts a ON a.id=dd.granted_by_account_id WHERE c.owner_account_id=? ORDER BY dd.started_at DESC LIMIT 100`).all(actor.id);
-      const normalized=demos.map(x=>({...x,active:Date.parse(x.expires_at)>Date.now(),remainingSeconds:Math.max(0,Math.floor((Date.parse(x.expires_at)-Date.now())/1000))}));return sendJson(res,200,{enabled,durationMinutes:DEMO_DURATION_MINUTES,canGrant,requiresPositiveCredit:actor.role_level!==1,activeCount:normalized.filter(x=>x.active).length,demos:normalized});
+      const normalized=demos.map(x=>({...x,active:Date.parse(x.expires_at)>Date.now(),remainingSeconds:Math.max(0,Math.floor((Date.parse(x.expires_at)-Date.now())/1000))}));return sendJson(res,200,{enabled,durationMinutes:DEMO_DURATION_MINUTES,allowedDurations:DEMO_ALLOWED_MINUTES,canGrant,requiresPositiveCredit:actor.role_level!==1,activeCount:normalized.filter(x=>x.active).length,demos:normalized});
     }
     if(p==='/api/admin/demo-settings'&&m==='PUT'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede activar o desactivar los demos'});const b=await readJson(req);if(typeof b.enabled!=='boolean')return sendJson(res,400,{error:'Estado inválido'});setSetting('demos_enabled',b.enabled?'1':'0');audit(actor.id,b.enabled?'demos_enabled':'demos_disabled','settings',null);return sendJson(res,200,{ok:true,enabled:b.enabled,durationMinutes:DEMO_DURATION_MINUTES});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede activar o desactivar los demos'});const b=await readJson(req);if(typeof b.enabled!=='boolean')return sendJson(res,400,{error:'Estado inválido'});setSetting('demos_enabled',b.enabled?'1':'0');audit(actor.id,b.enabled?'demos_enabled':'demos_disabled','settings',null);return sendJson(res,200,{ok:true,enabled:b.enabled,durationMinutes:DEMO_DURATION_MINUTES,allowedDurations:DEMO_ALLOWED_MINUTES});
     }
     const demoGrant=p.match(/^\/api\/admin\/client-devices\/(\d+)\/demo$/);
     if(demoGrant&&m==='POST'){
@@ -716,7 +767,10 @@ async function route(req,res){
       if(d.status==='blocked')return sendJson(res,409,{error:'El dispositivo está bloqueado'});
       if(demoRow(d.id))return sendJson(res,409,{error:'Este dispositivo ya utilizó su único demo'});
       const c=clientRow(d.client_id);if(clientAccessState(c).ok)return sendJson(res,409,{error:'El cliente ya tiene servicio activo; no necesita demo'});
-      const t=nowIso(),exp=addMinutes(t,DEMO_DURATION_MINUTES);db.exec('BEGIN');try{db.prepare('INSERT INTO device_demos(device_id,client_id,granted_by_account_id,started_at,expires_at,created_at) VALUES (?,?,?,?,?,?)').run(d.id,c.id,actor.id,t,exp,t);db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE id=?").run(t,d.id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}audit(actor.id,'demo_granted','client_device',d.id,`${DEMO_DURATION_MINUTES} minutos; cliente ${c.id}`);return sendJson(res,201,{ok:true,startedAt:t,expiresAt:exp,durationMinutes:DEMO_DURATION_MINUTES,creditConsumed:0});
+      const body=await readJson(req);
+      const requestedMinutes=Number(body?.durationMinutes ?? DEMO_DURATION_MINUTES);
+      if(!DEMO_ALLOWED_MINUTES.includes(requestedMinutes))return sendJson(res,400,{error:'Duración de demo inválida. Solo se permiten 10 o 60 minutos.'});
+      const t=nowIso(),exp=addMinutes(t,requestedMinutes);db.exec('BEGIN');try{db.prepare('INSERT INTO device_demos(device_id,client_id,granted_by_account_id,started_at,expires_at,created_at) VALUES (?,?,?,?,?,?)').run(d.id,c.id,actor.id,t,exp,t);db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE id=?").run(t,d.id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}audit(actor.id,'demo_granted','client_device',d.id,`${requestedMinutes} minutos; cliente ${c.id}`);return sendJson(res,201,{ok:true,startedAt:t,expiresAt:exp,durationMinutes:requestedMinutes,creditConsumed:0});
     }
 
     const demoReset=p.match(/^\/api\/admin\/client-devices\/(\d+)\/demo\/reset$/);
@@ -795,7 +849,7 @@ async function route(req,res){
     }
     const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
     if(importMatch&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.0'},signal:AbortSignal.timeout(15000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const json=JSON.parse(text);return sendJson(res,200,{json,sourceUrl:src.url});}catch(e){return sendJson(res,502,{error:'No se pudo importar la fuente: '+e.message});}
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.1'},signal:AbortSignal.timeout(15000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const json=JSON.parse(text);return sendJson(res,200,{json,sourceUrl:src.url});}catch(e){return sendJson(res,502,{error:'No se pudo importar la fuente: '+e.message});}
     }
 
     if(p==='/api/admin/sources'&&m==='GET'){
@@ -811,6 +865,9 @@ async function route(req,res){
   if(p.startsWith('/api/'))return sendJson(res,404,{error:'Ruta no encontrada'});
   return serveStatic(res,u);
 }
+
+cleanupExpiredClients();
+const cleanupTimer=setInterval(cleanupExpiredClients,60*60*1000);cleanupTimer.unref?.();
 
 const server=http.createServer((req,res)=>route(req,res).catch(err=>{console.error(err);if(!res.headersSent)sendJson(res,500,{error:'Error interno',detail:process.env.DEBUG?' '+err.message:undefined});else res.end();}));
 server.listen(PORT,HOST,()=>{console.log(`\nCO-CHI v${VERSION} · ${IS_PRODUCTION?'ONLINE':'LOCAL'}\nEscuchando en ${HOST}:${PORT}\nDatos: ${DB_PATH}\n`);});
