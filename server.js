@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.2';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -260,7 +260,7 @@ const randomToken = (n=32) => crypto.randomBytes(n).toString('base64url');
 const sha = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 
 
-// v0.8.0 — cifrado de contenido compatible con BLAF / CO-CHI.
+// v0.8.2 — cifrado de contenido compatible con BLAF / CO-CHI.
 // El Manager trabaja en claro dentro de la sesión ADMIN; el JSON público se guarda cifrado.
 const CONTENT_CIPHER_KEY_TEXT = process.env.COCHI_CONTENT_KEY || 'R0JyelFiaDBzZFJWdGtRVTJ4RzZFSVlE';
 function contentCipherKey(){
@@ -976,7 +976,7 @@ async function route(req,res){
     const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
     if(importMatch&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});
-      try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.8.0'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const encrypted=JSON.parse(text);const json=decryptManagedContent(encrypted);return sendJson(res,200,{json,stats:contentStats(json),sourceUrl:src.url,editorMode:'decrypted'});}catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
+      try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.8.2'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const encrypted=JSON.parse(text);const json=decryptManagedContent(encrypted);return sendJson(res,200,{json,stats:contentStats(json),sourceUrl:src.url,editorMode:'decrypted'});}catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
     }
 
     if(p==='/api/admin/sources'&&m==='GET'){
