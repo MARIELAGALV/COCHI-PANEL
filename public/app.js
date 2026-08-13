@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, content:{} };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -71,7 +71,7 @@ function switchView(name){
   $$('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
   document.body.dataset.view=name;
-  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido'};
+  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido'};
   $('#pageTitle').textContent=t[name]||name;refreshCurrent();
 }
 async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;}
@@ -87,6 +87,7 @@ async function refreshCurrent(){
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
     if(v==='sources'&&state.me.role_level===1)await loadSources();
+    if(v==='content'&&state.me.role_level===1)await loadContent();
   }catch(e){if(e.status===401||e.status===423){show('activateView');msg($('#activateMsg'),e.status===423?'Ficha bloqueada hasta recibir una nueva carga de créditos.':'Volvé a ingresar.');}else console.error(e);}
 }
 
@@ -102,17 +103,19 @@ async function loadDashboard(){
   if(d.activePromotion){$('#promoBanner').classList.remove('hidden');$('#promoBanner').innerHTML=`🎁 <b>${esc(d.activePromotion.name)}</b> — +${d.activePromotion.percent}% en cargas recibidas hasta ${esc(fmt(d.activePromotion.endsAt))}. El bonus lo paga el sistema.`;}else $('#promoBanner').classList.add('hidden');
 }
 
-async function loadAccounts(render=true){
-  const d=await api('/api/admin/accounts');state.accounts=d.accounts;
-  if(!render)return;
-  $('#accountsBody').innerHTML=state.accounts.length?state.accounts.map(a=>{
+function renderAccounts(){
+  const q=($('#accountSearch')?.value||'').trim().toLowerCase();
+  const rows=state.accounts.filter(a=>!q||[a.name,a.contact,a.role_name,a.parent_name,a.activation_code,a.active?'activa':'deshabilitada'].some(v=>String(v||'').toLowerCase().includes(q)));
+  $('#accountsBody').innerHTML=rows.length?rows.map(a=>{
     const blocked=a.inactivity_blocked;
     const stat=a.is_root_admin?'<span class="badge active">PROTEGIDA</span>':!a.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
     const creditValue=a.role_level===1?'—':a.credits;
     const loadBtn=(a.id!==state.me.id&&a.role_level!==1)?`<button class="primary mini-load" data-action="account-credit">CARGAR</button>`:'';
     return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions"><button class="ghost" data-action="account-edit">Editar</button><button class="ghost" data-action="account-devices">Paneles</button></div></td></tr>`;
-  }).join(''):`<tr><td colspan="8" class="empty">No hay fichas PANEL visibles.</td></tr>`;
+  }).join(''):`<tr><td colspan="8" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
+async function loadAccounts(render=true){const d=await api('/api/admin/accounts');state.accounts=d.accounts;if(render)renderAccounts();}
+$('#accountSearch')?.addEventListener('input',renderAccounts);
 
 $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
 function allowedRoleOptions(current=null){
@@ -166,12 +169,14 @@ function updateLiveDemoCountdowns(){
 setInterval(updateLiveDemoCountdowns,1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateLiveDemoCountdowns();});
 
-async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(!render)return;$('#clientsBody').innerHTML=state.clients.length?state.clients.map(c=>{
+function renderClients(){const q=($('#clientSearch')?.value||'').trim().toLowerCase();const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));$('#clientsBody').innerHTML=rows.length?rows.map(c=>{
   const rem=c.days_remaining;const renew=c.renew_available?'<span class="badge active">DISPONIBLE</span>':`<span class="badge pending">En ${Math.max(0,Math.ceil(rem-10))} días</span>`;const stat=clientStatusBadge(c);
   const linked=c.linked_device_count??c.device_count;
   const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
   return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${renew}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td class="client-actions-cell"><div class="actions client-actions"><button class="code-btn" data-action="client-codes">CÓDIGOS / DEMO</button><button class="ghost" data-action="client-edit">Editar</button><button class="primary" data-action="client-renew">Activar/Renovar</button></div></td></tr>`;
-}).join(''):`<tr><td colspan="7" class="empty">No hay clientes finales.</td></tr>`;}
+}).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;}
+async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(render)renderClients();}
+$('#clientSearch')?.addEventListener('input',renderClients);
 $('#newClientBtn').addEventListener('click',()=>openClientModal());
 function openClientModal(c=null){
   const admin=state.me.role_level===1;
@@ -336,6 +341,18 @@ function openAdultClientModal(c){
 
 async function loadSources(){const d=await api('/api/admin/sources');state.sources=d.sources;$('#sourcesList').innerHTML=state.sources.map(s=>`<div class="source-row" data-source="${esc(s.source_key)}"><div class="source-title">${esc(s.label)}</div><label>URL<input class="source-url" value="${esc(s.url||'')}" placeholder="https://..."></label><label class="switch-row"><input class="source-enabled" type="checkbox" ${s.enabled?'checked':''}> Habilitada</label></div>`).join('');msg($('#sourcesMsg'),'');}
 $('#saveSourcesBtn').addEventListener('click',async()=>{try{const sources=$$('.source-row').map(r=>({key:r.dataset.source,url:r.querySelector('.source-url').value.trim(),enabled:r.querySelector('.source-enabled').checked}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#sourcesMsg'),'Fuentes guardadas.',true);}catch(e){msg($('#sourcesMsg'),e.message);}});
+
+
+async function loadContent(){
+  const key=$('#contentKey').value;
+  try{const d=await api(`/api/admin/content/${key}`);state.content[key]=d;$('#contentJson').value=d.json?JSON.stringify(d.json,null,2):'';$('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}`:'Todavía no hay contenido guardado en el PANEL.';$('#contentPublicUrl').textContent=`URL PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');}catch(e){msg($('#contentMsg'),e.message);}
+}
+$('#contentKey')?.addEventListener('change',loadContent);
+$('#contentLoadBtn')?.addEventListener('click',loadContent);
+$('#contentFormatBtn')?.addEventListener('click',()=>{try{const x=JSON.parse($('#contentJson').value);$('#contentJson').value=JSON.stringify(x,null,2);msg($('#contentMsg'),'JSON válido y formateado.',true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}});
+$('#contentImportBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});$('#contentJson').value=JSON.stringify(r.json,null,2);msg($('#contentMsg'),`Importado correctamente desde ${r.sourceUrl}. Revisalo y presioná GUARDAR CONTENIDO.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
+$('#contentSaveBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const json=JSON.parse($('#contentJson').value);await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),'Contenido guardado en CO-CHI PANEL.',true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}});
+$('#contentUseBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(s=>({key:s.source_key,url:s.source_key===key?url:s.url,enabled:s.source_key===key?true:s.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el contenido administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}

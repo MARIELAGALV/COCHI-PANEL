@@ -216,3 +216,9 @@ body{min-height:100dvh}
 /* v0.6.1 — controles administrativos de demos */
 .demo-global-actions,.demo-live-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.demo-live-controls .demo-admin-btn{padding:7px 9px;border-radius:9px;font-size:11px}.demo-table-actions{min-width:145px}.demo-table-actions button{white-space:nowrap}.demo-global-actions button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:760px){.demo-global-actions{width:100%;justify-content:flex-start}.demo-global-actions button{flex:1 1 190px}.demo-table-actions{justify-content:flex-start}}
+
+
+/* v0.7.0 — buscadores + Manager de Contenido ADMIN */
+.table-search{flex:1 1 320px;min-width:240px;max-width:520px;margin-left:auto;background:rgba(3,20,35,.8);border:1px solid rgba(54,208,255,.32);color:#eaffff;border-radius:11px;padding:11px 13px;outline:none}.table-search:focus{border-color:#55e1ff;box-shadow:0 0 0 3px rgba(53,211,255,.08)}
+.content-manager{max-width:1250px}.content-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:16px 0}.content-toolbar label{min-width:180px;margin:0}.content-info{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 12px}.content-json{width:100%;min-height:520px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;tab-size:2}.content-manager label{display:block}.content-manager .code-btn{min-height:42px}
+@media(max-width:760px){.table-search{order:3;min-width:100%;max-width:none;margin-left:0}.content-toolbar>*{flex:1 1 100%}.content-json{min-height:58dvh}}

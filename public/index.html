@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.6.3</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.7.0</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -57,6 +57,7 @@
         <button class="nav-btn admin-only" data-view="demos">⏱ <span>Demos</span></button>
         <button class="nav-btn admin-only" data-view="adults">🔒 <span>Adultos</span></button>
         <button class="nav-btn admin-only" data-view="sources">⌁ <span>Fuentes</span></button>
+        <button class="nav-btn admin-only" data-view="content">▤ <span>Manager contenido</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="status-dot-row"><span class="dot"></span> Backend activo</div>
@@ -87,14 +88,14 @@
       </section>
 
       <section id="view-accounts" class="view">
-        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><button id="quickCreditBtn" class="credit-cta">¤ CARGAR CRÉDITOS</button><span class="muted small">Solo categorías administrativas 1–4. Los clientes finales nunca aparecen acá.</span></div>
+        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><button id="quickCreditBtn" class="credit-cta">¤ CARGAR CRÉDITOS</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o código…" autocomplete="off"><span class="muted small">Solo categorías administrativas 1–4. Los clientes finales nunca aparecen acá.</span></div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th>Código</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
         </table></div></div>
       </section>
 
       <section id="view-clients" class="view">
-        <div class="toolbar"><button id="newClientBtn" class="primary">+ NUEVO CLIENTE FINAL</button><span class="muted small">Sección exclusiva de clientes finales. No aparecen en Fichas PANEL y no ingresan al PANEL.</span></div>
+        <div class="toolbar"><button id="newClientBtn" class="primary">+ NUEVO CLIENTE FINAL</button><input id="clientSearch" class="table-search" type="search" placeholder="Buscar cliente por nombre, propietario o estado…" autocomplete="off"><span class="muted small">Sección exclusiva de clientes finales. No aparecen en Fichas PANEL y no ingresan al PANEL.</span></div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Cliente</th><th>Propietario</th><th>Vencimiento</th><th>Renovación</th><th>Dispositivos</th><th>Estado</th><th></th></tr></thead><tbody id="clientsBody"></tbody>
         </table></div></div>
@@ -156,6 +157,16 @@
 
       <section id="view-sources" class="view admin-only">
         <div class="neon-card panel-card sources-card"><div class="card-head"><div><h3>Fuentes de contenido</h3><p class="muted">TV1, TV2, Películas y Series quedan fuera del APK.</p></div><button id="saveSourcesBtn" class="primary">GUARDAR CAMBIOS</button></div><div id="sourcesList" class="sources-list"></div><div id="sourcesMsg" class="msg"></div></div>
+      </section>
+
+      <section id="view-content" class="view admin-only">
+        <div class="neon-card panel-card content-manager">
+          <div class="card-head"><div><h3>Manager de Contenido</h3><p class="muted">Administración puede importar, editar y publicar los JSON de TV1, TV2, Películas y Series sin recompilar CO-CHI.</p></div></div>
+          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">IMPORTAR DESDE FUENTE ACTUAL</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentSaveBtn" class="primary">GUARDAR CONTENIDO</button><button id="contentUseBtn" class="code-btn">USAR EN LA APP</button></div>
+          <div class="content-info"><span id="contentState" class="muted small">Seleccioná un contenido.</span><span id="contentPublicUrl" class="muted small"></span></div>
+          <label>JSON editable<textarea id="contentJson" class="content-json" spellcheck="false" placeholder="Pegá o importá aquí el JSON. Podés agregar, editar o eliminar contenido directamente."></textarea></label>
+          <div id="contentMsg" class="msg"></div>
+        </div>
       </section>
     </main>
   </div>
