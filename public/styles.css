@@ -236,3 +236,40 @@ body{min-height:100dvh}
 @media(max-width:760px){.content-visual-head,.content-category-head,.content-item{align-items:stretch;flex-direction:column}.content-category-head>div:last-child,.content-item-actions{justify-content:flex-start}.content-item img{width:64px;height:84px}.content-item-main span{white-space:normal}.content-visual-actions>*{flex:1 1 auto}}
 
 .warn-btn{border:1px solid currentColor;border-radius:8px;padding:7px 10px;background:transparent;cursor:pointer}
+
+.compact-actions{flex-wrap:nowrap}
+.panel-control-card{margin-top:16px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(255,255,255,.025)}
+.panel-control-card h4{margin:0 0 8px}
+.panel-control-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.block-current{padding:12px;border-radius:10px;background:rgba(255,90,90,.08);margin:10px 0}
+
+.edit-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 16px}
+.summary-box{padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(255,255,255,.025)}
+.summary-box span{display:block;font-size:.78rem;opacity:.7;margin-bottom:4px}
+.summary-box strong{font-size:.98rem}
+.panel-manage-card,.client-manage-card{margin:14px 0;padding:15px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(0,180,255,.035)}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+
+.danger-action,.success-action{
+  border:0;
+  border-radius:10px;
+  padding:10px 14px;
+  font-weight:800;
+  cursor:pointer;
+  letter-spacing:.2px;
+}
+.danger-action{
+  background:#c92a2a;
+  color:#fff;
+  box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 0 16px rgba(201,42,42,.28);
+}
+.danger-action:hover{filter:brightness(1.08)}
+.success-action{
+  background:#178a4a;
+  color:#fff;
+  box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 0 16px rgba(23,138,74,.28);
+}
+.success-action:hover{filter:brightness(1.08)}
+.status-red{color:#ff6b6b}
+.status-green{color:#51cf66}
+.status-muted{opacity:.75}

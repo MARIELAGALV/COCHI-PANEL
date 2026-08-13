@@ -111,7 +111,7 @@ function renderAccounts(){
     const stat=a.is_root_admin?'<span class="badge active">PROTEGIDA</span>':a.manual_blocked?`<span class="badge blocked">BLOQUEADA</span><div class="muted small">${esc(a.block_reason||'')}</div>`:!a.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
     const creditValue=a.role_level===1?'—':a.credits;
     const loadBtn=(a.id!==state.me.id&&a.role_level!==1)?`<button class="primary mini-load" data-action="account-credit">CARGAR</button>`:'';
-    return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions"><button class="ghost" data-action="account-edit">Editar</button><button class="ghost" data-action="account-devices">Paneles</button>${!a.is_root_admin?(a.manual_blocked?`<button class="ghost" data-action="account-unblock">Desbloquear</button>`:`<button class="warn-btn" data-action="account-block">Bloquear</button>`)+`<button class="danger-btn" data-action="account-delete">Eliminar</button>`:""}</div></td></tr>`;
+    return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions compact-actions"><button class="ghost" data-action="account-edit">Editar</button></div></td></tr>`;
   }).join(''):`<tr><td colspan="8" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
 async function loadAccounts(render=true){const d=await api('/api/admin/accounts');state.accounts=d.accounts;if(render)renderAccounts();}
@@ -123,9 +123,111 @@ function allowedRoleOptions(current=null){
 }
 function openAccountModal(a=null){
   const admin=state.me.role_level===1,root=Boolean(a?.is_root_admin);
-  openModal(`<h3>${a?'Editar ficha PANEL':'Nueva ficha PANEL'}</h3>${root?'<div class="protected-note">🔒 ADMINISTRACIÓN principal protegida: podés editar nombre, contacto y notas, pero no deshabilitarla, bajarla de categoría ni cambiar su propietario.</div>':''}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row"><label>Categoría<select id="aRole" ${(a&&!admin)||root?'disabled':''}>${allowedRoleOptions(a?.role_level||null)}</select></label><label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${a&&admin&&!root?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:''}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${a&&!root?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:''}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
-  $('#accountForm').addEventListener('submit',async e=>{e.preventDefault();try{const payload={name:$('#aName').value,contact:$('#aContact').value,notes:$('#aNotes').value};if(!a)payload.roleLevel=Number($('#aRole').value);else if(admin&&!root)payload.roleLevel=Number($('#aRole').value);if(a&&!root){payload.active=$('#aActive').checked;if(admin)payload.parentId=$('#aParent').value?Number($('#aParent').value):null;}const r=await api(a?`/api/admin/accounts/${a.id}`:'/api/admin/accounts',{method:a?'PUT':'POST',body:payload});if(!a){openModal(`<h3>Ficha PANEL creada</h3><p>${esc(r.role)}</p><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Código para activar hasta 2 dispositivos del PANEL.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);}else closeModal();await loadAccounts();}catch(err){msg($('#accountMsg'),err.message);}});
+  
+  const accountSummary=a?`
+    <div class="edit-summary-grid">
+      <div class="summary-box"><span>Categoría</span><strong>${esc(a.role_name||'—')}</strong></div>
+      <div class="summary-box"><span>Propietario</span><strong>${esc(state.accounts.find(x=>x.id===a.parent_id)?.name||'Administración')}</strong></div>
+      <div class="summary-box"><span>Créditos</span><strong>${a.credits_unlimited?'∞':esc(String(a.credits??0))}</strong></div>
+      <div class="summary-box"><span>Estado</span><strong class="${a.manual_blocked?'status-red':a.active?'status-green':'status-muted'}">${a.manual_blocked?'🔴 BLOQUEADA':a.active?'🟢 ACTIVA':'⚪ DESHABILITADA'}</strong></div>
+      <div class="summary-box"><span>Paneles</span><strong>${esc(String(a.devices_active??0))}/${esc(String(a.devices_limit??2))}</strong></div>
+      <div class="summary-box"><span>Código acceso</span><strong class="mono">${esc(a.activation_code||a.code||'—')}</strong></div>
+    </div>
+    <div class="panel-manage-card">
+      <h4>Gestión comercial</h4>
+      <div class="panel-control-actions">
+        ${!a.credits_unlimited?'<button type="button" class="primary" id="editLoadCredits">Cargar créditos</button>':''}
+        <button type="button" class="ghost" id="editPanelDevices">Paneles / dispositivos</button>
+        <button type="button" class="ghost" id="editRegenerateCode">Regenerar código</button>
+      </div>
+    </div>`:'';
+
+const controlSection=a&&!root?`
+    <div class="panel-control-card">
+      <h4>Control del panel</h4>
+      <p class="muted small">Estas acciones no devuelven créditos ni transfieren clientes. Los clientes activos siguen funcionando hasta su vencimiento.</p>
+      ${a.manual_blocked
+        ? `<div class="block-current"><b>Panel bloqueado</b><div class="muted small">Motivo actual: ${esc(a.block_reason||'Sin motivo')}</div></div>
+           <div class="panel-control-actions">
+             <button type="button" class="success-action" id="editUnblockPanel">🟢 Desbloquear / Activar panel</button>
+             <button type="button" class="danger-btn" id="editDeletePanel">Eliminar panel</button>
+           </div>`
+        : `<label>Motivo del bloqueo<textarea id="editBlockReason" rows="3" placeholder="Ej.: saldo pendiente, cuenta en revisión, dejó de vender..."></textarea></label>
+           <div class="panel-control-actions">
+             <button type="button" class="danger-action" id="editBlockPanel">🔴 Bloquear panel</button>
+             <button type="button" class="danger-btn" id="editDeletePanel">Eliminar panel</button>
+           </div>`}
+    </div>`:'';
+
+  openModal(`<h3>${a?'Editar ficha PANEL':'Nueva ficha PANEL'}</h3>${root?'<div class="protected-note">🔒 ADMINISTRACIÓN principal protegida: podés editar nombre, contacto y notas, pero no deshabilitarla, bajarla de categoría ni cambiar su propietario.</div>':''}${accountSummary}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row"><label>Categoría<select id="aRole" ${(a&&!admin)||root?'disabled':''}>${allowedRoleOptions(a?.role_level||null)}</select></label><label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${a&&admin&&!root?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:''}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${a&&!root?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:''}${controlSection}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
+
+  $('#accountForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    try{
+      const payload={name:$('#aName').value,contact:$('#aContact').value,notes:$('#aNotes').value};
+      if(!a)payload.roleLevel=Number($('#aRole').value);
+      else if(admin&&!root)payload.roleLevel=Number($('#aRole').value);
+      if(a&&!root){
+        payload.active=$('#aActive').checked;
+        if(admin)payload.parentId=$('#aParent').value?Number($('#aParent').value):null;
+      }
+      const r=await api(a?`/api/admin/accounts/${a.id}`:'/api/admin/accounts',{method:a?'PUT':'POST',body:payload});
+      if(!a){
+        openModal(`<h3>Ficha PANEL creada</h3><p>${esc(r.role)}</p><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Código para activar hasta 2 dispositivos del PANEL.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);
+      }else closeModal();
+      await loadAccounts();
+    }catch(err){msg($('#accountMsg'),err.message);}
+  });
+
+  if(a&&!root){
+    $('#editBlockPanel')?.addEventListener('click',async()=>{
+      const reason=String($('#editBlockReason')?.value||'').trim();
+      if(!reason)return msg($('#accountMsg'),'Escribí el motivo del bloqueo.');
+      if(!confirm(`¿Bloquear ${a.name}?\n\nNo se devolverán créditos y sus clientes activos seguirán funcionando hasta su vencimiento.`))return;
+      try{
+        await api(`/api/admin/accounts/${a.id}/block`,{method:'POST',body:{reason}});
+        closeModal();await loadAccounts();
+      }catch(err){msg($('#accountMsg'),err.message);}
+    });
+
+    $('#editUnblockPanel')?.addEventListener('click',async()=>{
+      if(!confirm(`¿Desbloquear ${a.name}?`))return;
+      try{
+        await api(`/api/admin/accounts/${a.id}/unblock`,{method:'POST',body:{}});
+        closeModal();await loadAccounts();
+      }catch(err){msg($('#accountMsg'),err.message);}
+    });
+
+    $('#editDeletePanel')?.addEventListener('click',async()=>{
+      if(!confirm(`¿Eliminar el panel ${a.name}?\n\nNO se devolverán créditos.\nNO se transferirán sus clientes.\nLos clientes activos seguirán funcionando hasta su vencimiento.`))return;
+      const c=prompt('Escribí ELIMINAR para confirmar definitivamente:');
+      if(c!=='ELIMINAR')return;
+      try{
+        await api(`/api/admin/accounts/${a.id}`,{method:'DELETE',body:{confirm:'ELIMINAR'}});
+        closeModal();await loadAccounts();
+      }catch(err){msg($('#accountMsg'),err.message);}
+    });
+    $('#editLoadCredits')?.addEventListener('click',async()=>{
+      const amount=Number(prompt(`¿Cuántos créditos querés cargar a ${a.name}?`));
+      if(!Number.isFinite(amount)||amount<=0)return alert('Ingresá una cantidad válida.');
+      try{
+        await api(`/api/admin/accounts/${a.id}/credits`,{method:'POST',body:{amount}});
+        closeModal();await loadAccounts();
+      }catch(err){msg($('#accountMsg'),err.message);}
+    });
+    $('#editPanelDevices')?.addEventListener('click',()=>openPanelDevices(a));
+    $('#editRegenerateCode')?.addEventListener('click',async()=>{
+      if(!confirm(`¿Regenerar el código de acceso de ${a.name}?`))return;
+      try{
+        const r=await api(`/api/admin/accounts/${a.id}/regenerate-code`,{method:'POST',body:{}});
+        alert(`Nuevo código: ${r.activationCode||r.code||'generado'}`);
+        closeModal();await loadAccounts();
+      }catch(err){msg($('#accountMsg'),err.message);}
+    });
+
+  }
 }
+
 $('#accountsBody').addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const tr=b.closest('tr'),a=state.accounts.find(x=>x.id===Number(tr.dataset.account));if(!a)return;
   if(b.dataset.action==='account-edit')openAccountModal(a);
@@ -202,9 +304,28 @@ async function loadClients(render=true){const d=await api('/api/admin/clients');
 $('#clientSearch')?.addEventListener('input',renderClients);
 $('#newClientBtn').addEventListener('click',()=>openClientModal());
 function openClientModal(c=null){
+
+  const clientSummary=c?`
+    <div class="edit-summary-grid">
+      <div class="summary-box"><span>Estado</span><strong>${esc(c.status||c.state||'—')}</strong></div>
+      <div class="summary-box"><span>Vencimiento</span><strong>${esc(c.expires_at||c.expiresAt||'Sin activar')}</strong></div>
+      <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.devices_active??c.device_count??0))}/${esc(String(c.devices_limit??2))}</strong></div>
+      <div class="summary-box"><span>Vendedor</span><strong>${esc(c.owner_name||c.seller_name||'—')}</strong></div>
+      <div class="summary-box"><span>Código</span><strong class="mono">${esc(c.activation_code||c.code||'—')}</strong></div>
+    </div>
+    <div class="client-manage-card">
+      <h4>Gestión del cliente</h4>
+      <div class="panel-control-actions">
+        <button type="button" class="primary" id="clientRenewBtn">Renovar 30 días</button>
+        <button type="button" class="ghost" id="clientDemo10Btn">Demo 10 min</button>
+        <button type="button" class="ghost" id="clientDemo60Btn">Demo 1 hora</button>
+        <button type="button" class="danger-btn" id="clientDeleteBtn">Eliminar cliente</button>
+      </div>
+      <p class="muted small">Renovar respeta los días restantes. Las demos solo estarán disponibles según permisos del panel.</p>
+    </div>`:'';
   const admin=state.me.role_level===1;
   const owners=admin?state.accounts.filter(a=>a.role_level<=4):[];
-  openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>
+  openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
     <form id="clientForm">
       <label>Nombre<input id="cName" required value="${esc(c?.name||'')}"></label>
       ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — ADMINISTRACIÓN</option>${owners.filter(a=>a.id!==state.me.id).map(a=>`<option value="${a.id}" ${c?.owner_account_id===a.id?'selected':''}>${esc(a.name)} — ${esc(a.role_name)}</option>`).join('')}</select></label>`:''}
@@ -240,7 +361,32 @@ function openClientModal(c=null){
     }catch(err){msg($('#clientMsg'),err.message);}
   });
 }
-$('#clientsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const c=state.clients.find(x=>x.id===Number(b.closest('tr').dataset.client));if(!c)return;if(b.dataset.action==='client-codes')openClientCodes(c);if(b.dataset.action==='client-edit')openClientModal(c);if(b.dataset.action==='client-renew'){const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;if(!confirm(q))return;try{const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);await refreshMe();await loadClients();}catch(err){alert(err.message);}}if(b.dataset.action==='client-delete')openDeleteClientModal(c);});
+$('#clientsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const c=state.clients.find(x=>x.id===Number(b.closest('tr').dataset.client));if(!c)return;if(b.dataset.action==='client-codes')openClientCodes(c);if(b.dataset.action==='client-edit')openClientModal(c);if(b.dataset.action==='client-renew'){const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;if(!confirm(q))return;try{const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);await refreshMe();await loadClients();}catch(err){alert(err.message);}}if(b.dataset.action==='client-delete')openDeleteClientModal(c);
+  if(c){
+    $('#clientRenewBtn')?.addEventListener('click',async()=>{
+      try{
+        await api(`/api/admin/clients/${c.id}/renew`,{method:'POST',body:{days:30}});
+        closeModal();if(typeof loadClients==='function')await loadClients();
+      }catch(err){alert(err.message);}
+    });
+    const giveDemo=async minutes=>{
+      try{
+        await api(`/api/admin/clients/${c.id}/demo`,{method:'POST',body:{minutes}});
+        closeModal();if(typeof loadClients==='function')await loadClients();
+      }catch(err){alert(err.message);}
+    };
+    $('#clientDemo10Btn')?.addEventListener('click',()=>giveDemo(10));
+    $('#clientDemo60Btn')?.addEventListener('click',()=>giveDemo(60));
+    $('#clientDeleteBtn')?.addEventListener('click',async()=>{
+      if(!confirm(`¿Eliminar al cliente ${c.name||''}?`))return;
+      if(!confirm('Esta acción eliminará la ficha y desvinculará sus dispositivos. ¿Confirmar eliminación?'))return;
+      try{
+        await api(`/api/admin/clients/${c.id}`,{method:'DELETE',body:{confirm:true}});
+        closeModal();if(typeof loadClients==='function')await loadClients();
+      }catch(err){alert(err.message);}
+    });
+  }
+});
 
 function openDeleteClientModal(c){
   openModal(`<h3>Eliminar cliente</h3><div class="danger-card"><b>Vas a eliminar a ${esc(c.name)}</b><p>Se eliminarán también sus dispositivos y sesiones vinculadas. Esta acción no se puede deshacer desde esta pantalla.</p></div><label>Motivo (opcional)<textarea id="deleteClientReason" rows="2" placeholder="Ej.: cliente dado de baja"></textarea></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button type="button" class="danger" id="confirmDeleteClientBtn">CONFIRMAR ELIMINACIÓN</button></div><div id="deleteClientMsg" class="msg"></div>`);
