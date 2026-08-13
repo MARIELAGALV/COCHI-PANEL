@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.6.1';
+const VERSION = '0.6.2';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -544,7 +544,7 @@ async function route(req,res){
       const directClients=actor.role_level===1?Number(db.prepare('SELECT COUNT(*) n FROM clients').get().n):Number(db.prepare('SELECT COUNT(*) n FROM clients WHERE owner_account_id=?').get(actor.id).n);
       const pending=actor.role_level===1?Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE status='pending'").get().n):Number(db.prepare("SELECT COUNT(*) n FROM client_devices cd JOIN clients c ON c.id=cd.client_id WHERE cd.status='pending' AND c.owner_account_id=?").get(actor.id).n);
       const promo=activePromotionFor(actor.role_level);
-      return sendJson(res,200,{role:roles[actor.role_level],credits:actor.credits,creditsUnlimited:actor.role_level===1,minCreditTransfer:MIN_CREDIT_TRANSFER,directAccounts,directClients,pendingClientDevices:pending,demosEnabled:boolSetting('demos_enabled',false),demoMinutes:DEMO_DURATION_MINUTES,demoCanGrant:actor.role_level===1||actor.credits>0,activePromotion:promo?{name:promo.name,percent:promo.percent_bonus,endsAt:promo.ends_at}:null});
+      return sendJson(res,200,{role:roles[actor.role_level],credits:actor.credits,creditsUnlimited:actor.role_level===1,minCreditTransfer:MIN_CREDIT_TRANSFER,directAccounts,directClients,pendingClientDevices:pending,demosEnabled:boolSetting('demos_enabled',false),demoMinutes:DEMO_DURATION_MINUTES,demoCanGrant:actor.role_level===1,activePromotion:promo?{name:promo.name,percent:promo.percent_bonus,endsAt:promo.ends_at}:null});
     }
 
     if(p==='/api/admin/accounts'&&m==='GET'){
@@ -689,7 +689,8 @@ async function route(req,res){
 
 
     if(p==='/api/admin/demo-settings'&&m==='GET'){
-      const enabled=boolSetting('demos_enabled',false),canGrant=actor.role_level===1||actor.credits>0;
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona demos'});
+      const enabled=boolSetting('demos_enabled',false),canGrant=true;
       let demos;if(actor.role_level===1)demos=db.prepare(`SELECT dd.*,cd.activation_code,cd.device_name,cd.device_uid,c.name client_name,a.name granted_by_name FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id JOIN clients c ON c.id=dd.client_id JOIN accounts a ON a.id=dd.granted_by_account_id ORDER BY dd.started_at DESC LIMIT 150`).all();else demos=db.prepare(`SELECT dd.*,cd.activation_code,cd.device_name,cd.device_uid,c.name client_name,a.name granted_by_name FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id JOIN clients c ON c.id=dd.client_id JOIN accounts a ON a.id=dd.granted_by_account_id WHERE c.owner_account_id=? ORDER BY dd.started_at DESC LIMIT 100`).all(actor.id);
       const normalized=demos.map(x=>({...x,active:Date.parse(x.expires_at)>Date.now(),remainingSeconds:Math.max(0,Math.floor((Date.parse(x.expires_at)-Date.now())/1000))}));return sendJson(res,200,{enabled,durationMinutes:DEMO_DURATION_MINUTES,canGrant,requiresPositiveCredit:actor.role_level!==1,activeCount:normalized.filter(x=>x.active).length,demos:normalized});
     }
@@ -698,16 +699,26 @@ async function route(req,res){
     }
     const demoGrant=p.match(/^\/api\/admin\/client-devices\/(\d+)\/demo$/);
     if(demoGrant&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede otorgar demos'});
       if(!boolSetting('demos_enabled',false))return sendJson(res,409,{error:'Los demos están desactivados por ADMINISTRACIÓN'});
-      if(actor.role_level!==1&&actor.credits<=0)return sendJson(res,409,{error:'Necesitás al menos 1 crédito disponible para otorgar demos'});
       const d=db.prepare('SELECT cd.*,c.owner_account_id,c.id client_id FROM client_devices cd JOIN clients c ON c.id=cd.client_id WHERE cd.id=?').get(Number(demoGrant[1]));if(!d)return sendJson(res,404,{error:'Dispositivo vinculado no encontrado'});
-      if(!(actor.role_level===1||d.owner_account_id===actor.id))return sendJson(res,403,{error:'Solo podés dar demos a dispositivos de clientes directos'});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede otorgar demos'});
       if(d.status==='blocked')return sendJson(res,409,{error:'El dispositivo está bloqueado'});
       if(demoRow(d.id))return sendJson(res,409,{error:'Este dispositivo ya utilizó su único demo'});
       const c=clientRow(d.client_id);if(clientAccessState(c).ok)return sendJson(res,409,{error:'El cliente ya tiene servicio activo; no necesita demo'});
-      const t=nowIso(),exp=addMinutes(t,DEMO_DURATION_MINUTES);db.exec('BEGIN');try{db.prepare('INSERT INTO device_demos(device_id,client_id,granted_by_account_id,started_at,expires_at,created_at) VALUES (?,?,?,?,?,?)').run(d.id,c.id,actor.id,t,exp,t);db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE id=?").run(t,d.id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}audit(actor.id,'demo_granted','client_device',d.id,`1 hora; cliente ${c.id}`);return sendJson(res,201,{ok:true,startedAt:t,expiresAt:exp,durationMinutes:DEMO_DURATION_MINUTES,creditConsumed:0});
+      const t=nowIso(),exp=addMinutes(t,DEMO_DURATION_MINUTES);db.exec('BEGIN');try{db.prepare('INSERT INTO device_demos(device_id,client_id,granted_by_account_id,started_at,expires_at,created_at) VALUES (?,?,?,?,?,?)').run(d.id,c.id,actor.id,t,exp,t);db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE id=?").run(t,d.id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}audit(actor.id,'demo_granted','client_device',d.id,`${DEMO_DURATION_MINUTES} minutos; cliente ${c.id}`);return sendJson(res,201,{ok:true,startedAt:t,expiresAt:exp,durationMinutes:DEMO_DURATION_MINUTES,creditConsumed:0});
     }
 
+    const demoReset=p.match(/^\/api\/admin\/client-devices\/(\d+)\/demo\/reset$/);
+    if(demoReset&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede resetear un demo'});
+      const deviceId=Number(demoReset[1]),d=db.prepare('SELECT cd.*,c.id client_id,c.name client_name FROM client_devices cd JOIN clients c ON c.id=cd.client_id WHERE cd.id=?').get(deviceId);
+      if(!d)return sendJson(res,404,{error:'Dispositivo vinculado no encontrado'});
+      const demo=demoRow(deviceId);if(!demo)return sendJson(res,404,{error:'Este dispositivo no tiene demo para resetear'});
+      db.exec('BEGIN');try{db.prepare('DELETE FROM device_demos WHERE device_id=?').run(deviceId);db.prepare('DELETE FROM client_sessions WHERE device_id=?').run(deviceId);db.prepare("UPDATE client_devices SET status='pending',updated_at=? WHERE id=? AND status<>'blocked'").run(nowIso(),deviceId);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+      audit(actor.id,'demo_reset_by_admin','client_device',deviceId,`cliente ${d.client_id}`);
+      return sendJson(res,200,{ok:true,demoUsed:false,status:d.status==='blocked'?'blocked':'pending'});
+    }
     const demoReduce=p.match(/^\/api\/admin\/client-devices\/(\d+)\/demo\/reduce-10$/);
     if(demoReduce&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede reducir un demo'});
