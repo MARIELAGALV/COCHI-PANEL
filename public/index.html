@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071827">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon-192.png">
+  <title>CO-CHI PANEL</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
+
+  <section id="setupView" class="center-shell hidden">
+    <div class="auth-card neon-card">
+      <div class="brand"><div class="brand-mark">CO</div><div><h1>CO-CHI PANEL</h1><p>Configuración inicial</p></div></div>
+      <h2>Crear ADMINISTRACIÓN</h2>
+      <p class="muted">Se creará la primera ficha de control total.</p>
+      <form id="setupForm">
+        <label>Nombre<input id="setupName" required minlength="2" placeholder="Administrador principal"></label>
+        <label>Contacto<input id="setupContact" placeholder="Opcional"></label>
+        <button class="primary full" type="submit">CREAR FICHA</button>
+      </form>
+      <div id="setupMsg" class="msg"></div>
+    </div>
+  </section>
+
+  <section id="activateView" class="center-shell hidden">
+    <div class="auth-card neon-card">
+      <div class="brand"><div class="brand-mark">CO</div><div><h1>CO-CHI PANEL</h1><p>Activación de dispositivo</p></div></div>
+      <h2>Activar este PANEL</h2>
+      <p class="muted">Ingresá el código de la ficha. Cada ficha admite hasta 2 dispositivos.</p>
+      <form id="activateForm">
+        <label>Código de activación<input id="activateCode" required placeholder="ABCD-1234" maxlength="9" autocomplete="off"></label>
+        <label>Nombre de este equipo<input id="panelDeviceName" required placeholder="PC oficina / Celular"></label>
+        <button class="primary full" type="submit">ACTIVAR PANEL</button>
+        <button id="existingDeviceBtn" class="ghost full hidden mt10" type="button">ENTRAR CON ESTE DISPOSITIVO</button>
+      </form>
+      <div id="activateMsg" class="msg"></div>
+    </div>
+  </section>
+
+  <div id="appView" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.6.0</p></div></div>
+      <nav>
+        <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
+        <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
+        <button class="nav-btn" data-view="clients">👤 <span>Clientes finales</span></button>
+        <button class="nav-btn" data-view="devices">▣ <span>Dispositivos</span></button>
+        <button class="nav-btn" data-view="credits">¤ <span>Créditos</span></button>
+        <button class="nav-btn admin-only" data-view="promotions">★ <span>Promociones</span></button>
+        <button class="nav-btn admin-only" data-view="demos">⏱ <span>Demos</span></button>
+        <button class="nav-btn admin-only" data-view="adults">🔒 <span>Adultos</span></button>
+        <button class="nav-btn admin-only" data-view="sources">⌁ <span>Fuentes</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="status-dot-row"><span class="dot"></span> Backend activo</div>
+        <button id="logoutBtn" class="ghost full">Cerrar sesión</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><p id="roleEyebrow" class="eyebrow">PANEL</p><h2 id="pageTitle">Inicio</h2></div>
+        <div class="top-actions"><span id="meCredits" class="admin-pill"></span><span id="meName" class="admin-pill"></span><button id="refreshBtn" class="ghost">Actualizar</button></div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div id="promoBanner" class="promo-banner hidden"></div>
+        <div class="cards" id="dashboardCards"></div>
+        <div class="neon-card panel-card">
+          <div class="card-head"><div><h3>Reglas activas</h3><p class="muted">Base comercial de CO-CHI PANEL.</p></div></div>
+          <div class="rule-grid">
+            <div class="rule-card"><b>1 crédito</b><span>Activa o renueva 30 días de un cliente.</span></div>
+            <div class="rule-card"><b>2 dispositivos</b><span>Cada cliente puede tener hasta 2 dispositivos activos. Bloquear uno libera el lugar, no devuelve crédito.</span></div>
+            <div class="rule-card"><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los 30 días se suman desde el vencimiento vigente.</span></div>
+            <div class="rule-card"><b>Paneles</b><span>Máximo 2 dispositivos por ficha administrativa.</span></div>
+            <div class="rule-card"><b>Cargas</b><span>Mínimo 10 créditos por carga. Sin tope máximo.</span></div>
+            <div class="rule-card"><b>Demos</b><span>1 hora por dispositivo. Con 0 créditos no se pueden otorgar demos.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-accounts" class="view">
+        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><button id="quickCreditBtn" class="credit-cta">¤ CARGAR CRÉDITOS</button><span class="muted small">Solo categorías administrativas 1–4. Los clientes finales nunca aparecen acá.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th>Código</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-clients" class="view">
+        <div class="toolbar"><button id="newClientBtn" class="primary">+ NUEVO CLIENTE FINAL</button><span class="muted small">Sección exclusiva de clientes finales. No aparecen en Fichas PANEL y no ingresan al PANEL.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Cliente</th><th>Propietario</th><th>Vencimiento</th><th>Renovación</th><th>Dispositivos</th><th>Estado</th><th></th></tr></thead><tbody id="clientsBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-devices" class="view">
+        <div class="toolbar"><button id="manualClientDeviceBtn" class="ghost admin-only">+ DISPOSITIVO DE PRUEBA</button><button id="assignByCodeBtn" class="primary">ACTIVAR POR CÓDIGO</button><span class="muted small">El código lo muestra CO-CHI en el dispositivo del cliente.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Código</th><th>Dispositivo</th><th>Cliente</th><th>Propietario</th><th>Estado</th><th>Última conexión</th><th></th></tr></thead><tbody id="devicesBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-credits" class="view">
+        <div class="toolbar"><button id="newCreditBtn" class="primary">+ NUEVA CARGA</button><span class="muted small">Mínimo 10 créditos. Cada transferencia respeta automáticamente el saldo disponible.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Desde</th><th>Hacia</th><th>Cantidad</th><th>Detalle</th></tr></thead><tbody id="creditsBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-promotions" class="view admin-only">
+        <div class="toolbar"><button id="newPromoBtn" class="primary">+ NUEVA PROMO DE CRÉDITOS</button><span class="muted small">El bonus lo entrega el sistema y nunca se descuenta de quien carga.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Promoción</th><th>Bonus</th><th>Categorías</th><th>Inicio</th><th>Fin</th><th>Estado</th><th></th></tr></thead><tbody id="promotionsBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-demos" class="view admin-only">
+        <div class="neon-card panel-card control-card">
+          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · duración 1 hora.</p></div><button id="demoToggleBtn" class="primary">CARGANDO...</button></div>
+          <div id="demoGlobalState" class="control-status"></div>
+          <div class="rule-grid">
+            <div class="rule-card"><b>1 por dispositivo</b><span>Un dispositivo que ya usó demo no puede recibir otro.</span></div>
+            <div class="rule-card"><b>1 hora</b><span>El tiempo comienza cuando se activa el demo sobre un código vinculado.</span></div>
+            <div class="rule-card"><b>Sin consumo</b><span>El demo no descuenta créditos.</span></div>
+            <div class="rule-card"><b>Saldo requerido</b><span>Una ficha con 0 créditos no puede otorgar demos.</span></div>
+          </div>
+        </div>
+        <div class="neon-card table-card mt18"><div class="card-head panel-pad"><div><h3>Historial de demos</h3><p class="muted">Registro por dispositivo.</p></div></div><div class="table-wrap"><table>
+          <thead><tr><th>Cliente</th><th>Dispositivo</th><th>Código</th><th>Otorgado por</th><th>Inicio</th><th>Fin</th><th>Estado</th></tr></thead><tbody id="demosBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-adults" class="view admin-only">
+        <div class="neon-card panel-card control-card">
+          <div class="card-head"><div><h3>PIN de Adultos</h3><p class="muted">Control exclusivo de ADMINISTRACIÓN. El PIN nunca se muestra ni se guarda en texto legible.</p></div></div>
+          <form id="adultGlobalForm" class="adult-global-grid">
+            <label class="switch-row adult-switch"><input id="adultGlobalEnabled" type="checkbox"> Usar bloqueo de Adultos como configuración general</label>
+            <label>Nuevo PIN global<input id="adultGlobalPin" type="password" inputmode="numeric" minlength="4" maxlength="8" placeholder="Dejar vacío para conservar"></label>
+            <label>Intentos antes de bloquear<input id="adultMaxAttempts" type="number" min="1" max="10" value="5"></label>
+            <button class="primary" type="submit">GUARDAR CONTROL ADULTOS</button>
+          </form>
+          <div id="adultGlobalMsg" class="msg"></div>
+          <div id="adultPinState" class="muted small"></div>
+        </div>
+        <div class="neon-card table-card mt18"><div class="card-head panel-pad"><div><h3>Control por cliente</h3><p class="muted">Podés heredar la regla general, forzar bloqueo, desactivarlo, cambiar PIN o desbloquear intentos.</p></div></div><div class="table-wrap"><table>
+          <thead><tr><th>Cliente</th><th>Propietario</th><th>Política</th><th>PIN</th><th>Intentos</th><th>Estado</th><th></th></tr></thead><tbody id="adultClientsBody"></tbody>
+        </table></div></div>
+      </section>
+
+      <section id="view-sources" class="view admin-only">
+        <div class="neon-card panel-card sources-card"><div class="card-head"><div><h3>Fuentes de contenido</h3><p class="muted">TV1, TV2, Películas y Series quedan fuera del APK.</p></div><button id="saveSourcesBtn" class="primary">GUARDAR CAMBIOS</button></div><div id="sourcesList" class="sources-list"></div><div id="sourcesMsg" class="msg"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
+  <script src="/app.js"></script>
+</body>
+</html>
