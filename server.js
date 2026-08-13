@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.7.2';
+const VERSION = '0.7.4';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -47,7 +47,13 @@ function rateLimit(req,res,key,limit,windowMs){
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(DB_PATH, { timeout: 5000 });
 db.exec('PRAGMA journal_mode=WAL;');
+
 db.exec('PRAGMA foreign_keys=ON;');
+function ensureAccountColumn(name, ddl){
+  const cols=db.prepare("PRAGMA table_info(accounts)").all().map(x=>x.name);
+  if(!cols.includes(name)) db.exec(`ALTER TABLE accounts ADD COLUMN ${ddl}`);
+}
+
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS accounts (
@@ -67,6 +73,14 @@ CREATE TABLE IF NOT EXISTS accounts (
   FOREIGN KEY(parent_id) REFERENCES accounts(id) ON DELETE SET NULL
 ) STRICT;
 
+`);
+ensureAccountColumn('manual_blocked', "manual_blocked INTEGER NOT NULL DEFAULT 0");
+ensureAccountColumn('block_reason', "block_reason TEXT NOT NULL DEFAULT ''");
+ensureAccountColumn('blocked_by_account_id', "blocked_by_account_id INTEGER");
+ensureAccountColumn('blocked_at', "blocked_at TEXT");
+ensureAccountColumn('deleted_at', "deleted_at TEXT");
+ensureAccountColumn('deleted_by_account_id', "deleted_by_account_id INTEGER");
+db.exec(`
 CREATE TABLE IF NOT EXISTS panel_devices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   account_id INTEGER NOT NULL,
@@ -245,6 +259,71 @@ const roles = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',
 const randomToken = (n=32) => crypto.randomBytes(n).toString('base64url');
 const sha = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 
+
+// v0.7.4 — cifrado de contenido compatible con BLAF / CO-CHI.
+// El Manager trabaja en claro dentro de la sesión ADMIN; el JSON público se guarda cifrado.
+const CONTENT_CIPHER_KEY_TEXT = process.env.COCHI_CONTENT_KEY || 'R0JyelFiaDBzZFJWdGtRVTJ4RzZFSVlE';
+function contentCipherKey(){
+  const key=Buffer.from(String(CONTENT_CIPHER_KEY_TEXT),'utf8');
+  if(key.length!==32)throw new Error('COCHI_CONTENT_KEY debe tener exactamente 32 bytes UTF-8');
+  return key;
+}
+function encryptContentValue(value){
+  const c=crypto.createCipheriv('aes-256-ecb',contentCipherKey(),null);c.setAutoPadding(true);
+  return Buffer.concat([c.update(String(value),'utf8'),c.final()]).toString('base64');
+}
+function decryptContentValue(value){
+  const d=crypto.createDecipheriv('aes-256-ecb',contentCipherKey(),null);d.setAutoPadding(true);
+  return Buffer.concat([d.update(Buffer.from(String(value),'base64')),d.final()]).toString('utf8');
+}
+function cloneJson(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
+function decryptManagedContent(input){
+  if(!Array.isArray(input))throw new Error('La lista debe ser un arreglo de categorías');
+  return input.map((group,gi)=>{
+    const out={...group};
+    if(gi===0&&group?.jwt){try{out.jwt=decryptContentValue(group.jwt)}catch{out.jwt=group.jwt;}}
+    const samples=Array.isArray(group?.samples)?group.samples:[];
+    out.samples=samples.map((sample)=>{
+      // Si ya está en claro (por ejemplo, contenido recién editado), conservarlo.
+      if(!sample||typeof sample!=='object'||!sample.code)return cloneJson(sample||{});
+      let parsed;
+      try{parsed=JSON.parse(decryptContentValue(sample.code));}
+      catch(e){throw new Error('No se pudo desencriptar un contenido. Verificá que use la misma clave/formato que CO-CHI.');}
+      const result={...parsed};
+      if(Array.isArray(sample.temp)){
+        result.temp=sample.temp.map(t=>{
+          if(!t||typeof t!=='object'||!t.code)return cloneJson(t||{});
+          try{return JSON.parse(decryptContentValue(t.code));}
+          catch{throw new Error('No se pudo desencriptar un capítulo/temporada del contenido.');}
+        });
+      }
+      return result;
+    });
+    return out;
+  });
+}
+function encryptManagedContent(input){
+  if(!Array.isArray(input))throw new Error('La lista debe ser un arreglo de categorías');
+  return input.map((group,gi)=>{
+    const out={name:String(group?.name??'')};
+    if(gi===0&&group?.jwt!==undefined&&String(group.jwt).trim()!=='')out.jwt=encryptContentValue(String(group.jwt).trim());
+    const samples=Array.isArray(group?.samples)?group.samples:[];
+    out.samples=samples.map(sample=>{
+      const plain=cloneJson(sample||{});
+      const wrapped={code:encryptContentValue(JSON.stringify(plain))};
+      if(Array.isArray(plain.temp))wrapped.temp=plain.temp.map(t=>({code:encryptContentValue(JSON.stringify(t||{}))}));
+      return wrapped;
+    });
+    return out;
+  });
+}
+function contentStats(list){
+  const categories=Array.isArray(list)?list.length:0;
+  let items=0,nested=0;
+  for(const g of Array.isArray(list)?list:[]){for(const x of Array.isArray(g?.samples)?g.samples:[]){items++;if(Array.isArray(x?.temp))nested+=x.temp.length;}}
+  return {categories,items,nested};
+}
+
 for (const [key,label] of [['tv1','TV1'],['tv2','TV2'],['movies','Películas'],['series','Series']]) {
   db.prepare('INSERT OR IGNORE INTO sources(source_key,label,url,enabled,updated_at) VALUES (?,?,?,?,?)')
     .run(key,label,'',1,nowIso());
@@ -351,6 +430,8 @@ function refreshInactivity(account){
 function accountAccessState(account){
   account=refreshInactivity(account);
   if(!account)return {ok:false,reason:'account_not_found'};
+  if(account.deleted_at)return {ok:false,reason:'panel_deleted'};
+  if(account.manual_blocked)return {ok:false,reason:'manual_block',blockReason:account.block_reason||''};
   if(!account.active)return {ok:false,reason:'account_disabled'};
   if(account.inactivity_blocked)return {ok:false,reason:'no_credit_load_for_two_months'};
   return {ok:true,reason:'ok'};
@@ -364,9 +445,10 @@ function isRootAdminAccount(a){return Boolean(a&&Number(a.id)===rootAdminId());}
 function accountPublic(a){
   a=refreshInactivity({...a});
   const nextBlock=a.role_level===1?null:addMonths(a.last_credit_received_at||a.created_at,2);
-  return {...a,role_name:roles[a.role_level],active:Boolean(a.active),inactivity_blocked:Boolean(a.inactivity_blocked),next_inactivity_block_at:nextBlock,is_root_admin:isRootAdminAccount(a),credits_unlimited:Number(a.role_level)===1};
+  return {...a,role_name:roles[a.role_level],active:Boolean(a.active),inactivity_blocked:Boolean(a.inactivity_blocked),manual_blocked:Boolean(a.manual_blocked),block_reason:a.block_reason||'',deleted:Boolean(a.deleted_at),next_inactivity_block_at:nextBlock,is_root_admin:isRootAdminAccount(a),credits_unlimited:Number(a.role_level)===1};
 }
 function canEditAccount(actor,target){return actor.role_level===1 || target.parent_id===actor.id;}
+function canManageDirectPanel(actor,target){return Boolean(actor&&target&&!isRootAdminAccount(target)&&(actor.role_level===1 || Number(target.parent_id)===Number(actor.id)));}
 function canEditClient(actor,client){return actor.role_level===1 || client.owner_account_id===actor.id;}
 function canCreateLevel(actor,level){if(level<1||level>5)return false;if(actor.role_level===1)return true;return level>=actor.role_level;}
 function wouldCycle(accountId,newParentId){
@@ -392,7 +474,7 @@ function panelSessionFromReq(req){
   db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),row.panel_device_id);
   return {blocked:false,account:a,panelDeviceId:row.panel_device_id};
 }
-function requirePanel(req,res){const s=panelSessionFromReq(req);if(!s){sendJson(res,401,{error:'Panel no activado'});return null;}if(s.blocked){sendJson(res,423,{error:'Panel bloqueado',reason:s.reason});return null;}return s;}
+function requirePanel(req,res){const s=panelSessionFromReq(req);if(!s){sendJson(res,401,{error:'Panel no activado'});return null;}if(s.blocked){sendJson(res,423,{error:'Panel bloqueado',reason:s.reason,blockReason:s.account?.block_reason||''});return null;}return s;}
 function requireAdmin(req,res){const s=requirePanel(req,res);if(!s)return null;if(s.account.role_level!==1){sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede realizar esta acción'});return null;}return s;}
 
 function activePromotionFor(level){
@@ -598,7 +680,7 @@ async function route(req,res){
     }
 
     if(p==='/api/admin/accounts'&&m==='GET'){
-      let rows=actor.role_level===1?db.prepare('SELECT * FROM accounts ORDER BY role_level,id').all():db.prepare('SELECT * FROM accounts WHERE parent_id=? ORDER BY role_level,id').all(actor.id);
+      let rows=actor.role_level===1?db.prepare('SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY role_level,id').all():db.prepare('SELECT * FROM accounts WHERE parent_id=? AND deleted_at IS NULL ORDER BY role_level,id').all(actor.id);
       rows=rows.filter(x=>x.id!==actor.id || actor.role_level===1).map(accountPublic);
       for(const x of rows){x.panel_device_count=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(x.id).n);x.parent_name=x.parent_id?(accountRaw(x.parent_id)?.name||null):null;}
       return sendJson(res,200,{accounts:rows});
@@ -629,6 +711,38 @@ async function route(req,res){
       db.prepare('UPDATE accounts SET name=?,role_level=?,parent_id=?,contact=?,notes=?,active=?,updated_at=? WHERE id=?').run(name,role,parent,b.contact!==undefined?String(b.contact).trim():target.contact,b.notes!==undefined?String(b.notes).trim():target.notes,active,nowIso(),id);
       return sendJson(res,200,{ok:true});
     }
+
+    const accountBlock=p.match(/^\/api\/admin\/accounts\/(\d+)\/block$/);
+    if(accountBlock&&m==='POST'){
+      const id=Number(accountBlock[1]),target=accountRaw(id);if(!target||target.deleted_at)return sendJson(res,404,{error:'Ficha no encontrada'});
+      if(!canManageDirectPanel(actor,target))return sendJson(res,403,{error:'Solo podés bloquear paneles inferiores de tu propia rama'});
+      const b=await readJson(req),reason=String(b.reason||'').trim();if(reason.length<2)return sendJson(res,400,{error:'Debés indicar el motivo del bloqueo'});
+      const t=nowIso();db.prepare('UPDATE accounts SET manual_blocked=1,block_reason=?,blocked_by_account_id=?,blocked_at=?,updated_at=? WHERE id=?').run(reason,actor.id,t,t,id);
+      audit(actor.id,'panel_blocked','account',id,reason);
+      return sendJson(res,200,{ok:true,creditRefunded:0,clientsTransferred:0,clientsRemainActiveUntilExpiry:true});
+    }
+    const accountUnblock=p.match(/^\/api\/admin\/accounts\/(\d+)\/unblock$/);
+    if(accountUnblock&&m==='POST'){
+      const id=Number(accountUnblock[1]),target=accountRaw(id);if(!target||target.deleted_at)return sendJson(res,404,{error:'Ficha no encontrada'});
+      if(!canManageDirectPanel(actor,target))return sendJson(res,403,{error:'Solo podés desbloquear paneles inferiores de tu propia rama'});
+      db.prepare("UPDATE accounts SET manual_blocked=0,block_reason='',blocked_by_account_id=NULL,blocked_at=NULL,updated_at=? WHERE id=?").run(nowIso(),id);
+      audit(actor.id,'panel_unblocked','account',id);
+      return sendJson(res,200,{ok:true});
+    }
+    const accountDelete=p.match(/^\/api\/admin\/accounts\/(\d+)$/);
+    if(accountDelete&&m==='DELETE'){
+      const id=Number(accountDelete[1]),target=accountRaw(id);if(!target||target.deleted_at)return sendJson(res,404,{error:'Ficha no encontrada'});
+      if(!canManageDirectPanel(actor,target))return sendJson(res,403,{error:'Solo podés eliminar paneles inferiores de tu propia rama'});
+      const b=await readJson(req);if(String(b.confirm||'')!=='ELIMINAR')return sendJson(res,400,{error:'Confirmación inválida'});
+      const t=nowIso();
+      // Borrado lógico deliberado: NO mueve clientes, NO devuelve créditos y NO altera vencimientos/dispositivos de clientes.
+      db.prepare("UPDATE accounts SET manual_blocked=1,block_reason='Panel eliminado',deleted_at=?,deleted_by_account_id=?,updated_at=? WHERE id=?").run(t,actor.id,t,id);
+      db.prepare('DELETE FROM panel_sessions WHERE panel_device_id IN (SELECT id FROM panel_devices WHERE account_id=?)').run(id);
+      db.prepare('UPDATE panel_devices SET active=0,updated_at=? WHERE account_id=?').run(t,id);
+      audit(actor.id,'panel_deleted','account',id,'Sin devolución de créditos; sin transferencia de clientes; clientes activos continúan hasta vencimiento');
+      return sendJson(res,200,{ok:true,creditRefunded:0,clientsTransferred:0,clientsRemainActiveUntilExpiry:true});
+    }
+
     const regen=p.match(/^\/api\/admin\/accounts\/(\d+)\/regenerate-code$/);
     if(regen&&m==='POST'){
       const id=Number(regen[1]),target=accountRaw(id);if(!target)return sendJson(res,404,{error:'Ficha no encontrada'});if(!canEditAccount(actor,target))return sendJson(res,403,{error:'Sin permiso'});const code=generateCode('accounts');db.prepare('UPDATE accounts SET activation_code=?,updated_at=? WHERE id=?').run(code,nowIso(),id);return sendJson(res,200,{ok:true,activationCode:code});
@@ -842,14 +956,22 @@ async function route(req,res){
 
     const contentMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)$/);
     if(contentMatch&&m==='GET'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const r=db.prepare('SELECT * FROM managed_content WHERE source_key=?').get(contentMatch[1]);let json=null;if(r?.json_text){try{json=JSON.parse(r.json_text)}catch{}}return sendJson(res,200,{key:contentMatch[1],json,updatedAt:r?.updated_at||null});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});
+      const r=db.prepare('SELECT * FROM managed_content WHERE source_key=?').get(contentMatch[1]);let json=null,stats=null;
+      if(r?.json_text){try{const stored=JSON.parse(r.json_text);json=decryptManagedContent(stored);stats=contentStats(json);}catch(e){return sendJson(res,500,{error:'El contenido guardado no pudo abrirse en modo editable: '+e.message});}}
+      return sendJson(res,200,{key:contentMatch[1],json,stats,updatedAt:r?.updated_at||null,editorMode:'decrypted'});
     }
     if(contentMatch&&m==='PUT'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const b=await readJson(req);if(b.json===undefined)return sendJson(res,400,{error:'Falta json'});let text;try{text=JSON.stringify(b.json)}catch{return sendJson(res,400,{error:'JSON inválido'});}if(Buffer.byteLength(text,'utf8')>25*1024*1024)return sendJson(res,413,{error:'JSON demasiado grande (máximo 25 MB)'});db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(text,nowIso(),contentMatch[1]);audit(actor.id,'managed_content_saved','content',null,contentMatch[1]);return sendJson(res,200,{ok:true});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});
+      const b=await readJson(req,30*1024*1024);if(b.json===undefined)return sendJson(res,400,{error:'Falta json'});
+      let encrypted,text,stats;try{stats=contentStats(b.json);encrypted=encryptManagedContent(b.json);text=JSON.stringify(encrypted);}catch(e){return sendJson(res,400,{error:'No se pudo preparar el contenido: '+e.message});}
+      if(Buffer.byteLength(text,'utf8')>25*1024*1024)return sendJson(res,413,{error:'JSON cifrado demasiado grande (máximo 25 MB)'});
+      db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(text,nowIso(),contentMatch[1]);audit(actor.id,'managed_content_saved_encrypted','content',null,contentMatch[1]);return sendJson(res,200,{ok:true,stats,encrypted:true});
     }
     const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
     if(importMatch&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.1'},signal:AbortSignal.timeout(15000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const json=JSON.parse(text);return sendJson(res,200,{json,sourceUrl:src.url});}catch(e){return sendJson(res,502,{error:'No se pudo importar la fuente: '+e.message});}
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);if(!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene URL configurada'});
+      try{const rr=await fetch(src.url,{headers:{'User-Agent':'CO-CHI-PANEL/0.7.4'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);const text=await rr.text();if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');const encrypted=JSON.parse(text);const json=decryptManagedContent(encrypted);return sendJson(res,200,{json,stats:contentStats(json),sourceUrl:src.url,editorMode:'decrypted'});}catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
     }
 
     if(p==='/api/admin/sources'&&m==='GET'){
