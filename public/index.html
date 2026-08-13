@@ -123,7 +123,7 @@
 
       <section id="view-demos" class="view admin-only">
         <div class="neon-card panel-card control-card">
-          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · duración 1 hora.</p></div><button id="demoToggleBtn" class="primary">CARGANDO...</button></div>
+          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · duración normal 1 hora.</p></div><div class="demo-global-actions"><button id="demoToggleBtn" class="primary">CARGANDO...</button><button id="demoCutAllBtn" class="danger-btn">CORTAR TODOS LOS DEMOS ACTIVOS</button></div></div>
           <div id="demoGlobalState" class="control-status"></div>
           <div class="rule-grid">
             <div class="rule-card"><b>1 por dispositivo</b><span>Un dispositivo que ya usó demo no puede recibir otro.</span></div>
@@ -133,7 +133,7 @@
           </div>
         </div>
         <div class="neon-card table-card mt18"><div class="card-head panel-pad"><div><h3>Historial de demos</h3><p class="muted">Registro por dispositivo.</p></div></div><div class="table-wrap"><table>
-          <thead><tr><th>Cliente</th><th>Dispositivo</th><th>Código</th><th>Otorgado por</th><th>Inicio</th><th>Fin</th><th>Estado</th></tr></thead><tbody id="demosBody"></tbody>
+          <thead><tr><th>Cliente</th><th>Dispositivo</th><th>Código</th><th>Otorgado por</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Acciones ADMIN</th></tr></thead><tbody id="demosBody"></tbody>
         </table></div></div>
       </section>
 

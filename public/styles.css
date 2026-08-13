@@ -212,3 +212,7 @@ body{min-height:100dvh}
   input,select,textarea,button{font-size:16px}
   .nav-btn{min-height:50px}
 }
+
+/* v0.6.1 — controles administrativos de demos */
+.demo-global-actions,.demo-live-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.demo-live-controls .demo-admin-btn{padding:7px 9px;border-radius:9px;font-size:11px}.demo-table-actions{min-width:145px}.demo-table-actions button{white-space:nowrap}.demo-global-actions button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:760px){.demo-global-actions{width:100%;justify-content:flex-start}.demo-global-actions button{flex:1 1 190px}.demo-table-actions{justify-content:flex-start}}
