@@ -1,0 +1,6 @@
+CO-CHI PANEL v0.6.0
+- Backend central preparado para HTTPS.
+- API de registro/activación de CO-CHI Android.
+- PWA responsive para usar el PANEL desde celular sin APK separada.
+- Cookies Secure en producción, HSTS, rate limit básico y data dir configurable.
+- Demos, PIN Adultos, clientes, créditos y fuentes conservados.
