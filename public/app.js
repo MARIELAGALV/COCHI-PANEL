@@ -108,10 +108,10 @@ function renderAccounts(){
   const rows=state.accounts.filter(a=>!q||[a.name,a.contact,a.role_name,a.parent_name,a.activation_code,a.active?'activa':'deshabilitada'].some(v=>String(v||'').toLowerCase().includes(q)));
   $('#accountsBody').innerHTML=rows.length?rows.map(a=>{
     const blocked=a.inactivity_blocked;
-    const stat=a.is_root_admin?'<span class="badge active">PROTEGIDA</span>':!a.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
+    const stat=a.is_root_admin?'<span class="badge active">PROTEGIDA</span>':a.manual_blocked?`<span class="badge blocked">BLOQUEADA</span><div class="muted small">${esc(a.block_reason||'')}</div>`:!a.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
     const creditValue=a.role_level===1?'—':a.credits;
     const loadBtn=(a.id!==state.me.id&&a.role_level!==1)?`<button class="primary mini-load" data-action="account-credit">CARGAR</button>`:'';
-    return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions"><button class="ghost" data-action="account-edit">Editar</button><button class="ghost" data-action="account-devices">Paneles</button></div></td></tr>`;
+    return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions"><button class="ghost" data-action="account-edit">Editar</button><button class="ghost" data-action="account-devices">Paneles</button>${!a.is_root_admin?(a.manual_blocked?`<button class="ghost" data-action="account-unblock">Desbloquear</button>`:`<button class="warn-btn" data-action="account-block">Bloquear</button>`)+`<button class="danger-btn" data-action="account-delete">Eliminar</button>`:""}</div></td></tr>`;
   }).join(''):`<tr><td colspan="8" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
 async function loadAccounts(render=true){const d=await api('/api/admin/accounts');state.accounts=d.accounts;if(render)renderAccounts();}
@@ -131,6 +131,21 @@ $('#accountsBody').addEventListener('click',async e=>{
   if(b.dataset.action==='account-edit')openAccountModal(a);
   if(b.dataset.action==='account-credit')openCreditModal(a);
   if(b.dataset.action==='account-devices')openPanelDevices(a);
+  if(b.dataset.action==='account-block'){
+    const reason=prompt(`Motivo del bloqueo de ${a.name}:`);
+    if(reason===null)return;if(!reason.trim())return alert('El motivo es obligatorio.');
+    if(!confirm(`¿Bloquear ${a.name}?\n\nNo se devolverán créditos y sus clientes activos seguirán funcionando hasta su vencimiento.`))return;
+    try{await api(`/api/admin/accounts/${a.id}/block`,{method:'POST',body:{reason:reason.trim()}});await loadAccounts();}catch(err){alert(err.message);}
+  }
+  if(b.dataset.action==='account-unblock'){
+    if(!confirm(`¿Desbloquear ${a.name}?`))return;
+    try{await api(`/api/admin/accounts/${a.id}/unblock`,{method:'POST',body:{}});await loadAccounts();}catch(err){alert(err.message);}
+  }
+  if(b.dataset.action==='account-delete'){
+    if(!confirm(`¿Eliminar el panel ${a.name}?\n\nNO se devolverán créditos.\nNO se transferirán sus clientes.\nLos clientes activos seguirán funcionando hasta su vencimiento.`))return;
+    const c=prompt('Escribí ELIMINAR para confirmar:');if(c!=='ELIMINAR')return;
+    try{await api(`/api/admin/accounts/${a.id}`,{method:'DELETE',body:{confirm:'ELIMINAR'}});await loadAccounts();}catch(err){alert(err.message);}
+  }
 });
 function openCreditModal(a){
   openModal(`<h3>Cargar créditos</h3><p>Destino: <b>${esc(a.name)}</b> · ${esc(a.role_name)}</p><p class="muted">Carga mínima: <b>10 créditos</b>. La operación respeta automáticamente el saldo disponible y, si hay una promoción activa, aplica el bonus correspondiente.</p>${state.me.role_level===1?'':`<div class="unlimited-box">Saldo disponible: <b>${state.me.credits}</b></div>`}<form id="creditForm"><label>Cantidad<input id="creditAmount" type="number" min="10" step="1" ${state.me.role_level===1?'':`max="${state.me.credits}"`} required value="10"></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">CONFIRMAR CARGA</button></div><div id="creditMsg" class="msg"></div></form>`);
@@ -358,16 +373,46 @@ async function loadSources(){const d=await api('/api/admin/sources');state.sourc
 $('#saveSourcesBtn').addEventListener('click',async()=>{try{const sources=$$('.source-row').map(r=>({key:r.dataset.source,url:r.querySelector('.source-url').value.trim(),enabled:r.querySelector('.source-enabled').checked}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#sourcesMsg'),'Fuentes guardadas.',true);}catch(e){msg($('#sourcesMsg'),e.message);}});
 
 
+function contentPlain(){
+  const raw=$('#contentJson').value.trim();if(!raw)return [];
+  const x=JSON.parse(raw);if(!Array.isArray(x))throw new Error('La lista debe ser un arreglo de categorías.');return x;
+}
+function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'';renderContentVisual();}
+function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
+function contentItemMeta(x){const bits=[];if(x?.uri)bits.push(x.uri);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
+function renderContentVisual(){
+  const box=$('#contentVisual');if(!box)return;let data;try{data=contentPlain();}catch(e){box.innerHTML=`<div class="empty error">JSON inválido: ${esc(e.message)}</div>`;return;}
+  if(!data.length){box.innerHTML='<div class="empty muted">La lista está vacía. Podés agregar una categoría.</div>';return;}
+  box.innerHTML=data.map((g,gi)=>`<div class="content-category"><div class="content-category-head"><div><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${Array.isArray(g.samples)?g.samples.length:0} contenidos</span></div><div><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div></div><div class="content-items">${(Array.isArray(g.samples)?g.samples:[]).map((x,si)=>`<div class="content-item">${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}<div class="content-item-main"><strong>${esc(contentItemName(x))}</strong><span class="muted small">${esc(contentItemMeta(x))}</span></div><div class="content-item-actions"><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div></div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div></div>`).join('');
+  $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
+  $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
+  $$('[data-content-delete]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentDelete.split(':').map(Number);const d=contentPlain(),name=contentItemName(d[g].samples[i]);if(confirm(`¿Eliminar ${name}?`)){d[g].samples.splice(i,1);setContentPlain(d);}});
+  $$('[data-category-edit]').forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.categoryEdit)));
+  $$('[data-category-delete]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.categoryDelete),d=contentPlain();if(confirm(`¿Eliminar la categoría ${d[i]?.name||''} y todos sus contenidos?`)){d.splice(i,1);setContentPlain(d);}});
+}
+function editCategory(index=null){
+  let d;try{d=contentPlain();}catch(e){return alert(e.message);}const cur=index===null?{name:'',samples:[]}:d[index];
+  openModal(`<h3>${index===null?'Agregar':'Editar'} categoría</h3><form id="contentCategoryForm"><label>Nombre<input id="contentCategoryName" value="${esc(cur.name||'')}" required></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div></form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);$('#contentCategoryForm').onsubmit=e=>{e.preventDefault();const name=$('#contentCategoryName').value.trim();if(!name)return;if(index===null)d.push({name,samples:[]});else d[index].name=name;setContentPlain(d);closeModal();};
+}
+function editContentItem(groupIndex,itemIndex=null){
+  let d;try{d=contentPlain();}catch(e){return alert(e.message);}const cur=itemIndex===null?{name:'',icon:'',uri:''}:structuredClone(d[groupIndex].samples[itemIndex]);
+  const extras={...cur};delete extras.name;delete extras.icon;delete extras.uri;
+  openModal(`<h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><form id="contentItemForm"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label><label>URI / URL principal<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label><label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label><p class="muted small">En Series, la propiedad <b>temp</b> con capítulos/temporadas puede editarse aquí en claro. El PANEL la cifrará al guardar.</p><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div></form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);$('#contentItemForm').onsubmit=e=>{e.preventDefault();try{const extraText=$('#ciExtras').value.trim();const extra=extraText?JSON.parse(extraText):{};const obj={...extra,name:$('#ciName').value.trim()};const icon=$('#ciIcon').value.trim(),uri=$('#ciUri').value.trim();if(icon)obj.icon=icon;else delete obj.icon;if(uri)obj.uri=uri;else delete obj.uri;if(itemIndex===null)d[groupIndex].samples.push(obj);else d[groupIndex].samples[itemIndex]=obj;setContentPlain(d);closeModal();}catch(err){msg($('#ciMsg'),'Datos adicionales inválidos: '+err.message);}};
+}
 async function loadContent(){
   const key=$('#contentKey').value;
-  try{const d=await api(`/api/admin/content/${key}`);state.content[key]=d;$('#contentJson').value=d.json?JSON.stringify(d.json,null,2):'';$('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}`:'Todavía no hay contenido guardado en el PANEL.';$('#contentPublicUrl').textContent=`URL PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');}catch(e){msg($('#contentMsg'),e.message);}
+  try{const d=await api(`/api/admin/content/${key}`);state.content[key]=d;setContentPlain(d.json||[]);const st=d.stats?` · ${d.stats.categories} categorías · ${d.stats.items} contenidos${d.stats.nested?` · ${d.stats.nested} capítulos/entradas`:''}`:'';$('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}${st}`:'Todavía no hay contenido guardado en el PANEL.';$('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');}catch(e){msg($('#contentMsg'),e.message);}
 }
 $('#contentKey')?.addEventListener('change',loadContent);
 $('#contentLoadBtn')?.addEventListener('click',loadContent);
-$('#contentFormatBtn')?.addEventListener('click',()=>{try{const x=JSON.parse($('#contentJson').value);$('#contentJson').value=JSON.stringify(x,null,2);msg($('#contentMsg'),'JSON válido y formateado.',true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}});
-$('#contentImportBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});$('#contentJson').value=JSON.stringify(r.json,null,2);msg($('#contentMsg'),`Importado correctamente desde ${r.sourceUrl}. Revisalo y presioná GUARDAR CONTENIDO.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
-$('#contentSaveBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const json=JSON.parse($('#contentJson').value);await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),'Contenido guardado en CO-CHI PANEL.',true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}});
-$('#contentUseBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(s=>({key:s.source_key,url:s.source_key===key?url:s.url,enabled:s.source_key===key?true:s.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el contenido administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
+$('#contentVisualRefreshBtn')?.addEventListener('click',renderContentVisual);
+$('#contentAddCategoryBtn')?.addEventListener('click',()=>editCategory(null));
+$('#contentFormatBtn')?.addEventListener('click',()=>{try{const x=contentPlain();setContentPlain(x);msg($('#contentMsg'),'JSON desencriptado válido y formateado.',true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}});
+$('#contentImportBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;msg($('#contentMsg'),'Importando y desencriptando...');const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});setContentPlain(r.json);const st=r.stats?`${r.stats.categories} categorías, ${r.stats.items} contenidos${r.stats.nested?`, ${r.stats.nested} capítulos/entradas`:''}`:'';msg($('#contentMsg'),`Importado y DESENCRIPTADO correctamente desde ${r.sourceUrl}. ${st}. Podés editarlo y luego usar GUARDAR + ENCRIPTAR.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
+$('#contentSaveBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const json=contentPlain();const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),`Contenido guardado y ENCRIPTADO automáticamente.${r.stats?` ${r.stats.items} contenidos procesados.`:''}`,true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}});
+$('#contentUseBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(s=>({key:s.source_key,url:s.source_key===key?url:s.url,enabled:s.source_key===key?true:s.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el JSON cifrado administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}
