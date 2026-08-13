@@ -219,12 +219,12 @@ async function openClientCodes(c){
           if(di.active)demoAction=state.me?.role_level===1
             ? `<div class="demo-live-controls"><span class="badge active">DEMO ACTIVO · ${fmtDuration(di.remainingSeconds)}</span><button class="ghost demo-admin-btn" data-action="reduce-demo" data-device="${x.id}">10 MIN</button><button class="danger-btn demo-admin-btn" data-action="expire-demo" data-device="${x.id}">CORTAR</button></div>`
             : `<span class="badge active">DEMO ACTIVO · ${fmtDuration(di.remainingSeconds)}</span>`;
-          else if(di.used)demoAction='<span class="badge blocked">DEMO YA USADO</span>';
+          else if(di.used)demoAction=state.me?.role_level===1 ? `<div class="demo-live-controls"><span class="badge blocked">DEMO YA USADO</span><button class="ghost demo-admin-btn" data-action="reset-demo" data-device="${x.id}">RESETEAR DEMO</button></div>` : '<span class="badge blocked">DEMO YA USADO</span>';
           else if(serviceActive)demoAction='<span class="muted small">Servicio normal activo</span>';
           else if(!ds.enabled)demoAction='<span class="muted small">Demos desactivados</span>';
           else if(!ds.canGrant)demoAction='<span class="badge pending">DEMO NO DISPONIBLE</span>';
           else if(x.status==='blocked')demoAction='<span class="muted small">Dispositivo bloqueado</span>';
-          else demoAction=`<button class="demo-btn" data-action="grant-demo" data-device="${x.id}">DAR DEMO 1 HORA</button>`;
+          else demoAction=state.me?.role_level===1 ? `<button class="demo-btn" data-action="grant-demo" data-device="${x.id}">DAR DEMO 10 MIN</button>` : '<span class="muted small">Disponible solo para ADMINISTRACIÓN</span>'; 
           return `<div class="rule-card device-demo-card">
             <div><b>Código ${i+1}: <code>${esc(x.activation_code)}</code></b><span>${esc(x.device_name||x.device_uid)} · ${esc((x.status||'pending').toUpperCase())}${x.last_seen_at?` · Último: ${esc(fmt(x.last_seen_at))}`:''}</span></div>
             <div class="demo-action">${demoAction}</div>
@@ -243,7 +243,7 @@ async function openClientCodes(c){
       }catch(err){msg($('#clientCodeMsg'),err.message);}
     });
     $$('.demo-btn').forEach(btn=>btn.addEventListener('click',async()=>{
-      if(!confirm('¿Dar a este dispositivo su único demo de 1 hora?'))return;
+      if(!confirm('¿Dar a este dispositivo un demo de 10 minutos?'))return;
       try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}/demo`,{method:'POST'});alert(`Demo activo hasta ${fmt(r.expiresAt)}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     }));
     $$('.demo-admin-btn').forEach(btn=>btn.addEventListener('click',async()=>{
@@ -251,6 +251,7 @@ async function openClientCodes(c){
       try{
         if(action==='reduce-demo'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos? Si ya le quedan menos de 10 minutos, no se extenderá.'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}
         if(action==='expire-demo'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO YA USADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado. El dispositivo continúa marcado como demo utilizado.');}
+        if(action==='reset-demo'){if(!confirm('¿Resetear el demo de este dispositivo? Podrá recibir un demo nuevo de 10 minutos.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado. El dispositivo puede volver a recibir un demo.');}
         await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);
       }catch(err){alert(err.message);}
     }));
@@ -291,11 +292,11 @@ async function loadDemos(){
   $('#demoGlobalState').innerHTML=d.enabled
     ? `<span class="badge active">DEMOS ACTIVADOS</span> <span class="muted small">Los nuevos demos pueden iniciarse. ADMINISTRACIÓN puede reducir o cortar cualquier demo activo.</span>`
     : `<span class="badge blocked">DEMOS DESACTIVADOS</span> <span class="muted small">No se pueden iniciar nuevos demos. Los demos activos solo continúan hasta su vencimiento o hasta que ADMINISTRACIÓN los corte.</span>`;
-  $('#demosBody').innerHTML=d.demos.length?d.demos.map(x=>{const actions=x.active?`<div class="actions demo-table-actions"><button class="ghost" data-action="demo-10" data-device="${x.device_id}">10 MIN</button><button class="danger-btn" data-action="demo-cut" data-device="${x.device_id}">CORTAR</button></div>`:'<span class="muted small">Demo utilizado</span>';return `<tr><td><b>${esc(x.client_name)}</b></td><td>${esc(x.device_name||x.device_uid)}</td><td><code>${esc(x.activation_code)}</code></td><td>${esc(x.granted_by_name)}</td><td>${esc(fmt(x.started_at))}</td><td>${esc(fmt(x.expires_at))}</td><td><span class="badge ${x.active?'active':'blocked'}">${x.active?`ACTIVO · ${fmtDuration(x.remainingSeconds)}`:'FINALIZADO'}</span></td><td>${actions}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">Todavía no se otorgaron demos.</td></tr>';
+  $('#demosBody').innerHTML=d.demos.length?d.demos.map(x=>{const actions=x.active?`<div class="actions demo-table-actions"><button class="ghost" data-action="demo-10" data-device="${x.device_id}">10 MIN</button><button class="danger-btn" data-action="demo-cut" data-device="${x.device_id}">CORTAR</button></div>`:`<div class="actions demo-table-actions"><span class="muted small">Demo utilizado</span><button class="ghost" data-action="demo-reset" data-device="${x.device_id}">RESETEAR DEMO</button></div>`;return `<tr><td><b>${esc(x.client_name)}</b></td><td>${esc(x.device_name||x.device_uid)}</td><td><code>${esc(x.activation_code)}</code></td><td>${esc(x.granted_by_name)}</td><td>${esc(fmt(x.started_at))}</td><td>${esc(fmt(x.expires_at))}</td><td><span class="badge ${x.active?'active':'blocked'}">${x.active?`ACTIVO · ${fmtDuration(x.remainingSeconds)}`:'FINALIZADO'}</span></td><td>${actions}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">Todavía no se otorgaron demos.</td></tr>';
 }
 $('#demoToggleBtn')?.addEventListener('click',async()=>{try{const enabled=!state.demoSettings?.enabled;if(!confirm(enabled?'¿Activar demos para todas las fichas habilitadas?':'¿Desactivar nuevos demos? Los demos que ya están corriendo seguirán activos salvo que ADMINISTRACIÓN los corte.'))return;await api('/api/admin/demo-settings',{method:'PUT',body:{enabled}});await loadDemos();}catch(e){alert(e.message);}});
 $('#demoCutAllBtn')?.addEventListener('click',async()=>{try{const n=Number(state.demoSettings?.activeCount||0);if(!n)return;if(!confirm(`¿CONFIRMAR CORTE DE TODOS LOS DEMOS ACTIVOS?\n\nSe cortarán ${n} demo${n===1?'':'s'} inmediatamente. Los dispositivos seguirán marcados como DEMO UTILIZADO. Los clientes con servicio pago no se modifican.`))return;const r=await api('/api/admin/demos/expire-all',{method:'POST'});alert(`Se cortaron ${r.expiredCount} demo${r.expiredCount===1?'':'s'}.`);await loadDemos();await loadClients(false);}catch(e){alert(e.message);}});
-$('#demosBody')?.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.dataset.device);try{if(b.dataset.action==='demo-10'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos?'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}if(b.dataset.action==='demo-cut'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO UTILIZADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado.');}await loadDemos();await loadClients(false);}catch(err){alert(err.message);}});
+$('#demosBody')?.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.dataset.device);try{if(b.dataset.action==='demo-10'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos?'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}if(b.dataset.action==='demo-cut'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO UTILIZADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado.');}if(b.dataset.action==='demo-reset'){if(!confirm('¿Resetear este demo? El dispositivo podrá recibir un demo nuevo de 10 minutos.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado.');}await loadDemos();await loadClients(false);}catch(err){alert(err.message);}});
 
 async function loadAdultSettings(){
   const d=await api('/api/admin/adult-settings');state.adultSettings=d;

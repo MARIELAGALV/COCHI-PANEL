@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.6.1</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.6.2</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -81,7 +81,7 @@
             <div class="rule-card"><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los 30 días se suman desde el vencimiento vigente.</span></div>
             <div class="rule-card"><b>Paneles</b><span>Máximo 2 dispositivos por ficha administrativa.</span></div>
             <div class="rule-card"><b>Cargas</b><span>Mínimo 10 créditos por carga. Sin tope máximo.</span></div>
-            <div class="rule-card"><b>Demos</b><span>1 hora por dispositivo. Con 0 créditos no se pueden otorgar demos.</span></div>
+            <div class="rule-card"><b>Demos</b><span>10 minutos por dispositivo. Solo ADMINISTRACIÓN puede otorgar, cortar o resetear demos.</span></div>
           </div>
         </div>
       </section>
@@ -123,7 +123,7 @@
 
       <section id="view-demos" class="view admin-only">
         <div class="neon-card panel-card control-card">
-          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · duración normal 1O minutos.</p></div><div class="demo-global-actions"><button id="demoToggleBtn" class="primary">CARGANDO...</button><button id="demoCutAllBtn" class="danger-btn">CORTAR TODOS LOS DEMOS ACTIVOS</button></div></div>
+          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · duración normal 10 minutos · control exclusivo de ADMINISTRACIÓN.</p></div><div class="demo-global-actions"><button id="demoToggleBtn" class="primary">CARGANDO...</button><button id="demoCutAllBtn" class="danger-btn">CORTAR TODOS LOS DEMOS ACTIVOS</button></div></div>
           <div id="demoGlobalState" class="control-status"></div>
           <div class="rule-grid">
             <div class="rule-card"><b>1 por dispositivo</b><span>Un dispositivo que ya usó demo no puede recibir otro.</span></div>
