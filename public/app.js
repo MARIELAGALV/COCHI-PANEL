@@ -32,6 +32,18 @@ async function api(url,opt={}){
 }
 function show(id){['setupView','activateView','appView'].forEach(x=>$('#'+x).classList.add('hidden'));$('#'+id).classList.remove('hidden');}
 function msg(el,text,ok=false){el.textContent=text||'';el.className='msg'+(text?(ok?' ok':' error'):'');}
+
+function toast(text,kind='ok'){
+  let t=$('#appToast');
+  if(!t){
+    t=document.createElement('div');t.id='appToast';t.className='app-toast';document.body.appendChild(t);
+  }
+  t.className=`app-toast ${kind}`;
+  t.textContent=text;
+  t.classList.add('show');
+  clearTimeout(window.__cochiToastTimer);
+  window.__cochiToastTimer=setTimeout(()=>t.classList.remove('show'),4200);
+}
 function openModal(html){$('#modal').innerHTML=html;$('#modalBackdrop').classList.remove('hidden');}
 function closeModal(){$('#modalBackdrop').classList.add('hidden');$('#modal').innerHTML='';}
 $('#modalBackdrop').addEventListener('click',e=>{if(e.target===$('#modalBackdrop'))closeModal();});
@@ -554,12 +566,12 @@ function renderContentVisual(){
           <span class="category-chevron">${isOpen?'▾':'▸'}</span>
           <span><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${items.length} contenidos · posición ${gi+1}/${data.length}</span></span>
         </button>
-        <div class="content-category-actions"><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
+        <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
       </div>
       <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>`<div class="content-item">
         ${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
         <div class="content-item-main"><strong>${esc(contentItemName(x))}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}</span></div>
-        <div class="content-item-actions"><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
+        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
       </div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
     </div>`;
   }).join('');
@@ -569,6 +581,18 @@ function renderContentVisual(){
     const i=Number(b.dataset.categoryToggle);
     if(state.contentOpen.has(i))state.contentOpen.delete(i);else state.contentOpen.add(i);
     renderContentVisual();
+  });
+  $$('[data-cat-quick]').forEach(b=>b.onclick=()=>{
+    const [i0,dir]=b.dataset.catQuick.split(':'),i=Number(i0),d=contentPlain();
+    const to=dir==='up'?Math.max(0,i-1):Math.min(d.length-1,i+1);
+    if(to===i)return;
+    moveArrayItem(d,i,to);state.contentOpen=new Set([to]);setContentPlain(d);
+  });
+  $$('[data-item-quick]').forEach(b=>b.onclick=()=>{
+    const [g0,i0,dir]=b.dataset.itemQuick.split(':'),g=Number(g0),i=Number(i0),d=contentPlain();
+    const items=d[g]?.samples||[],to=dir==='up'?Math.max(0,i-1):Math.min(items.length-1,i+1);
+    if(to===i)return;
+    moveArrayItem(items,i,to);d[g].samples=items;state.contentOpen.add(g);setContentPlain(d);
   });
   $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
   $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
@@ -655,16 +679,46 @@ function editContentItem(groupIndex,itemIndex=null){
     }catch(err){msg($('#ciMsg'),'Datos adicionales inválidos: '+err.message);}
   };
 }
-async function loadContent(){
+async function loadContentSource(){
+  try{
+    const key=$('#contentKey').value;
+    const d=await api('/api/admin/sources');
+    state.sources=d.sources||[];
+    const src=state.sources.find(x=>x.source_key===key);
+    $('#contentSourceLabel').textContent=(src?.label||key).toUpperCase();
+    $('#contentSourceUrl').value=src?.url||'';
+    $('#contentSourceEnabled').checked=src?.enabled!==false;
+  }catch(e){
+    msg($('#contentMsg'),'No se pudo cargar la URL de origen: '+e.message);
+  }
+}
+async function saveContentSource(){
+  try{
+    const key=$('#contentKey').value,url=$('#contentSourceUrl').value.trim(),enabled=$('#contentSourceEnabled').checked;
+    if(url&&!/^https?:\/\//i.test(url))throw new Error('La URL debe comenzar con http:// o https://');
+    const d=await api('/api/admin/sources');
+    const sources=d.sources.map(x=>({key:x.source_key,url:x.source_key===key?url:x.url,enabled:x.source_key===key?enabled:x.enabled}));
+    await api('/api/admin/sources',{method:'PUT',body:{sources}});
+    await loadContentSource();
+    const text=`URL GUARDADA · ${($('#contentSourceLabel').textContent||key).toUpperCase()}`;
+    msg($('#contentMsg'),text,true);toast(text,'ok');
+  }catch(e){
+    msg($('#contentMsg'),e.message);toast(e.message,'bad');
+  }
+}
+async function loadContent(preserveMessage=false){
   const key=$('#contentKey').value;
+  await loadContentSource();
   try{
     const d=await api(`/api/admin/content/${key}`);state.content[key]=d;state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
     setContentPlain(d.json||[]);
     const st=d.stats?` · ${d.stats.categories} categorías · ${d.stats.items} contenidos${d.stats.nested?` · ${d.stats.nested} capítulos/entradas`:''}`:'';
     $('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}${st}`:'Todavía no hay contenido guardado en el PANEL.';
-    $('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');
+    $('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;if(!preserveMessage)msg($('#contentMsg'),'');
   }catch(e){msg($('#contentMsg'),e.message);}
 }
+$('#contentSourceSaveBtn')?.addEventListener('click',saveContentSource);
+$('#contentSourceReloadBtn')?.addEventListener('click',loadContentSource);
 $('#contentKey')?.addEventListener('change',loadContent);
 $('#contentLoadBtn')?.addEventListener('click',loadContent);
 $('#contentVisualRefreshBtn')?.addEventListener('click',renderContentVisual);
@@ -678,7 +732,13 @@ $('#contentFormatBtn')?.addEventListener('click',()=>{
 });
 $('#contentImportBtn')?.addEventListener('click',async()=>{
   try{
-    const key=$('#contentKey').value;msg($('#contentMsg'),'Importando y desencriptando...');
+    const key=$('#contentKey').value;
+    const srcNow=$('#contentSourceUrl').value.trim();
+    const saved=(state.sources||[]).find(x=>x.source_key===key);
+    if(srcNow!==String(saved?.url||'').trim()||$('#contentSourceEnabled').checked!==(saved?.enabled!==false)){
+      await saveContentSource();
+    }
+    msg($('#contentMsg'),'Importando y desencriptando...');
     const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});
     state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
     setContentPlain(r.json);
@@ -687,10 +747,31 @@ $('#contentImportBtn')?.addEventListener('click',async()=>{
   }catch(e){msg($('#contentMsg'),e.message);}
 });
 $('#contentSaveBtn')?.addEventListener('click',async()=>{
-  try{const key=$('#contentKey').value;const json=contentPlain();const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),`Contenido guardado y ENCRIPTADO automáticamente.${r.stats?` ${r.stats.items} contenidos procesados.`:''}`,true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}
+  try{
+    const key=$('#contentKey').value,json=contentPlain();
+    const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});
+    await loadContent(true);
+    const text=`GUARDADO OK · ${key.toUpperCase()} encriptado${r.stats?` · ${r.stats.items} contenidos`:''}`;
+    msg($('#contentMsg'),text,true);toast(text,'ok');
+  }catch(e){
+    const text=e instanceof SyntaxError?'JSON inválido: '+e.message:e.message;
+    msg($('#contentMsg'),text);toast(text,'bad');
+  }
 });
 $('#contentUseBtn')?.addEventListener('click',async()=>{
-  try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(x=>({key:x.source_key,url:x.source_key===key?url:x.url,enabled:x.source_key===key?true:x.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el JSON cifrado administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}
+  try{
+    const key=$('#contentKey').value,url=`${location.origin}/api/content/${key}`;
+    const d=await api('/api/admin/sources');
+    const sources=d.sources.map(x=>({key:x.source_key,url:x.source_key===key?url:x.url,enabled:x.source_key===key?true:x.enabled}));
+    await api('/api/admin/sources',{method:'PUT',body:{sources}});
+    // Verify the public managed endpoint answers after assigning it.
+    const vr=await fetch(url,{cache:'no-store'});
+    if(!vr.ok)throw new Error(`La fuente quedó asignada pero la URL pública respondió HTTP ${vr.status}`);
+    const text=`USAR EN LA APP OK · ${key.toUpperCase()} apunta al JSON administrado por el PANEL`;
+    msg($('#contentMsg'),text,true);toast(text,'ok');
+  }catch(e){
+    msg($('#contentMsg'),e.message);toast(e.message,'bad');
+  }
 });
 
 $('#modal').addEventListener('click',async e=>{

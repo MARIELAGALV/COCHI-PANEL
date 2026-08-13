@@ -286,3 +286,27 @@ body{min-height:100dvh}
 .reorder-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .tiny{font-size:.72rem}
 .client-actions-cell,.client-actions{white-space:normal}
+
+.order-btn{
+  min-width:34px;height:30px;border-radius:8px;border:1px solid rgba(80,190,255,.45);
+  background:rgba(40,150,220,.10);color:#bfe9ff;font-weight:900;cursor:pointer;font-size:1rem;
+}
+.order-btn:hover{background:rgba(40,150,220,.22)}
+.app-toast{
+  position:fixed;right:22px;bottom:22px;z-index:99999;max-width:min(520px,calc(100vw - 44px));
+  padding:14px 18px;border-radius:12px;font-weight:800;opacity:0;transform:translateY(12px);
+  pointer-events:none;transition:.18s ease;background:#14324a;color:#fff;border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 14px 40px rgba(0,0,0,.35);
+}
+.app-toast.show{opacity:1;transform:translateY(0)}
+.app-toast.ok{background:#14532d}
+.app-toast.bad{background:#7f1d1d}
+
+.content-source-card{
+  margin:14px 0;padding:16px;border:1px solid rgba(67,190,255,.25);border-radius:14px;
+  background:rgba(29,120,180,.055);
+}
+.content-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px}
+.content-source-head h4{margin:0 0 4px}
+.content-source-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+.content-source-card input[type="url"]{width:100%}
