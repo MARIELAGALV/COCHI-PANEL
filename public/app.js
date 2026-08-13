@@ -170,10 +170,18 @@ setInterval(updateLiveDemoCountdowns,1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateLiveDemoCountdowns();});
 
 function renderClients(){const q=($('#clientSearch')?.value||'').trim().toLowerCase();const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));$('#clientsBody').innerHTML=rows.length?rows.map(c=>{
-  const rem=c.days_remaining;const renew=c.renew_available?'<span class="badge active">DISPONIBLE</span>':`<span class="badge pending">En ${Math.max(0,Math.ceil(rem-10))} días</span>`;const stat=clientStatusBadge(c);
+  const rem=c.days_remaining;
+  let remainingLabel='<span class="badge off">SIN ACTIVAR</span>';
+  if(c.expires_at&&Number.isFinite(Number(rem))){
+    const whole=Math.ceil(Number(rem));
+    remainingLabel=whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:`<span class="badge blocked">VENCIDO</span>`;
+  }
+  const renewDisabled=!c.renew_available;
+  const renewTitle=renewDisabled?'Renovación habilitada cuando queden 10 días o menos':'Activar o sumar 30 días';
+  const stat=clientStatusBadge(c);
   const linked=c.linked_device_count??c.device_count;
   const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-  return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${renew}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td class="client-actions-cell"><div class="actions client-actions"><button class="code-btn" data-action="client-codes">CÓDIGOS / DEMO</button><button class="ghost" data-action="client-edit">Editar</button><button class="primary" data-action="client-renew">Activar/Renovar</button></div></td></tr>`;
+  return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td class="client-actions-cell"><div class="actions client-actions"><button class="code-btn" data-action="client-codes">CÓDIGOS / DEMO</button><button class="ghost" data-action="client-edit">Editar</button><button class="primary" data-action="client-renew" ${renewDisabled?'disabled':''} title="${renewTitle}">Activar/Renovar</button><button class="danger" data-action="client-delete">Eliminar</button></div></td></tr>`;
 }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;}
 async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
@@ -217,7 +225,12 @@ function openClientModal(c=null){
     }catch(err){msg($('#clientMsg'),err.message);}
   });
 }
-$('#clientsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const c=state.clients.find(x=>x.id===Number(b.closest('tr').dataset.client));if(!c)return;if(b.dataset.action==='client-codes')openClientCodes(c);if(b.dataset.action==='client-edit')openClientModal(c);if(b.dataset.action==='client-renew'){const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;if(!confirm(q))return;try{const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);await refreshMe();await loadClients();}catch(err){alert(err.message);}}});
+$('#clientsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const c=state.clients.find(x=>x.id===Number(b.closest('tr').dataset.client));if(!c)return;if(b.dataset.action==='client-codes')openClientCodes(c);if(b.dataset.action==='client-edit')openClientModal(c);if(b.dataset.action==='client-renew'){const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;if(!confirm(q))return;try{const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);await refreshMe();await loadClients();}catch(err){alert(err.message);}}if(b.dataset.action==='client-delete')openDeleteClientModal(c);});
+
+function openDeleteClientModal(c){
+  openModal(`<h3>Eliminar cliente</h3><div class="danger-card"><b>Vas a eliminar a ${esc(c.name)}</b><p>Se eliminarán también sus dispositivos y sesiones vinculadas. Esta acción no se puede deshacer desde esta pantalla.</p></div><label>Motivo (opcional)<textarea id="deleteClientReason" rows="2" placeholder="Ej.: cliente dado de baja"></textarea></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button type="button" class="danger" id="confirmDeleteClientBtn">CONFIRMAR ELIMINACIÓN</button></div><div id="deleteClientMsg" class="msg"></div>`);
+  $('#confirmDeleteClientBtn').addEventListener('click',async()=>{try{await api(`/api/admin/clients/${c.id}`,{method:'DELETE',body:{confirm:'ELIMINAR',reason:$('#deleteClientReason').value}});closeModal();await loadClients();alert(`Cliente ${c.name} eliminado.`);}catch(err){msg($('#deleteClientMsg'),err.message);}});
+}
 
 async function openClientCodes(c){
   try{
@@ -251,7 +264,7 @@ async function openClientCodes(c){
           else if(!ds.enabled)demoAction='<span class="muted small">Demos desactivados</span>';
           else if(!ds.canGrant)demoAction='<span class="badge pending">DEMO NO DISPONIBLE</span>';
           else if(x.status==='blocked')demoAction='<span class="muted small">Dispositivo bloqueado</span>';
-          else demoAction=state.me?.role_level===1 ? `<button class="demo-btn" data-action="grant-demo" data-device="${x.id}">DAR DEMO 10 MIN</button>` : '<span class="muted small">Disponible solo para ADMINISTRACIÓN</span>'; 
+          else demoAction=state.me?.role_level===1 ? `<div class="demo-grant-options"><button class="demo-btn" data-action="grant-demo" data-minutes="10" data-device="${x.id}">DEMO 10 MIN</button><button class="demo-btn" data-action="grant-demo" data-minutes="60" data-device="${x.id}">DEMO 1 HORA</button></div>` : '<span class="muted small">Disponible solo para ADMINISTRACIÓN</span>';  
           return `<div class="rule-card device-demo-card">
             <div><b>Código ${i+1}: <code>${esc(x.activation_code)}</code></b><span>${esc(x.device_name||x.device_uid)} · ${esc((x.status||'pending').toUpperCase())}${x.last_seen_at?` · Último: ${esc(fmt(x.last_seen_at))}`:''}</span></div>
             <div class="demo-action">${demoAction}</div>
@@ -270,15 +283,17 @@ async function openClientCodes(c){
       }catch(err){msg($('#clientCodeMsg'),err.message);}
     });
     $$('.demo-btn').forEach(btn=>btn.addEventListener('click',async()=>{
-      if(!confirm('¿Dar a este dispositivo un demo de 10 minutos?'))return;
-      try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}/demo`,{method:'POST'});alert(`Demo activo hasta ${fmt(r.expiresAt)}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
+      const minutes=Number(btn.dataset.minutes||10);
+      const label=minutes===60?'1 hora':'10 minutos';
+      if(!confirm(`¿Dar a este dispositivo un demo de ${label}?`))return;
+      try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}/demo`,{method:'POST',body:{durationMinutes:minutes}});alert(`Demo activo hasta ${fmt(r.expiresAt)}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     }));
     $$('.demo-admin-btn').forEach(btn=>btn.addEventListener('click',async()=>{
       const id=Number(btn.dataset.device),action=btn.dataset.action;
       try{
         if(action==='reduce-demo'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos? Si ya le quedan menos de 10 minutos, no se extenderá.'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}
         if(action==='expire-demo'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO YA USADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado. El dispositivo continúa marcado como demo utilizado.');}
-        if(action==='reset-demo'){if(!confirm('¿Resetear el demo de este dispositivo? Podrá recibir un demo nuevo de 10 minutos.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado. El dispositivo puede volver a recibir un demo.');}
+        if(action==='reset-demo'){if(!confirm('¿Resetear el demo de este dispositivo? Podrá recibir nuevamente un demo de 10 minutos o 1 hora.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado. El dispositivo puede volver a recibir un demo de 10 minutos o 1 hora.');}
         await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);
       }catch(err){alert(err.message);}
     }));
@@ -323,7 +338,7 @@ async function loadDemos(){
 }
 $('#demoToggleBtn')?.addEventListener('click',async()=>{try{const enabled=!state.demoSettings?.enabled;if(!confirm(enabled?'¿Activar demos para todas las fichas habilitadas?':'¿Desactivar nuevos demos? Los demos que ya están corriendo seguirán activos salvo que ADMINISTRACIÓN los corte.'))return;await api('/api/admin/demo-settings',{method:'PUT',body:{enabled}});await loadDemos();}catch(e){alert(e.message);}});
 $('#demoCutAllBtn')?.addEventListener('click',async()=>{try{const n=Number(state.demoSettings?.activeCount||0);if(!n)return;if(!confirm(`¿CONFIRMAR CORTE DE TODOS LOS DEMOS ACTIVOS?\n\nSe cortarán ${n} demo${n===1?'':'s'} inmediatamente. Los dispositivos seguirán marcados como DEMO UTILIZADO. Los clientes con servicio pago no se modifican.`))return;const r=await api('/api/admin/demos/expire-all',{method:'POST'});alert(`Se cortaron ${r.expiredCount} demo${r.expiredCount===1?'':'s'}.`);await loadDemos();await loadClients(false);}catch(e){alert(e.message);}});
-$('#demosBody')?.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.dataset.device);try{if(b.dataset.action==='demo-10'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos?'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}if(b.dataset.action==='demo-cut'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO UTILIZADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado.');}if(b.dataset.action==='demo-reset'){if(!confirm('¿Resetear este demo? El dispositivo podrá recibir un demo nuevo de 10 minutos.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado.');}await loadDemos();await loadClients(false);}catch(err){alert(err.message);}});
+$('#demosBody')?.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.dataset.device);try{if(b.dataset.action==='demo-10'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos?'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}if(b.dataset.action==='demo-cut'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO UTILIZADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado.');}if(b.dataset.action==='demo-reset'){if(!confirm('¿Resetear este demo? El dispositivo podrá recibir nuevamente un demo de 10 minutos o 1 hora.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado.');}await loadDemos();await loadClients(false);}catch(err){alert(err.message);}});
 
 async function loadAdultSettings(){
   const d=await api('/api/admin/adult-settings');state.adultSettings=d;
