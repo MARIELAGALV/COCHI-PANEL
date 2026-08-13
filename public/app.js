@@ -12,6 +12,18 @@ function secret(){return localStorage.getItem('cochi_panel_device_secret')||'';}
 function setSecret(v){localStorage.setItem('cochi_panel_device_secret',v);}
 function setDeviceName(v){localStorage.setItem('cochi_panel_device_name',v);}
 
+function blockedPanelMessage(err){
+  const d=err?.data||{};
+  const reason=String(d.blockReason||'').trim();
+  const byAdmin=String(d.blockedByRole||'').toUpperCase()==='ADMINISTRACIÓN';
+  if(d.reason==='manual_block'){
+    return `${byAdmin?'Panel bloqueado por Administración':'Panel bloqueado'}${reason?`\nMotivo: ${reason}`:''}`;
+  }
+  if(d.reason==='panel_deleted')return 'Este panel fue eliminado. Sus clientes activos continúan hasta su vencimiento.';
+  if(d.reason==='no_credit_load_for_two_months')return 'Panel bloqueado por inactividad de créditos.';
+  return 'Panel bloqueado.';
+}
+
 async function api(url,opt={}){
   const o={credentials:'same-origin',...opt};
   if(o.body&&typeof o.body!=='string'){o.headers={...(o.headers||{}),'Content-Type':'application/json'};o.body=JSON.stringify(o.body);}
@@ -29,7 +41,7 @@ async function bootstrap(){
   if(st.needsSetup){show('setupView');return;}
   try{const me=await api('/api/panel/me');state.me=me.account;enterApp();return;}catch{}
   if(secret()){
-    try{await loginSaved();return;}catch(e){if(e.status===423){show('activateView');msg($('#activateMsg'),'Esta ficha está bloqueada. Se desbloquea automáticamente cuando reciba una nueva carga de créditos.');$('#existingDeviceBtn').classList.remove('hidden');return;}}
+    try{await loginSaved();return;}catch(e){if(e.status===423){show('activateView');msg($('#activateMsg'),blockedPanelMessage(e));$('#existingDeviceBtn').classList.remove('hidden');return;}}
   }
   show('activateView');if(secret())$('#existingDeviceBtn').classList.remove('hidden');
 }
@@ -88,7 +100,7 @@ async function refreshCurrent(){
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
     if(v==='sources'&&state.me.role_level===1)await loadSources();
     if(v==='content'&&state.me.role_level===1)await loadContent();
-  }catch(e){if(e.status===401||e.status===423){show('activateView');msg($('#activateMsg'),e.status===423?'Ficha bloqueada hasta recibir una nueva carga de créditos.':'Volvé a ingresar.');}else console.error(e);}
+  }catch(e){if(e.status===401||e.status===423){show('activateView');msg($('#activateMsg'),e.status===423?blockedPanelMessage(e):'Volvé a ingresar.');}else console.error(e);}
 }
 
 async function loadDashboard(){
@@ -105,14 +117,13 @@ async function loadDashboard(){
 
 function renderAccounts(){
   const q=($('#accountSearch')?.value||'').trim().toLowerCase();
-  const rows=state.accounts.filter(a=>!q||[a.name,a.contact,a.role_name,a.parent_name,a.activation_code,a.active?'activa':'deshabilitada'].some(v=>String(v||'').toLowerCase().includes(q)));
-  $('#accountsBody').innerHTML=rows.length?rows.map(a=>{
-    const blocked=a.inactivity_blocked;
-    const stat=a.is_root_admin?'<span class="badge active">PROTEGIDA</span>':a.manual_blocked?`<span class="badge blocked">BLOQUEADA</span><div class="muted small">${esc(a.block_reason||'')}</div>`:!a.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
-    const creditValue=a.role_level===1?'—':a.credits;
-    const loadBtn=(a.id!==state.me.id&&a.role_level!==1)?`<button class="primary mini-load" data-action="account-credit">CARGAR</button>`:'';
-    return `<tr data-account="${a.id}"><td><b>${esc(a.name)}</b>${a.is_root_admin?'<div class="muted small">Administración principal</div>':`<div class="muted small">${esc(a.contact||'')}</div>`}</td><td><span class="role-chip role-${a.role_level}">${esc(a.role_name)}</span></td><td>${esc(a.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div>${loadBtn}</td><td>${a.panel_device_count}/2</td><td>${stat}<div class="muted small">${a.next_inactivity_block_at?`Límite: ${esc(fmt(a.next_inactivity_block_at))}`:''}</div></td><td><code>${esc(a.activation_code)}</code></td><td><div class="actions compact-actions"><button class="ghost" data-action="account-edit">Editar</button></div></td></tr>`;
-  }).join(''):`<tr><td colspan="8" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
+  const rows=state.accounts.filter(x=>!q||[x.name,x.contact,x.role_name,x.parent_name,x.active?'activa':'deshabilitada',x.manual_blocked?'bloqueada':''].some(v=>String(v||'').toLowerCase().includes(q)));
+  $('#accountsBody').innerHTML=rows.length?rows.map(x=>{
+    const blocked=x.inactivity_blocked;
+    const stat=x.is_root_admin?'<span class="badge active">PROTEGIDA</span>':x.manual_blocked?`<span class="badge blocked">BLOQUEADA</span><div class="muted small">${esc(x.block_reason||'')}</div>`:!x.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
+    const creditValue=x.role_level===1?'—':x.credits;
+    return `<tr data-account="${x.id}"><td><b>${esc(x.name)}</b>${x.is_root_admin?'<div class="muted small">Panel principal</div>':`<div class="muted small">${esc(x.contact||'')}</div>`}</td><td><span class="role-chip role-${x.role_level}">${esc(x.role_name)}</span></td><td>${esc(x.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div></td><td>${x.panel_device_count}/2</td><td>${stat}<div class="muted small">${x.next_inactivity_block_at?`Límite: ${esc(fmt(x.next_inactivity_block_at))}`:''}</div></td><td><button class="ghost" data-action="account-edit">Editar</button></td></tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
 async function loadAccounts(render=true){const d=await api('/api/admin/accounts');state.accounts=d.accounts;if(render)renderAccounts();}
 $('#accountSearch')?.addEventListener('input',renderAccounts);
@@ -286,65 +297,75 @@ function updateLiveDemoCountdowns(){
 setInterval(updateLiveDemoCountdowns,1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateLiveDemoCountdowns();});
 
-function renderClients(){const q=($('#clientSearch')?.value||'').trim().toLowerCase();const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));$('#clientsBody').innerHTML=rows.length?rows.map(c=>{
-  const rem=c.days_remaining;
-  let remainingLabel='<span class="badge off">SIN ACTIVAR</span>';
-  if(c.expires_at&&Number.isFinite(Number(rem))){
-    const whole=Math.ceil(Number(rem));
-    remainingLabel=whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:`<span class="badge blocked">VENCIDO</span>`;
-  }
-  const renewDisabled=!c.renew_available;
-  const renewTitle=renewDisabled?'Renovación habilitada cuando queden 10 días o menos':'Activar o sumar 30 días';
-  const stat=clientStatusBadge(c);
-  const linked=c.linked_device_count??c.device_count;
-  const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-  return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td class="client-actions-cell"><div class="actions client-actions"><button class="code-btn" data-action="client-codes">CÓDIGOS / DEMO</button><button class="ghost" data-action="client-edit">Editar</button><button class="primary" data-action="client-renew" ${renewDisabled?'disabled':''} title="${renewTitle}">Activar/Renovar</button><button class="danger" data-action="client-delete">Eliminar</button></div></td></tr>`;
-}).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;}
+function renderClients(){
+  const q=($('#clientSearch')?.value||'').trim().toLowerCase();
+  const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.display_status,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));
+  $('#clientsBody').innerHTML=rows.length?rows.map(c=>{
+    const rem=c.days_remaining;
+    let remainingLabel='<span class="badge off">SIN ACTIVAR</span>';
+    if(c.expires_at&&Number.isFinite(Number(rem))){
+      const whole=Math.ceil(Number(rem));
+      remainingLabel=whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:`<span class="badge blocked">VENCIDO</span>`;
+    }
+    const stat=clientStatusBadge(c);
+    const linked=c.linked_device_count??c.device_count;
+    const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
+    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
+}
 async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
 $('#newClientBtn').addEventListener('click',()=>openClientModal());
-function openClientModal(c=null){
 
+function openClientModal(c=null){
+  const admin=state.me.role_level===1;
+  const owners=admin?state.accounts.filter(x=>x.role_level<=4):[];
+  const rem=c?.expires_at&&Number.isFinite(Number(c.days_remaining))?Math.max(0,Math.ceil(Number(c.days_remaining))):null;
+  const remainingText=c?.expires_at?(rem>0?`${rem} día${rem===1?'':'s'}`:'Vencido'):'Sin activar';
+  const renewDisabled=Boolean(c&&!c.renew_available);
+  const renewTitle=renewDisabled?'Se habilita cuando queden 10 días o menos':'Activar o sumar 30 días';
   const clientSummary=c?`
     <div class="edit-summary-grid">
-      <div class="summary-box"><span>Estado</span><strong>${esc(c.status||c.state||'—')}</strong></div>
-      <div class="summary-box"><span>Vencimiento</span><strong>${esc(c.expires_at||c.expiresAt||'Sin activar')}</strong></div>
-      <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.devices_active??c.device_count??0))}/${esc(String(c.devices_limit??2))}</strong></div>
-      <div class="summary-box"><span>Vendedor</span><strong>${esc(c.owner_name||c.seller_name||'—')}</strong></div>
-      <div class="summary-box"><span>Código</span><strong class="mono">${esc(c.activation_code||c.code||'—')}</strong></div>
+      <div class="summary-box"><span>Estado</span><strong>${esc(c.display_status||'—')}</strong></div>
+      <div class="summary-box"><span>Vencimiento</span><strong>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</strong></div>
+      <div class="summary-box"><span>Tiempo restante</span><strong>${esc(remainingText)}</strong></div>
+      <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.device_count??0))}/2</strong></div>
+      <div class="summary-box"><span>Propietario</span><strong>${esc(c.owner_name||'—')}</strong></div>
     </div>
     <div class="client-manage-card">
       <h4>Gestión del cliente</h4>
       <div class="panel-control-actions">
-        <button type="button" class="primary" id="clientRenewBtn">Renovar 30 días</button>
-        <button type="button" class="ghost" id="clientDemo10Btn">Demo 10 min</button>
-        <button type="button" class="ghost" id="clientDemo60Btn">Demo 1 hora</button>
+        <button type="button" class="primary" id="clientRenewBtn" ${renewDisabled?'disabled':''} title="${esc(renewTitle)}">${c.expires_at?'Renovar 30 días':'Activar 30 días'}</button>
+        <button type="button" class="code-btn" id="clientCodesDemoBtn">Códigos / Demos / Dispositivos</button>
         <button type="button" class="danger-btn" id="clientDeleteBtn">Eliminar cliente</button>
       </div>
-      <p class="muted small">Renovar respeta los días restantes. Las demos solo estarán disponibles según permisos del panel.</p>
+      <p class="muted small">La renovación conserva los días restantes. Las opciones de demo aparecen según los permisos disponibles.</p>
     </div>`:'';
-  const admin=state.me.role_level===1;
-  const owners=admin?state.accounts.filter(a=>a.role_level<=4):[];
+
   openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
     <form id="clientForm">
       <label>Nombre<input id="cName" required value="${esc(c?.name||'')}"></label>
-      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — ADMINISTRACIÓN</option>${owners.filter(a=>a.id!==state.me.id).map(a=>`<option value="${a.id}" ${c?.owner_account_id===a.id?'selected':''}>${esc(a.name)} — ${esc(a.role_name)}</option>`).join('')}</select></label>`:''}
+      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:''}
       <label>Notas<textarea id="cNotes" rows="3">${esc(c?.notes||'')}</textarea></label>
-      ${c?`<div class="client-code-box">
-        <div>
-          <b>Códigos de dispositivos CO-CHI</b>
-          <p class="muted small">Acá vinculás los códigos que aparecen en el celular, TV o TV Box del cliente.</p>
-        </div>
-        <button type="button" id="manageCodesBtn" class="code-btn">+ CARGAR / VER CÓDIGOS</button>
-      </div>
-      <label class="switch-row"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Cliente habilitado</label>`:
-      `<div class="client-code-box muted"><b>Códigos CO-CHI</b><span>Primero guardá el cliente. Al terminar se abrirá automáticamente la pantalla para cargar sus códigos.</span></div>`}
+      ${c?`<label class="switch-row"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Cliente habilitado</label>`:
+      `<div class="client-code-box muted"><b>Códigos CO-CHI</b><span>Primero guardá el cliente. Luego podrás vincular sus dispositivos.</span></div>`}
       <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div>
       <div id="clientMsg" class="msg"></div>
     </form>`);
-  if(c){
-    $('#manageCodesBtn')?.addEventListener('click',()=>openClientCodes(c));
-  }
+
+  $('#clientCodesDemoBtn')?.addEventListener('click',()=>openClientCodes(c));
+  $('#clientRenewBtn')?.addEventListener('click',async()=>{
+    if(renewDisabled)return;
+    const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;
+    if(!confirm(q))return;
+    try{
+      const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});
+      alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);
+      closeModal();await refreshMe();await loadClients();
+    }catch(err){msg($('#clientMsg'),err.message);}
+  });
+  $('#clientDeleteBtn')?.addEventListener('click',()=>openDeleteClientModal(c));
+
   $('#clientForm').addEventListener('submit',async e=>{
     e.preventDefault();
     try{
@@ -356,36 +377,15 @@ function openClientModal(c=null){
       await loadClients();
       if(!c){
         const created=state.clients.find(x=>x.id===Number(r.id));
-        if(created) setTimeout(()=>openClientCodes(created),150);
+        if(created)setTimeout(()=>openClientModal(created),150);
       }
     }catch(err){msg($('#clientMsg'),err.message);}
   });
 }
-$('#clientsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const c=state.clients.find(x=>x.id===Number(b.closest('tr').dataset.client));if(!c)return;if(b.dataset.action==='client-codes')openClientCodes(c);if(b.dataset.action==='client-edit')openClientModal(c);if(b.dataset.action==='client-renew'){const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;if(!confirm(q))return;try{const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);await refreshMe();await loadClients();}catch(err){alert(err.message);}}if(b.dataset.action==='client-delete')openDeleteClientModal(c);
-  if(c){
-    $('#clientRenewBtn')?.addEventListener('click',async()=>{
-      try{
-        await api(`/api/admin/clients/${c.id}/renew`,{method:'POST',body:{days:30}});
-        closeModal();if(typeof loadClients==='function')await loadClients();
-      }catch(err){alert(err.message);}
-    });
-    const giveDemo=async minutes=>{
-      try{
-        await api(`/api/admin/clients/${c.id}/demo`,{method:'POST',body:{minutes}});
-        closeModal();if(typeof loadClients==='function')await loadClients();
-      }catch(err){alert(err.message);}
-    };
-    $('#clientDemo10Btn')?.addEventListener('click',()=>giveDemo(10));
-    $('#clientDemo60Btn')?.addEventListener('click',()=>giveDemo(60));
-    $('#clientDeleteBtn')?.addEventListener('click',async()=>{
-      if(!confirm(`¿Eliminar al cliente ${c.name||''}?`))return;
-      if(!confirm('Esta acción eliminará la ficha y desvinculará sus dispositivos. ¿Confirmar eliminación?'))return;
-      try{
-        await api(`/api/admin/clients/${c.id}`,{method:'DELETE',body:{confirm:true}});
-        closeModal();if(typeof loadClients==='function')await loadClients();
-      }catch(err){alert(err.message);}
-    });
-  }
+$('#clientsBody').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const c=state.clients.find(x=>x.id===Number(b.closest('tr')?.dataset.client));if(!c)return;
+  if(b.dataset.action==='client-edit')openClientModal(c);
 });
 
 function openDeleteClientModal(c){
@@ -425,7 +425,7 @@ async function openClientCodes(c){
           else if(!ds.enabled)demoAction='<span class="muted small">Demos desactivados</span>';
           else if(!ds.canGrant)demoAction='<span class="badge pending">DEMO NO DISPONIBLE</span>';
           else if(x.status==='blocked')demoAction='<span class="muted small">Dispositivo bloqueado</span>';
-          else demoAction=state.me?.role_level===1 ? `<div class="demo-grant-options"><button class="demo-btn" data-action="grant-demo" data-minutes="10" data-device="${x.id}">DEMO 10 MIN</button><button class="demo-btn" data-action="grant-demo" data-minutes="60" data-device="${x.id}">DEMO 1 HORA</button></div>` : '<span class="muted small">Disponible solo para ADMINISTRACIÓN</span>';  
+          else demoAction=state.me?.role_level===1 ? `<div class="demo-grant-options"><button class="demo-btn" data-action="grant-demo" data-minutes="10" data-device="${x.id}">DEMO 10 MIN</button><button class="demo-btn" data-action="grant-demo" data-minutes="60" data-device="${x.id}">DEMO 1 HORA</button></div>` : '<span class="muted small">Demo no disponible para este panel</span>';  
           return `<div class="rule-card device-demo-card">
             <div><b>Código ${i+1}: <code>${esc(x.activation_code)}</code></b><span>${esc(x.device_name||x.device_uid)} · ${esc((x.status||'pending').toUpperCase())}${x.last_seen_at?` · Último: ${esc(fmt(x.last_seen_at))}`:''}</span></div>
             <div class="demo-action">${demoAction}</div>
@@ -526,39 +526,172 @@ function contentPlain(){
 function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'';renderContentVisual();}
 function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
 function contentItemMeta(x){const bits=[];if(x?.uri)bits.push(x.uri);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
+function moveArrayItem(arr,from,to){
+  if(!Array.isArray(arr)||from<0||from>=arr.length)return;
+  to=Math.max(0,Math.min(arr.length-1,to));if(from===to)return;
+  const [item]=arr.splice(from,1);arr.splice(to,0,item);
+}
+function ensureContentUiState(){
+  if(!state.contentOpen)state.contentOpen=new Set();
+  if(state.contentQuery===undefined)state.contentQuery='';
+}
 function renderContentVisual(){
-  const box=$('#contentVisual');if(!box)return;let data;try{data=contentPlain();}catch(e){box.innerHTML=`<div class="empty error">JSON inválido: ${esc(e.message)}</div>`;return;}
+  ensureContentUiState();
+  const box=$('#contentVisual');if(!box)return;let data;
+  try{data=contentPlain();}catch(e){box.innerHTML=`<div class="empty error">JSON inválido: ${esc(e.message)}</div>`;return;}
   if(!data.length){box.innerHTML='<div class="empty muted">La lista está vacía. Podés agregar una categoría.</div>';return;}
-  box.innerHTML=data.map((g,gi)=>`<div class="content-category"><div class="content-category-head"><div><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${Array.isArray(g.samples)?g.samples.length:0} contenidos</span></div><div><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div></div><div class="content-items">${(Array.isArray(g.samples)?g.samples:[]).map((x,si)=>`<div class="content-item">${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}<div class="content-item-main"><strong>${esc(contentItemName(x))}</strong><span class="muted small">${esc(contentItemMeta(x))}</span></div><div class="content-item-actions"><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div></div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div></div>`).join('');
+  const q=String($('#contentSearch')?.value||state.contentQuery||'').trim().toLowerCase();state.contentQuery=q;
+  const visible=data.map((g,gi)=>{
+    const items=Array.isArray(g.samples)?g.samples:[];
+    const catMatch=String(g.name||'').toLowerCase().includes(q);
+    const matchedItems=q&&!catMatch?items.map((x,si)=>({x,si})).filter(({x})=>[contentItemName(x),contentItemMeta(x)].some(v=>String(v||'').toLowerCase().includes(q))):items.map((x,si)=>({x,si}));
+    if(q&&!catMatch&&!matchedItems.length)return '';
+    const isOpen=q?true:state.contentOpen.has(gi);
+    const shown=catMatch?items.map((x,si)=>({x,si})):matchedItems;
+    return `<div class="content-category ${isOpen?'open':''}">
+      <div class="content-category-head">
+        <button class="category-toggle" data-category-toggle="${gi}" aria-expanded="${isOpen?'true':'false'}">
+          <span class="category-chevron">${isOpen?'▾':'▸'}</span>
+          <span><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${items.length} contenidos · posición ${gi+1}/${data.length}</span></span>
+        </button>
+        <div class="content-category-actions"><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
+      </div>
+      <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>`<div class="content-item">
+        ${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
+        <div class="content-item-main"><strong>${esc(contentItemName(x))}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}</span></div>
+        <div class="content-item-actions"><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
+      </div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
+    </div>`;
+  }).join('');
+  box.innerHTML=visible||'<div class="empty muted">No hay resultados para esa búsqueda.</div>';
+
+  $$('[data-category-toggle]').forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.categoryToggle);
+    if(state.contentOpen.has(i))state.contentOpen.delete(i);else state.contentOpen.add(i);
+    renderContentVisual();
+  });
   $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
   $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
-  $$('[data-content-delete]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentDelete.split(':').map(Number);const d=contentPlain(),name=contentItemName(d[g].samples[i]);if(confirm(`¿Eliminar ${name}?`)){d[g].samples.splice(i,1);setContentPlain(d);}});
+  $$('[data-content-delete]').forEach(b=>b.onclick=()=>{
+    const [g,i]=b.dataset.contentDelete.split(':').map(Number),d=contentPlain(),name=contentItemName(d[g].samples[i]);
+    if(confirm(`¿Eliminar ${name}?`)){d[g].samples.splice(i,1);setContentPlain(d);}
+  });
   $$('[data-category-edit]').forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.categoryEdit)));
-  $$('[data-category-delete]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.categoryDelete),d=contentPlain();if(confirm(`¿Eliminar la categoría ${d[i]?.name||''} y todos sus contenidos?`)){d.splice(i,1);setContentPlain(d);}});
+  $$('[data-category-delete]').forEach(b=>b.onclick=()=>{
+    const i=Number(b.dataset.categoryDelete),d=contentPlain();
+    if(confirm(`¿Eliminar la categoría ${d[i]?.name||''} y todos sus contenidos?`)){d.splice(i,1);state.contentOpen=new Set();setContentPlain(d);}
+  });
 }
 function editCategory(index=null){
-  let d;try{d=contentPlain();}catch(e){return alert(e.message);}const cur=index===null?{name:'',samples:[]}:d[index];
-  openModal(`<h3>${index===null?'Agregar':'Editar'} categoría</h3><form id="contentCategoryForm"><label>Nombre<input id="contentCategoryName" value="${esc(cur.name||'')}" required></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div></form>`);
-  $$('[data-close]').forEach(x=>x.onclick=closeModal);$('#contentCategoryForm').onsubmit=e=>{e.preventDefault();const name=$('#contentCategoryName').value.trim();if(!name)return;if(index===null)d.push({name,samples:[]});else d[index].name=name;setContentPlain(d);closeModal();};
+  let d;try{d=contentPlain();}catch(e){return alert(e.message);}
+  const cur=index===null?{name:'',samples:[]}:d[index];
+  const currentPos=index===null?d.length+1:index+1;
+  openModal(`<h3>${index===null?'Agregar':'Editar'} categoría</h3><form id="contentCategoryForm">
+    <label>Nombre<input id="contentCategoryName" value="${esc(cur.name||'')}" required></label>
+    <label>Posición<input id="contentCategoryPosition" type="number" min="1" max="${Math.max(1,d.length+(index===null?1:0))}" value="${currentPos}"></label>
+    ${index!==null?`<div class="reorder-actions"><button type="button" class="ghost" data-cat-move="first">Primera</button><button type="button" class="ghost" data-cat-move="up">↑ Subir</button><button type="button" class="ghost" data-cat-move="down">↓ Bajar</button><button type="button" class="ghost" data-cat-move="last">Última</button></div>`:''}
+    <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div>
+  </form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);
+  $$('[data-cat-move]').forEach(b=>b.onclick=()=>{
+    let to=index;
+    if(b.dataset.catMove==='first')to=0;
+    if(b.dataset.catMove==='up')to=Math.max(0,index-1);
+    if(b.dataset.catMove==='down')to=Math.min(d.length-1,index+1);
+    if(b.dataset.catMove==='last')to=d.length-1;
+    moveArrayItem(d,index,to);state.contentOpen=new Set([to]);setContentPlain(d);closeModal();
+  });
+  $('#contentCategoryForm').onsubmit=e=>{
+    e.preventDefault();const name=$('#contentCategoryName').value.trim();if(!name)return;
+    let pos=Math.max(1,Number($('#contentCategoryPosition').value)||1)-1;
+    if(index===null){const obj={name,samples:[]};d.splice(Math.min(pos,d.length),0,obj);state.contentOpen=new Set([Math.min(pos,d.length-1)]);}
+    else{d[index].name=name;pos=Math.min(pos,d.length-1);moveArrayItem(d,index,pos);state.contentOpen=new Set([pos]);}
+    setContentPlain(d);closeModal();
+  };
 }
 function editContentItem(groupIndex,itemIndex=null){
-  let d;try{d=contentPlain();}catch(e){return alert(e.message);}const cur=itemIndex===null?{name:'',icon:'',uri:''}:structuredClone(d[groupIndex].samples[itemIndex]);
+  let d;try{d=contentPlain();}catch(e){return alert(e.message);}
+  const sourceItems=Array.isArray(d[groupIndex]?.samples)?d[groupIndex].samples:[];
+  const cur=itemIndex===null?{name:'',icon:'',uri:''}:structuredClone(sourceItems[itemIndex]);
   const extras={...cur};delete extras.name;delete extras.icon;delete extras.uri;
-  openModal(`<h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><form id="contentItemForm"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label><label>URI / URL principal<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label><label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label><p class="muted small">En Series, la propiedad <b>temp</b> con capítulos/temporadas puede editarse aquí en claro. El PANEL la cifrará al guardar.</p><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div></form>`);
-  $$('[data-close]').forEach(x=>x.onclick=closeModal);$('#contentItemForm').onsubmit=e=>{e.preventDefault();try{const extraText=$('#ciExtras').value.trim();const extra=extraText?JSON.parse(extraText):{};const obj={...extra,name:$('#ciName').value.trim()};const icon=$('#ciIcon').value.trim(),uri=$('#ciUri').value.trim();if(icon)obj.icon=icon;else delete obj.icon;if(uri)obj.uri=uri;else delete obj.uri;if(itemIndex===null)d[groupIndex].samples.push(obj);else d[groupIndex].samples[itemIndex]=obj;setContentPlain(d);closeModal();}catch(err){msg($('#ciMsg'),'Datos adicionales inválidos: '+err.message);}};
+  const targetOptions=d.map((g,i)=>`<option value="${i}" ${i===groupIndex?'selected':''}>${esc(g.name||`Categoría ${i+1}`)}</option>`).join('');
+  const currentPos=itemIndex===null?sourceItems.length+1:itemIndex+1;
+  openModal(`<h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><form id="contentItemForm">
+    <label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label>
+    <label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>
+    <label>URI / URL principal<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label>
+    <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
+    ${itemIndex!==null?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
+    <label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label>
+    <p class="muted small">Podés cambiar de categoría y orden. En Series, <b>temp</b> y sus capítulos siguen editándose en claro; el PANEL cifra al guardar.</p>
+    <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div>
+  </form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);
+  $$('[data-item-move]').forEach(b=>b.onclick=()=>{
+    if(itemIndex===null)return;
+    let to=itemIndex;
+    if(b.dataset.itemMove==='first')to=0;
+    if(b.dataset.itemMove==='up')to=Math.max(0,itemIndex-1);
+    if(b.dataset.itemMove==='down')to=Math.min(sourceItems.length-1,itemIndex+1);
+    if(b.dataset.itemMove==='last')to=sourceItems.length-1;
+    moveArrayItem(sourceItems,itemIndex,to);d[groupIndex].samples=sourceItems;state.contentOpen.add(groupIndex);setContentPlain(d);closeModal();
+  });
+  $('#contentItemForm').onsubmit=e=>{
+    e.preventDefault();
+    try{
+      const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
+      const obj={...extra,name:$('#ciName').value.trim()};
+      const icon=$('#ciIcon').value.trim(),uri=$('#ciUri').value.trim();
+      if(icon)obj.icon=icon;else delete obj.icon;if(uri)obj.uri=uri;else delete obj.uri;
+      const targetGroup=Number($('#ciCategory').value);
+      let pos=Math.max(1,Number($('#ciPosition').value)||1)-1;
+      if(itemIndex===null){
+        const target=d[targetGroup].samples||(d[targetGroup].samples=[]);pos=Math.min(pos,target.length);target.splice(pos,0,obj);
+      }else{
+        d[groupIndex].samples.splice(itemIndex,1);
+        const target=d[targetGroup].samples||(d[targetGroup].samples=[]);pos=Math.min(pos,target.length);target.splice(pos,0,obj);
+      }
+      state.contentOpen.add(targetGroup);setContentPlain(d);closeModal();
+    }catch(err){msg($('#ciMsg'),'Datos adicionales inválidos: '+err.message);}
+  };
 }
 async function loadContent(){
   const key=$('#contentKey').value;
-  try{const d=await api(`/api/admin/content/${key}`);state.content[key]=d;setContentPlain(d.json||[]);const st=d.stats?` · ${d.stats.categories} categorías · ${d.stats.items} contenidos${d.stats.nested?` · ${d.stats.nested} capítulos/entradas`:''}`:'';$('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}${st}`:'Todavía no hay contenido guardado en el PANEL.';$('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');}catch(e){msg($('#contentMsg'),e.message);}
+  try{
+    const d=await api(`/api/admin/content/${key}`);state.content[key]=d;state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
+    setContentPlain(d.json||[]);
+    const st=d.stats?` · ${d.stats.categories} categorías · ${d.stats.items} contenidos${d.stats.nested?` · ${d.stats.nested} capítulos/entradas`:''}`:'';
+    $('#contentState').textContent=d.updatedAt?`Guardado: ${fmt(d.updatedAt)}${st}`:'Todavía no hay contenido guardado en el PANEL.';
+    $('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;msg($('#contentMsg'),'');
+  }catch(e){msg($('#contentMsg'),e.message);}
 }
 $('#contentKey')?.addEventListener('change',loadContent);
 $('#contentLoadBtn')?.addEventListener('click',loadContent);
 $('#contentVisualRefreshBtn')?.addEventListener('click',renderContentVisual);
+$('#contentSearch')?.addEventListener('input',renderContentVisual);
 $('#contentAddCategoryBtn')?.addEventListener('click',()=>editCategory(null));
-$('#contentFormatBtn')?.addEventListener('click',()=>{try{const x=contentPlain();setContentPlain(x);msg($('#contentMsg'),'JSON desencriptado válido y formateado.',true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}});
-$('#contentImportBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;msg($('#contentMsg'),'Importando y desencriptando...');const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});setContentPlain(r.json);const st=r.stats?`${r.stats.categories} categorías, ${r.stats.items} contenidos${r.stats.nested?`, ${r.stats.nested} capítulos/entradas`:''}`:'';msg($('#contentMsg'),`Importado y DESENCRIPTADO correctamente desde ${r.sourceUrl}. ${st}. Podés editarlo y luego usar GUARDAR + ENCRIPTAR.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
-$('#contentSaveBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const json=contentPlain();const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),`Contenido guardado y ENCRIPTADO automáticamente.${r.stats?` ${r.stats.items} contenidos procesados.`:''}`,true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}});
-$('#contentUseBtn')?.addEventListener('click',async()=>{try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(s=>({key:s.source_key,url:s.source_key===key?url:s.url,enabled:s.source_key===key?true:s.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el JSON cifrado administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}});
+$('#contentFormatBtn')?.addEventListener('click',()=>{
+  const key=$('#contentKey').value.toUpperCase();
+  if(!confirm(`¿Formatear el JSON desencriptado de ${key}?\n\nSe reorganizará visualmente el texto actual. Revisá que hayas seleccionado la lista correcta.`))return;
+  if(!confirm(`Confirmación final: ¿querés formatear ${key} ahora?`))return;
+  try{const x=contentPlain();setContentPlain(x);msg($('#contentMsg'),`JSON ${key} válido y formateado.`,true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}
+});
+$('#contentImportBtn')?.addEventListener('click',async()=>{
+  try{
+    const key=$('#contentKey').value;msg($('#contentMsg'),'Importando y desencriptando...');
+    const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});
+    state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
+    setContentPlain(r.json);
+    const st=r.stats?`${r.stats.categories} categorías, ${r.stats.items} contenidos${r.stats.nested?`, ${r.stats.nested} capítulos/entradas`:''}`:'';
+    msg($('#contentMsg'),`Importado y DESENCRIPTADO correctamente desde ${r.sourceUrl}. ${st}. Las categorías quedan plegadas para navegar más rápido.`,true);
+  }catch(e){msg($('#contentMsg'),e.message);}
+});
+$('#contentSaveBtn')?.addEventListener('click',async()=>{
+  try{const key=$('#contentKey').value;const json=contentPlain();const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});msg($('#contentMsg'),`Contenido guardado y ENCRIPTADO automáticamente.${r.stats?` ${r.stats.items} contenidos procesados.`:''}`,true);await loadContent();}catch(e){msg($('#contentMsg'),e instanceof SyntaxError?'JSON inválido: '+e.message:e.message);}
+});
+$('#contentUseBtn')?.addEventListener('click',async()=>{
+  try{const key=$('#contentKey').value;const url=`${location.origin}/api/content/${key}`;const d=await api('/api/admin/sources');const sources=d.sources.map(x=>({key:x.source_key,url:x.source_key===key?url:x.url,enabled:x.source_key===key?true:x.enabled}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#contentMsg'),`Listo. ${key.toUpperCase()} ahora usa el JSON cifrado administrado desde este PANEL.`,true);}catch(e){msg($('#contentMsg'),e.message);}
+});
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}
