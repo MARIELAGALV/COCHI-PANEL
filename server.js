@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.42';
+const VERSION = '0.9.46';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -27,13 +27,22 @@ const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'prod
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || IS_PRODUCTION;
 const RATE_BUCKETS = new Map();
 
-// v0.9.42 — Gateway de reproducción separado para CO-CHI.
+// v0.9.43 — Gateway de reproducción separado para CO-CHI con compatibilidad estricta.
 // La seguridad queda APAGADA por defecto y solo puede habilitarse si Railway
 // tiene configurados URL + secretos del Worker dedicado de Cloudflare.
 const COCHI_GATEWAY_URL = String(process.env.COCHI_GATEWAY_URL || '').trim().replace(/\/+$/,'');
 const COCHI_GATEWAY_MASTER_SECRET = String(process.env.COCHI_GATEWAY_MASTER_SECRET || '').trim();
 const COCHI_GATEWAY_CONTROL_SECRET = String(process.env.COCHI_GATEWAY_CONTROL_SECRET || '').trim();
 const COCHI_GATEWAY_TICKET_TTL_SECONDS = Math.max(900, Math.min(86400, Number(process.env.COCHI_GATEWAY_TICKET_TTL_SECONDS || 21600)));
+
+// v0.9.46 — Gateways dedicados solo para TV1 / TV2.
+// Se mantienen separados del gateway general de reproducción para poder
+// enrutar únicamente los canales de TV por Cloudflare sin tocar Películas/Series.
+const COCHI_TV1_GATEWAY_URL = String(process.env.COCHI_TV1_GATEWAY_URL || '').trim().replace(/\/+$/,'');
+const COCHI_TV1_GATEWAY_SECRET = String(process.env.COCHI_TV1_GATEWAY_SECRET || '').trim();
+const COCHI_TV2_GATEWAY_URL = String(process.env.COCHI_TV2_GATEWAY_URL || '').trim().replace(/\/+$/,'');
+const COCHI_TV2_GATEWAY_SECRET = String(process.env.COCHI_TV2_GATEWAY_SECRET || '').trim();
+const COCHI_TV_GATEWAY_TTL_SECONDS = Math.max(900, Math.min(86400, Number(process.env.COCHI_TV_GATEWAY_TTL_SECONDS || 21600)));
 
 function sessionCookie(token,maxAge=604800){
   const secure=TRUST_PROXY_HTTPS?'; Secure':'';
@@ -607,6 +616,136 @@ async function gatewayHealth(){
     return {ok:r.ok&&body.ok===true,status:r.status,...body};
   }catch(e){return {ok:false,error:e.message||'Worker no disponible'};}finally{clearTimeout(timer)}
 }
+
+
+// ---- v0.9.46 / Gateways dedicados TV1-TV2 ----
+function tvDedicatedConfig(sourceKey){
+  if(sourceKey==='tv1')return {sourceKey:'tv1',label:'TV1',url:COCHI_TV1_GATEWAY_URL,secret:COCHI_TV1_GATEWAY_SECRET};
+  if(sourceKey==='tv2')return {sourceKey:'tv2',label:'TV2',url:COCHI_TV2_GATEWAY_URL,secret:COCHI_TV2_GATEWAY_SECRET};
+  return {sourceKey,label:String(sourceKey||'').toUpperCase(),url:'',secret:''};
+}
+function tvDedicatedConfigured(sourceKey){
+  const c=tvDedicatedConfig(sourceKey);
+  return /^https:\/\//i.test(c.url)&&c.secret.length>=24;
+}
+function tvDedicatedEnabled(sourceKey){
+  return boolSetting(`tv_gateway_${sourceKey}_enabled`,false);
+}
+function tvDedicatedAesKey(secret){
+  const raw=String(secret||'').trim();
+  if(/^[0-9a-f]{64}$/i.test(raw))return Buffer.from(raw,'hex');
+  return crypto.createHash('sha256').update(raw,'utf8').digest();
+}
+function tvDedicatedTicket(payload,secret){
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv('aes-256-gcm',tvDedicatedAesKey(secret),iv);
+  const enc=Buffer.concat([cipher.update(Buffer.from(JSON.stringify(payload),'utf8')),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return Buffer.concat([iv,enc,tag]).toString('base64url');
+}
+function splitTvOrigin(raw){
+  const u=new URL(String(raw));
+  const pathName=u.pathname||'/';
+  const slash=pathName.lastIndexOf('/');
+  return {
+    base:`${u.protocol}//${u.host}${pathName.slice(0,slash+1)||'/'}`,
+    file:pathName.slice(slash+1),
+    query:u.search||''
+  };
+}
+function tvDedicatedUrlFor(originUrl,headers,sourceKey){
+  const cfg=tvDedicatedConfig(sourceKey);
+  if(!tvDedicatedConfigured(sourceKey))throw new Error(`Gateway ${cfg.label} no configurado`);
+  const p=splitTvOrigin(originUrl);
+  const exp=Math.floor(Date.now()/1000)+COCHI_TV_GATEWAY_TTL_SECONDS;
+  const ticket=tvDedicatedTicket({v:1,b:p.base,q:p.query,h:headers||{},e:exp},cfg.secret);
+  return `${cfg.url}/r/${ticket}/${encodeURIComponent(p.file)}`;
+}
+function tvDedicatedPlaybackObject(value,sourceKey){
+  if(Array.isArray(value))return value.map(v=>tvDedicatedPlaybackObject(v,sourceKey));
+  if(!value||typeof value!=='object')return value;
+  const out={};
+  const headers=objectPlaybackHeaders(value);
+  const cfg=tvDedicatedConfig(sourceKey);
+  for(const [k,v] of Object.entries(value)){
+    if(['url','uri','stream'].includes(k)&&typeof v==='string'&&httpStreamUrl(v)&&!String(v).startsWith(cfg.url+'/')){
+      out[k]=tvDedicatedUrlFor(v,headers,sourceKey);
+    }else if(k==='backupUris'&&Array.isArray(v)){
+      out[k]=v.map(x=>httpStreamUrl(x)?tvDedicatedUrlFor(x,headers,sourceKey):x);
+    }else{
+      out[k]=tvDedicatedPlaybackObject(v,sourceKey);
+    }
+  }
+  return out;
+}
+async function tvDedicatedHealth(sourceKey){
+  const cfg=tvDedicatedConfig(sourceKey);
+  if(!/^https:\/\//i.test(cfg.url))return {ok:false,error:'URL no configurada'};
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),7000);
+  try{
+    const r=await fetch(`${cfg.url}/health`,{signal:ctl.signal,headers:{'User-Agent':`CO-CHI-PANEL/${VERSION}`}});
+    let body={};try{body=await r.json()}catch{}
+    return {ok:r.ok&&body.ok===true&&body.configured===true,status:r.status,...body};
+  }catch(e){return {ok:false,error:e.message||'Worker no disponible'};}finally{clearTimeout(timer)}
+}
+async function tvDedicatedAdminState(sourceKey){
+  const cfg=tvDedicatedConfig(sourceKey);
+  return {
+    sourceKey,
+    label:cfg.label,
+    enabled:tvDedicatedEnabled(sourceKey),
+    configured:tvDedicatedConfigured(sourceKey),
+    gatewayUrl:cfg.url,
+    ticketTtlSeconds:COCHI_TV_GATEWAY_TTL_SECONDS,
+    worker:await tvDedicatedHealth(sourceKey)
+  };
+}
+
+// ---- v0.9.44 / Cifrado TV V2 exclusivo CO-CHI ----
+// TV1/TV2 pueden solicitar una respuesta cifrada por sesión con ECDH P-256 + AES-256-GCM.
+// No existe una clave estática de descifrado en la APK: cada solicitud usa una pareja EC temporal.
+const COCHI_TV_CRYPTO_FORMAT='cochi-tv-crypto-2';
+const COCHI_TV_CRYPTO_ALG='ECDH-P256+A256GCM';
+const COCHI_TV_CRYPTO_SALT=crypto.createHash('sha256').update('COCHI-TV-CATALOG-V2-SALT','utf8').digest();
+function tvCryptoRequested(req,sourceKey){
+  if(sourceKey!=='tv1'&&sourceKey!=='tv2')return false;
+  return String(req.headers['x-cochi-tv-crypto']||'').trim()==='2'
+    && String(req.headers['x-cochi-tv-pub']||'').trim().length>40;
+}
+function tvCatalogEnvelope(clear,sourceKey,clientPublicText){
+  const encoded=String(clientPublicText||'').trim();
+  if(encoded.length<40||encoded.length>1024)throw new Error('Clave pública temporal TV inválida');
+  let clientPublic;
+  try{
+    clientPublic=crypto.createPublicKey({key:Buffer.from(encoded,'base64url'),format:'der',type:'spki'});
+  }catch{throw new Error('Clave pública temporal TV no reconocida');}
+  if(clientPublic.asymmetricKeyType!=='ec')throw new Error('La clave temporal TV debe ser EC P-256');
+  const details=clientPublic.asymmetricKeyDetails||{};
+  if(details.namedCurve&&details.namedCurve!=='prime256v1')throw new Error('Curva TV no permitida');
+  const {publicKey,privateKey}=crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'});
+  const shared=crypto.diffieHellman({privateKey,publicKey:clientPublic});
+  const info=Buffer.from(`COCHI-TV-CATALOG-V2|${sourceKey}`,'utf8');
+  const key=Buffer.from(crypto.hkdfSync('sha256',shared,COCHI_TV_CRYPTO_SALT,info,32));
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
+  const aad=Buffer.from(`${COCHI_TV_CRYPTO_FORMAT}|${sourceKey}|1`,'utf8');
+  cipher.setAAD(aad);
+  const plain=Buffer.from(JSON.stringify(clear),'utf8');
+  const encrypted=Buffer.concat([cipher.update(plain),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  const serverPublic=publicKey.export({format:'der',type:'spki'});
+  return {
+    v:COCHI_TV_CRYPTO_FORMAT,
+    alg:COCHI_TV_CRYPTO_ALG,
+    rev:1,
+    src:sourceKey,
+    spk:Buffer.from(serverPublic).toString('base64url'),
+    iv:iv.toString('base64url'),
+    ct:encrypted.toString('base64url'),
+    tag:tag.toString('base64url')
+  };
+}
+
 function normalizeCategoryKey(value){return String(value||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ');}
 function demoBlockedCategories(){
   try{const parsed=JSON.parse(getSetting('demo_blocked_categories','[]'));return Array.isArray(parsed)?[...new Set(parsed.map(x=>String(x||'').trim()).filter(Boolean))]:[];}catch{return [];}
@@ -1103,22 +1242,76 @@ async function route(req,res){
     const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get(publicContent[1]);if(!src||!src.enabled)return sendJson(res,404,{error:'Fuente deshabilitada'});
     const r=db.prepare('SELECT json_text,updated_at FROM published_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});
     try{
-      // Trabajamos temporalmente en claro dentro del backend para poder aplicar
-      // failover, restricciones demo y gateway; la app sigue recibiendo el formato cifrado.
+      const sec=playbackSecurityState();
+      const sourceKey=publicContent[1];
+
+      // v0.9.45 — TV1/TV2: cifrado V2 por solicitud, exclusivo de CO-CHI.
+      // La app nueva envía una clave pública EC temporal; el backend devuelve
+      // el catálogo completo dentro de un sobre ECDH P-256 + AES-256-GCM.
+      // Películas/Series y clientes anteriores conservan su formato histórico.
+      if(tvCryptoRequested(req,sourceKey)){
+        // v0.9.45: Crypto V2 es negociado, nunca destructivo.
+        // Si una lista histórica no puede abrirse para generar el sobre V2,
+        // seguimos abajo y entregamos automáticamente el formato compatible.
+        try{
+          let clear=decryptManagedContent(JSON.parse(r.json_text));
+          if(st.mode==='demo')clear=filterDemoCategories(clear);
+          clear=await applyTvFailover(clear);
+          const dedicatedOn=tvDedicatedEnabled(sourceKey);
+          if(dedicatedOn){
+            if(!tvDedicatedConfigured(sourceKey))throw new Error(`Gateway ${sourceKey.toUpperCase()} activado pero no configurado`);
+            clear=tvDedicatedPlaybackObject(clear,sourceKey);
+          }else if(sec.enabled){
+            if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
+            clear=securePlaybackObject(clear,sec.generation);
+          }
+          const envelope=tvCatalogEnvelope(clear,sourceKey,req.headers['x-cochi-tv-pub']);
+          return sendJson(res,200,envelope,{
+            'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
+            'X-COCHI-Access-Mode':String(st.mode||''),
+            'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
+            'X-COCHI-Playback-Security':sec.enabled?'gateway':'compatible',
+            'X-COCHI-Playback-Generation':String(sec.generation),
+            'X-COCHI-TV-Crypto':'2',
+            'X-COCHI-TV-Gateway':tvDedicatedEnabled(sourceKey)?sourceKey:'off'
+          });
+        }catch(cryptoV2Error){
+          console.warn(`[TV-CRYPTO-V2] ${sourceKey}: fallback compatible: ${String(cryptoV2Error?.message||cryptoV2Error)}`);
+        }
+      }
+
+      // v0.9.43 — compatibilidad estricta.
+      // Con seguridad APAGADA devolvemos exactamente el mismo formato publicado
+      // que usaba v0.9.41. Esto es importante porque TV1, TV2 y Películas pueden
+      // contener variantes históricas del wrapper BLAF/CO-CHI que no deben
+      // reconstruirse si el gateway no está activo.
+      if(!sec.enabled){
+        let payload=JSON.parse(r.json_text);
+        if(st.mode==='demo')payload=filterDemoCategories(payload);
+        if(publicContent[1]==='tv1'||publicContent[1]==='tv2')payload=await applyTvFailover(payload);
+        return sendJson(res,200,payload,{
+          'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
+          'X-COCHI-Access-Mode':String(st.mode||''),
+          'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
+          'X-COCHI-Playback-Security':'compatible',
+          'X-COCHI-Playback-Generation':String(sec.generation)
+        });
+      }
+
+      // Solo cuando Seguridad está ENCENDIDA abrimos temporalmente el contenido
+      // dentro del backend, sustituimos las URLs por tickets del gateway y lo
+      // volvemos a cifrar antes de entregarlo a la app.
+      if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
       let clear=decryptManagedContent(JSON.parse(r.json_text));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
       if(publicContent[1]==='tv1'||publicContent[1]==='tv2')clear=await applyTvFailover(clear);
-      const sec=playbackSecurityState();
-      if(sec.enabled){
-        if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
-        clear=securePlaybackObject(clear,sec.generation);
-      }
+      clear=securePlaybackObject(clear,sec.generation);
       const payload=encryptManagedContent(clear);
       return sendJson(res,200,payload,{
         'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
         'X-COCHI-Access-Mode':String(st.mode||''),
         'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
-        'X-COCHI-Playback-Security':sec.enabled?'gateway':'compatible',
+        'X-COCHI-Playback-Security':'gateway',
         'X-COCHI-Playback-Generation':String(sec.generation)
       });
     }catch(e){return sendJson(res,500,{error:'Contenido guardado inválido: '+String(e?.message||e)});}
@@ -1494,6 +1687,27 @@ async function route(req,res){
       const b=await readJson(req),uid=`manual-${crypto.randomUUID()}`,code=generateCode('client_devices'),secret=randomToken(),t=nowIso();const r=db.prepare("INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)").run(uid,String(b.deviceName||'Dispositivo de prueba').trim(), 'android',code,sha(secret),t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,deviceUid:uid,deviceSecret:secret});
     }
 
+
+
+    if(p==='/api/admin/tv-gateways'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona los gateways de TV'});
+      const [tv1,tv2]=await Promise.all([tvDedicatedAdminState('tv1'),tvDedicatedAdminState('tv2')]);
+      return sendJson(res,200,{ticketTtlSeconds:COCHI_TV_GATEWAY_TTL_SECONDS,tv1,tv2});
+    }
+    const tvGatewayToggle=p.match(/^\/api\/admin\/tv-gateways\/(tv1|tv2)$/);
+    if(tvGatewayToggle&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona los gateways de TV'});
+      const sourceKey=tvGatewayToggle[1],b=await readJson(req);
+      if(typeof b.enabled!=='boolean')return sendJson(res,400,{error:'Estado inválido'});
+      if(b.enabled){
+        if(!tvDedicatedConfigured(sourceKey))return sendJson(res,409,{error:`Configurá COCHI_${sourceKey.toUpperCase()}_GATEWAY_URL y COCHI_${sourceKey.toUpperCase()}_GATEWAY_SECRET en Railway antes de activar`});
+        const health=await tvDedicatedHealth(sourceKey);
+        if(!health.ok)return sendJson(res,502,{error:`No se activó ${sourceKey.toUpperCase()} porque su Worker no confirmó configuración: ${health.error||health.status||'sin respuesta'}`});
+      }
+      setSetting(`tv_gateway_${sourceKey}_enabled`,b.enabled?'1':'0');
+      audit(actor.id,b.enabled?'tv_gateway_enabled':'tv_gateway_disabled','settings',null,sourceKey);
+      return sendJson(res,200,{ok:true,state:await tvDedicatedAdminState(sourceKey)});
+    }
 
     if(p==='/api/admin/playback-security'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona la seguridad de reproducción'});

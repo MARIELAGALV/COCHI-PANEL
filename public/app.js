@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, content:{} };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, content:{} };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -117,7 +117,7 @@ async function refreshCurrent(){
     if(v==='promotions'&&state.me.role_level===1)await loadPromos();
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
-    if(v==='security'&&state.me.role_level===1)await loadPlaybackSecurity();
+    if(v==='security'&&state.me.role_level===1){await loadPlaybackSecurity();await loadTvGateways();}
     if(v==='sources'&&state.me.role_level===1)await loadSources();
     if(v==='resolver'&&state.me.role_level===1){}
     if(v==='content'&&state.me.role_level===1)await loadContent();
@@ -543,6 +543,26 @@ $('#playbackSecurityRotateBtn')?.addEventListener('click',async()=>{try{
   const r=await api('/api/admin/playback-security/rotate',{method:'POST'});await loadPlaybackSecurity();toast(`Clave rotada · generación ${r.generation}`);
 }catch(e){msg($('#playbackSecurityMsg'),e.message);}});
 $('#playbackSecuritySyncBtn')?.addEventListener('click',async()=>{try{await api('/api/admin/playback-security/sync',{method:'POST'});await loadPlaybackSecurity();toast('Worker sincronizado.');}catch(e){msg($('#playbackSecurityMsg'),e.message);}});
+
+async function loadTvGateways(){
+  const d=await api('/api/admin/tv-gateways');state.tvGateways=d;
+  for(const key of ['tv1','tv2']){
+    const x=d[key]||{},on=Boolean(x.enabled),ok=Boolean(x.worker?.ok),btn=$(`#${key}GatewayToggleBtn`),box=$(`#${key}GatewayState`);
+    if(btn){btn.textContent=on?`APAGAR ${key.toUpperCase()}`:`ENCENDER ${key.toUpperCase()}`;btn.className=on?'danger-btn':'primary';btn.disabled=!x.configured&&!on;}
+    if(box)box.innerHTML=`${x.configured?esc(x.gatewayUrl||'configurado'):'NO CONFIGURADO'}<br><b>${ok?'WORKER EN LÍNEA':'WORKER SIN RESPUESTA'}</b> · ${Math.round(Number(x.ticketTtlSeconds||d.ticketTtlSeconds||0)/60)} min`;
+  }
+  msg($('#tvGatewaysMsg'),'');
+}
+async function toggleTvGateway(key){
+  try{
+    const x=state.tvGateways?.[key]||{},enabled=!x.enabled,label=key.toUpperCase();
+    if(!confirm(enabled?`¿ENCENDER ${label} GATEWAY? Desde ese momento las URLs de ${label} para la app nueva pasarán por su Worker exclusivo.`:`¿APAGAR ${label} GATEWAY? ${label} volverá a usar el flujo compatible.`))return;
+    await api(`/api/admin/tv-gateways/${key}`,{method:'PUT',body:{enabled}});
+    await loadTvGateways();toast(`${label} Gateway ${enabled?'activado':'apagado'}.`);
+  }catch(e){msg($('#tvGatewaysMsg'),e.message);}
+}
+$('#tv1GatewayToggleBtn')?.addEventListener('click',()=>toggleTvGateway('tv1'));
+$('#tv2GatewayToggleBtn')?.addEventListener('click',()=>toggleTvGateway('tv2'));
 
 async function loadDemos(){
   const d=await api('/api/admin/demo-settings');state.demoSettings=d;

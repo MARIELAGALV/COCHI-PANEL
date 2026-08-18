@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.42</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.46</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -181,6 +181,16 @@
           <div class="demo-global-actions mt18"><button id="playbackSecurityToggleBtn" class="primary">CARGANDO...</button><button id="playbackSecurityRotateBtn" class="danger-btn">ROTAR CLAVE</button><button id="playbackSecuritySyncBtn" class="ghost">SINCRONIZAR WORKER</button></div>
           <div id="playbackSecurityState" class="control-status"></div>
           <div id="playbackSecurityMsg" class="msg"></div>
+        </div>
+
+        <div class="neon-card panel-card control-card mt18">
+          <div class="card-head"><div><h3>Gateways exclusivos de TV</h3><p class="muted">TV1 y TV2 pueden usar Workers independientes. Películas y Series permanecen fuera de estos Workers.</p></div><span class="badge">TV ONLY</span></div>
+          <div class="rule-grid">
+            <div class="rule-card"><b>TV1</b><span id="tv1GatewayState">Cargando...</span><button id="tv1GatewayToggleBtn" class="primary" type="button">CARGANDO...</button></div>
+            <div class="rule-card"><b>TV2</b><span id="tv2GatewayState">Cargando...</span><button id="tv2GatewayToggleBtn" class="primary" type="button">CARGANDO...</button></div>
+          </div>
+          <div class="muted small mt18">Estos gateways se aplican únicamente a clientes CO-CHI con TV Crypto V2. Las apps anteriores conservan el flujo compatible.</div>
+          <div id="tvGatewaysMsg" class="msg"></div>
         </div>
       </section>
 
