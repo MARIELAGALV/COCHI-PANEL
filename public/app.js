@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, content:{} };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, content:{} };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -45,7 +45,7 @@ function toast(text,kind='ok'){
   window.__cochiToastTimer=setTimeout(()=>t.classList.remove('show'),4200);
 }
 function openModal(html){$('#modal').innerHTML=html;$('#modalBackdrop').classList.remove('hidden');}
-function closeModal(){$('#modalBackdrop').classList.add('hidden');$('#modal').innerHTML='';}
+function closeModal(){$('#modalBackdrop').classList.add('hidden');$('#modal').classList.remove('content-editor-modal');$('#modal').innerHTML='';}
 $('#modalBackdrop').addEventListener('click',e=>{if(e.target===$('#modalBackdrop'))closeModal();});
 
 async function bootstrap(){
@@ -90,12 +90,19 @@ function enterApp(){
 }
 
 $$('.nav-btn').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+$('#contentToolsToggle')?.addEventListener('click',()=>{
+  const group=$('#contentToolsGroup');
+  const collapsed=group.classList.toggle('collapsed');
+  $('#contentToolsToggle').setAttribute('aria-expanded',collapsed?'false':'true');
+});
 $('#refreshBtn').addEventListener('click',refreshCurrent);
 function switchView(name){
   $$('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
+  const contentGroup=$('#contentToolsGroup');
+  if(contentGroup&&['content','sources','resolver'].includes(name))contentGroup.classList.remove('collapsed');
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
   document.body.dataset.view=name;
-  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido'};
+  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción'};
   $('#pageTitle').textContent=t[name]||name;refreshCurrent();
 }
 async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;}
@@ -110,7 +117,9 @@ async function refreshCurrent(){
     if(v==='promotions'&&state.me.role_level===1)await loadPromos();
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
+    if(v==='security'&&state.me.role_level===1)await loadPlaybackSecurity();
     if(v==='sources'&&state.me.role_level===1)await loadSources();
+    if(v==='resolver'&&state.me.role_level===1){}
     if(v==='content'&&state.me.role_level===1)await loadContent();
   }catch(e){if(e.status===401||e.status===423){show('activateView');msg($('#activateMsg'),e.status===423?blockedPanelMessage(e):'Volvé a ingresar.');}else console.error(e);}
 }
@@ -230,14 +239,12 @@ const controlSection=a&&!root?`
         closeModal();await loadAccounts();
       }catch(err){msg($('#accountMsg'),err.message);}
     });
-    $('#editLoadCredits')?.addEventListener('click',async()=>{
-      const amount=Number(prompt(`¿Cuántos créditos querés cargar a ${a.name}?`));
-      if(!Number.isFinite(amount)||amount<=0)return alert('Ingresá una cantidad válida.');
-      try{
-        await api(`/api/admin/accounts/${a.id}/credits`,{method:'POST',body:{amount}});
-        closeModal();await loadAccounts();
-      }catch(err){msg($('#accountMsg'),err.message);}
-    });
+    $('#editLoadCredits')?.addEventListener('click',()=>openCreditModal(a));
+
+  }
+
+  // Gestión de dispositivos y código disponible también para la ADMINISTRACIÓN principal.
+  if(a){
     $('#editPanelDevices')?.addEventListener('click',()=>openPanelDevices(a));
     $('#editRegenerateCode')?.addEventListener('click',async()=>{
       if(!confirm(`¿Regenerar el código de acceso de ${a.name}?`))return;
@@ -247,7 +254,6 @@ const controlSection=a&&!root?`
         closeModal();await loadAccounts();
       }catch(err){msg($('#accountMsg'),err.message);}
     });
-
   }
 }
 
@@ -273,11 +279,34 @@ $('#accountsBody').addEventListener('click',async e=>{
   }
 });
 function openCreditModal(a){
-  openModal(`<h3>Cargar créditos</h3><p>Destino: <b>${esc(a.name)}</b> · ${esc(a.role_name)}</p><p class="muted">Carga mínima: <b>10 créditos</b>. La operación respeta automáticamente el saldo disponible y, si hay una promoción activa, aplica el bonus correspondiente.</p>${state.me.role_level===1?'':`<div class="unlimited-box">Saldo disponible: <b>${state.me.credits}</b></div>`}<form id="creditForm"><label>Cantidad<input id="creditAmount" type="number" min="10" step="1" ${state.me.role_level===1?'':`max="${state.me.credits}"`} required value="10"></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">CONFIRMAR CARGA</button></div><div id="creditMsg" class="msg"></div></form>`);
-  $('#creditForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api(`/api/admin/accounts/${a.id}/credits`,{method:'POST',body:{amount:Number($('#creditAmount').value)}});openModal(`<h3>Carga realizada</h3><p>Se cargaron <b>${r.baseAmount}</b> créditos.</p><p>Bonus automático: <b>${r.promoBonus}</b></p><p>Total recibido: <b>${r.totalReceived}</b></p>${r.senderUnlimited?'':`<p class="muted">A quien cargó se le descontaron ${r.senderCharged} créditos. Saldo restante: ${r.senderBalance}.</p>`}<div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);await refreshMe();await loadAccounts();}catch(err){msg($('#creditMsg'),err.message);}});
+  openModal(`<h3>Cargar créditos</h3><p>Destino: <b>${esc(a.name)}</b> · ${esc(a.role_name)}</p><p class="muted">Carga mínima: <b>10 créditos</b>. Antes de acreditar, el PANEL mostrará un resumen final obligatorio para confirmar el monto.</p>${state.me.role_level===1?'':`<div class="unlimited-box">Saldo disponible: <b>${state.me.credits}</b></div>`}<form id="creditForm"><label>Cantidad<input id="creditAmount" type="number" min="10" step="1" ${state.me.role_level===1?'':`max="${state.me.credits}"`} required value="10"></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">REVISAR CARGA</button></div><div id="creditMsg" class="msg"></div></form>`);
+  $('#creditForm').addEventListener('submit',e=>{
+    e.preventDefault();const amount=Number($('#creditAmount').value);if(!Number.isInteger(amount)||amount<10){msg($('#creditMsg'),'La carga mínima es de 10 créditos.');return;}
+    const current=Number(a.credits||0),result=current+amount;
+    openModal(`<h3>Confirmar carga de créditos</h3><div class="credit-confirm-card"><div><span>Destino</span><b>${esc(a.name)} · ${esc(a.role_name)}</b></div><div><span>Saldo actual</span><b>${current}</b></div><div><span>Créditos a cargar</span><strong>+${amount}</strong></div><div><span>Saldo estimado</span><b>${result}${state.me.role_level===1?'':'*'}</b></div></div><p class="muted small">${state.me.role_level===1?'Administración tiene saldo ilimitado.':'*El saldo del destinatario puede incluir bonus de promoción al confirmar.'}</p><div class="warning-card"><b>¿Confirmás que el monto de ${amount} créditos es correcto?</b><span>La operación quedará registrada en el historial con fecha, origen y destino.</span></div><div class="modal-actions"><button type="button" class="ghost" id="backCreditBtn">VOLVER</button><button type="button" class="primary" id="confirmCreditBtn">CONFIRMAR ${amount} CRÉDITOS</button></div><div id="creditConfirmMsg" class="msg"></div>`);
+    $('#backCreditBtn').addEventListener('click',()=>openCreditModal(a));
+    $('#confirmCreditBtn').addEventListener('click',async()=>{try{const r=await api(`/api/admin/accounts/${a.id}/credits`,{method:'POST',body:{amount}});openModal(`<h3>Carga realizada</h3><p>Se cargaron <b>${r.baseAmount}</b> créditos.</p><p>Bonus automático: <b>${r.promoBonus}</b></p><p>Total recibido: <b>${r.totalReceived}</b></p>${r.senderUnlimited?'':`<p class="muted">A quien cargó se le descontaron ${r.senderCharged} créditos. Saldo restante: ${r.senderBalance}.</p>`}<div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);await refreshMe();await loadAccounts();}catch(err){msg($('#creditConfirmMsg'),err.message);}});
+  });
 }
+
 async function openPanelDevices(a){
-  try{const d=await api(`/api/admin/accounts/${a.id}/panel-devices`);openModal(`<h3>Dispositivos PANEL — ${esc(a.name)}</h3><p class="muted">Máximo 2 activos.</p>${d.devices.length?d.devices.map(x=>`<div class="rule-card" data-pdev="${x.id}"><b>${esc(x.device_name||x.device_uid)}</b><span>${esc(x.device_uid)} · ${x.active?'ACTIVO':'LIBERADO'} · Último: ${esc(fmt(x.last_seen_at))}</span>${x.active&&a.id!==state.me.id?`<div class="mt10"><button class="danger-btn" data-action="release-panel">Liberar dispositivo</button></div>`:''}</div>`).join(''):'<p class="empty">Sin dispositivos.</p>'}<div class="modal-actions"><button class="ghost" data-close>Cerrar</button></div>`);}catch(e){alert(e.message);}
+  try{
+    const d=await api(`/api/admin/accounts/${a.id}/panel-devices`);
+    const own=Number(a.id)===Number(state.me.id);
+    const currentUid=uid();
+    openModal(`<h3>Dispositivos PANEL — ${esc(a.name)}</h3>
+      <p class="muted">Máximo 2 activos.${own?' Para usar un equipo nuevo, liberá uno de los actuales y luego activá el nuevo con el mismo código de acceso.':''}</p>
+      ${d.devices.length?d.devices.map(x=>{
+        const current=String(x.device_uid)===String(currentUid);
+        return `<div class="rule-card" data-pdev="${x.id}" data-current="${current?'1':'0'}">
+          <b>${esc(x.device_name||x.device_uid)}${current?' · ESTE DISPOSITIVO':''}</b>
+          <span>${esc(x.device_uid)} · ${x.active?'ACTIVO':'LIBERADO'} · Último: ${esc(fmt(x.last_seen_at))}</span>
+          ${x.active?`<div class="mt10"><button class="danger-btn" data-action="release-panel">${own?'Liberar para reemplazar':'Liberar dispositivo'}</button></div>`:''}
+        </div>`;
+      }).join(''):'<p class="empty">Sin dispositivos.</p>'}
+      ${own?`<div class="warning-card mt10"><b>Reemplazar equipo</b><span>La ADMINISTRACIÓN principal debe conservar al menos 1 dispositivo activo. Si liberás el equipo que estás usando ahora, esta sesión se cerrará.</span></div>`:''}
+      <div class="modal-actions"><button class="ghost" data-close>Cerrar</button></div>`);
+  }catch(e){alert(e.message);}
 }
 
 function clientStatusBadge(c){
@@ -322,7 +351,7 @@ function renderClients(){
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/2 <div class="muted small">${linked}/2 códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(render)renderClients();}
@@ -341,17 +370,18 @@ function openClientModal(c=null){
       <div class="summary-box"><span>Estado</span><strong>${esc(c.display_status||'—')}</strong></div>
       <div class="summary-box"><span>Vencimiento</span><strong>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</strong></div>
       <div class="summary-box"><span>Tiempo restante</span><strong>${esc(remainingText)}</strong></div>
-      <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.device_count??0))}/2</strong></div>
+      <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.device_count??0))}/${esc(String(c.device_limit||2))}</strong></div>
       <div class="summary-box"><span>Propietario</span><strong>${esc(c.owner_name||'—')}</strong></div>
     </div>
     <div class="client-manage-card">
       <h4>Gestión del cliente</h4>
       <div class="panel-control-actions">
         <button type="button" class="primary" id="clientRenewBtn" ${renewDisabled?'disabled':''} title="${esc(renewTitle)}">${c.expires_at?'Renovar 30 días':'Activar 30 días'}</button>
-        <button type="button" class="code-btn" id="clientCodesDemoBtn">Códigos / Demos / Dispositivos</button>
+        ${c.demo_active_count?'<button type="button" class="success-btn" id="clientConvertDemoBtn">CONVERTIR DEMO EN CLIENTE</button>':''}
+        <button type="button" class="code-btn" id="clientCodesBtn">Códigos / Dispositivos</button>
         <button type="button" class="danger-btn" id="clientDeleteBtn">Eliminar cliente</button>
       </div>
-      <p class="muted small">La renovación conserva los días restantes. Las opciones de demo aparecen según los permisos disponibles.</p>
+      <p class="muted small">La renovación conserva los días restantes. Los demos se rigen por la configuración global de ADMINISTRACIÓN.</p>
     </div>`:'';
 
   openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
@@ -365,7 +395,7 @@ function openClientModal(c=null){
       <div id="clientMsg" class="msg"></div>
     </form>`);
 
-  $('#clientCodesDemoBtn')?.addEventListener('click',()=>openClientCodes(c));
+  $('#clientCodesBtn')?.addEventListener('click',()=>openClientCodes(c));
   $('#clientRenewBtn')?.addEventListener('click',async()=>{
     if(renewDisabled)return;
     const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;
@@ -375,6 +405,11 @@ function openClientModal(c=null){
       alert(`Nuevo vencimiento: ${fmt(r.newExpiry)}`);
       closeModal();await refreshMe();await loadClients();
     }catch(err){msg($('#clientMsg'),err.message);}
+  });
+  $('#clientConvertDemoBtn')?.addEventListener('click',async()=>{
+    const cost=Number(c.renew_credit_cost||Math.max(1,Math.ceil(Number(c.device_limit||2)/2)));
+    if(!confirm(`¿Convertir ahora el demo de ${c.name} en servicio normal por 30 días?\n\nCosto: ${state.me.role_level===1?'sin descuento para ADMINISTRACIÓN':cost+' crédito(s) al propietario'}.\nEl demo termina ahora y todos los dispositivos del perfil compartirán el mismo vencimiento.`))return;
+    try{const r=await api(`/api/admin/clients/${c.id}/convert-demo`,{method:'POST'});alert(`Demo convertido a servicio normal. Nuevo vencimiento: ${fmt(r.newExpiry)}.`);closeModal();await refreshMe();await loadClients();}catch(err){msg($('#clientMsg'),err.message);}
   });
   $('#clientDeleteBtn')?.addEventListener('click',()=>openDeleteClientModal(c));
 
@@ -406,43 +441,38 @@ function openDeleteClientModal(c){
 }
 
 async function openClientCodes(c){
+  const admin=state.me?.role_level===1;
   try{
-    const [d,ds]=await Promise.all([api(`/api/admin/clients/${c.id}/devices`),api('/api/admin/demo-settings')]);
-    state.demoSettings=ds;
+    const d=await api(`/api/admin/clients/${c.id}/devices`);
     const linked=d.devices||[];
-    const slots=Math.max(0,2-linked.filter(x=>x.status==='active'||x.status==='pending').length);
-    const serviceActive=Boolean(d.clientStatus?.service_active);
+    const limit=Number(d.deviceLimit||d.clientStatus?.device_limit||c.device_limit||2);
+    const slots=Math.max(0,limit-linked.filter(x=>x.status==='active'||x.status==='pending').length);
+    const changes=Number(d.changesThisMonth||0),changesRemaining=Number(d.changesRemaining??Math.max(0,2-changes));
     openModal(`
-      <h3>Códigos y Demo — ${esc(c.name)}</h3>
-      <p class="muted">Vinculá hasta 2 códigos CO-CHI. El cliente no figura ACTIVO hasta tener al menos un código vinculado.</p>
+      <h3>Códigos y dispositivos — ${esc(c.name)}</h3>
+      <p class="muted">Vinculá códigos de activación CO-CHI y administrá los dispositivos de este cliente. ADMINISTRACIÓN define si los demos están habilitados y si duran 10 minutos o 1 hora. Al vincular un código a un cliente sin servicio, el demo se aplica automáticamente si está habilitado.</p>
       <form id="clientCodeForm">
         <label>Código de activación CO-CHI
           <input id="clientActivationCode" placeholder="ABCD-1234" autocomplete="off" ${slots===0?'disabled':''} required>
         </label>
         <div class="modal-actions" style="justify-content:flex-start">
-          <button class="primary" type="submit" ${slots===0?'disabled':''}>VINCULAR CÓDIGO</button>
+          <button type="submit" class="primary" ${slots===0?'disabled':''}>VINCULAR CÓDIGO</button>
         </div>
         <div id="clientCodeMsg" class="msg"></div>
       </form>
-      <div class="client-code-slots">
-        <div class="slot-head"><b>Dispositivos vinculados</b><span>${linked.filter(x=>x.status!=='blocked').length}/2</span></div>
-        ${linked.length?linked.map((x,i)=>{
-          const di=x.demo||{};
-          let demoAction='';
-          if(di.active)demoAction=state.me?.role_level===1
-            ? `<div class="demo-live-controls"><span class="badge active" ${liveDemoAttrs(di.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(di.remainingSeconds)}</span><button class="ghost demo-admin-btn" data-action="reduce-demo" data-device="${x.id}">10 MIN</button><button class="danger-btn demo-admin-btn" data-action="expire-demo" data-device="${x.id}">CORTAR</button></div>`
-            : `<span class="badge active" ${liveDemoAttrs(di.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(di.remainingSeconds)}</span>`;
-          else if(di.used)demoAction=state.me?.role_level===1 ? `<div class="demo-live-controls"><span class="badge blocked">DEMO YA USADO</span><button class="ghost demo-admin-btn" data-action="reset-demo" data-device="${x.id}">RESETEAR DEMO</button></div>` : '<span class="badge blocked">DEMO YA USADO</span>';
-          else if(serviceActive)demoAction='<span class="muted small">Servicio normal activo</span>';
-          else if(!ds.enabled)demoAction='<span class="muted small">Demos desactivados</span>';
-          else if(!ds.canGrant)demoAction='<span class="badge pending">DEMO NO DISPONIBLE</span>';
-          else if(x.status==='blocked')demoAction='<span class="muted small">Dispositivo bloqueado</span>';
-          else demoAction=state.me?.role_level===1 ? `<div class="demo-grant-options"><button class="demo-btn" data-action="grant-demo" data-minutes="10" data-device="${x.id}">DEMO 10 MIN</button><button class="demo-btn" data-action="grant-demo" data-minutes="60" data-device="${x.id}">DEMO 1 HORA</button></div>` : '<span class="muted small">Demo no disponible para este panel</span>';  
-          return `<div class="rule-card device-demo-card">
-            <div><b>Código ${i+1}: <code>${esc(x.activation_code)}</code></b><span>${esc(x.device_name||x.device_uid)} · ${esc((x.status||'pending').toUpperCase())}${x.last_seen_at?` · Último: ${esc(fmt(x.last_seen_at))}`:''}</span></div>
-            <div class="demo-action">${demoAction}</div>
-          </div>`;
-        }).join(''):'<p class="empty">Todavía no hay códigos vinculados.</p>'}
+      <div class="client-device-stats">
+        <div class="compact-rule"><b>Capacidad</b><span>${linked.length}/${limit} dispositivos vinculados · ${slots} lugar${slots===1?'':'es'} disponible${slots===1?'':'s'}.</span></div>
+        <div class="compact-rule"><b>Reemplazos</b><span>${changes}/2 usados este mes · ${changesRemaining} disponible${changesRemaining===1?'':'s'}.</span></div>
+        <div class="compact-rule"><b>Vencimiento único</b><span>${c.expires_at?esc(fmt(c.expires_at)):'Sin servicio activo'}. Los adicionales vencen el mismo día.</span></div>
+      </div>
+      <div class="rule-card profile-expand-card"><div><b>Ampliar este perfil</b><span>Sumá 2 dispositivos por 1 crédito. El crédito se descuenta al vendedor propietario.</span></div><button type="button" class="primary" id="buyExtraDevicesBtn">+2 DISPOSITIVOS · 1 CRÉDITO</button></div>
+      <div class="client-devices-list">
+        ${linked.length?linked.map((x,i)=>`<div class="rule-card device-demo-card">
+          <div class="device-main-info"><div class="device-title-row"><b>${esc(x.device_name||'Dispositivo '+(i+1))}</b><span class="badge ${x.status==='active'?'active':x.status==='blocked'?'blocked':'pending'}">${esc((x.status||'pending').toUpperCase())}</span></div><code class="device-code">${esc(x.activation_code)}</code><span class="device-uid">${esc(x.device_uid)}</span>${x.last_seen_at?`<span class="device-last">Última actividad: ${esc(fmt(x.last_seen_at))}</span>`:''}</div>
+          <div class="demo-action">
+            <button type="button" class="danger-btn device-delete-btn" data-device="${x.id}">DESVINCULAR / REEMPLAZAR</button>
+          </div>
+        </div>`).join(''):'<p class="empty">Todavía no hay códigos vinculados.</p>'}
       </div>
       <div class="modal-actions"><button class="ghost" data-close>Cerrar</button></div>
     `);
@@ -451,31 +481,24 @@ async function openClientCodes(c){
       ev.preventDefault();msg($('#clientCodeMsg'),'');
       try{
         const r=await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#clientActivationCode').value,clientId:c.id}});
-        msg($('#clientCodeMsg'),r.waitingForService?'Código vinculado. Falta activar servicio o dar demo.':'Código vinculado y dispositivo activo.',true);
+        msg($('#clientCodeMsg'),r.autoDemo?`Código vinculado. DEMO AUTOMÁTICO DE ${r.demoDurationMinutes===60?'1 HORA':r.demoDurationMinutes+' MINUTOS'} activo hasta ${fmt(r.demoExpiresAt)}.`:(r.waitingForService?(r.autoDemoReason==='demos_disabled'?'Código vinculado. Los demos están desactivados por ADMINISTRACIÓN.':r.autoDemoReason==='demo_already_used'?'Código vinculado, pero este dispositivo ya utilizó su demo.':'Código vinculado. Sin servicio activo.'):'Código vinculado y dispositivo activo.'),true);
         await loadClients(false);setTimeout(()=>openClientCodes(state.clients.find(x=>x.id===c.id)||c),250);
       }catch(err){msg($('#clientCodeMsg'),err.message);}
     });
-    $$('.demo-btn').forEach(btn=>btn.addEventListener('click',async()=>{
-      const minutes=Number(btn.dataset.minutes||10);
-      const label=minutes===60?'1 hora':'10 minutos';
-      if(!confirm(`¿Dar a este dispositivo un demo de ${label}?`))return;
-      try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}/demo`,{method:'POST',body:{durationMinutes:minutes}});alert(`Demo activo hasta ${fmt(r.expiresAt)}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
-    }));
-    $$('.demo-admin-btn').forEach(btn=>btn.addEventListener('click',async()=>{
-      const id=Number(btn.dataset.device),action=btn.dataset.action;
-      try{
-        if(action==='reduce-demo'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos? Si ya le quedan menos de 10 minutos, no se extenderá.'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}
-        if(action==='expire-demo'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO YA USADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado. El dispositivo continúa marcado como demo utilizado.');}
-        if(action==='reset-demo'){if(!confirm('¿Resetear el demo de este dispositivo? Podrá recibir nuevamente un demo de 10 minutos o 1 hora.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado. El dispositivo puede volver a recibir un demo de 10 minutos o 1 hora.');}
-        await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);
-      }catch(err){alert(err.message);}
+    $('#buyExtraDevicesBtn')?.addEventListener('click',async()=>{
+      if(!confirm(`¿Agregar 2 dispositivos a ${c.name}? Se descontará 1 crédito al vendedor y ambos respetarán el vencimiento actual del perfil.`))return;
+      try{const r=await api(`/api/admin/clients/${c.id}/extra-devices`,{method:'POST'});alert(`Capacidad ampliada a ${r.newLimit} dispositivos. Vencimiento compartido: ${r.expiresAt?fmt(r.expiresAt):'sin activar'}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
+    });
+    $$('.device-delete-btn').forEach(btn=>btn.addEventListener('click',async()=>{
+      if(!confirm(`¿Desvincular este dispositivo para reemplazarlo? Este cambio cuenta dentro del límite mensual (máximo 2). No devuelve créditos ni reinicia demos. Después podrás vincular el nuevo equipo.`))return;
+      try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}`,{method:'DELETE'});alert(`Dispositivo desvinculado. Cambios este mes: ${r.changesThisMonth}/2.`);await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     }));
   }catch(err){alert(err.message);}
 }
 
 async function loadDevices(){const d=await api('/api/admin/client-devices');state.devices=d.devices;$('#devicesBody').innerHTML=state.devices.length?state.devices.map(x=>{const eff=x.effective_status||x.status.toUpperCase();const cls=eff==='ACTIVO'||eff==='DEMO ACTIVO'?'active':eff==='BLOQUEADO'||eff==='DEMO VENCIDO'?'blocked':'pending';const demo=x.demo?.active?`<div class="muted small success-text" ${liveDemoAttrs(x.demo.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(x.demo.remainingSeconds)}</div>`:x.demo?.used?'<div class="muted small">Demo usado</div>':'';return `<tr data-device="${x.id}"><td><code>${esc(x.activation_code)}</code></td><td><b>${esc(x.device_name||x.device_uid)}</b><div class="muted small">${esc(x.device_uid)}</div></td><td>${esc(x.client_name||'Pendiente')}</td><td>${esc(x.owner_name||'—')}</td><td><span class="badge ${cls}">${esc(eff)}</span>${demo}</td><td>${esc(fmt(x.last_seen_at))}</td><td><div class="actions">${x.status==='active'?'<button class="danger-btn" data-action="device-block">Bloquear</button>':''}${x.status==='blocked'?'<button class="ghost" data-action="device-reactivate">Reactivar</button>':''}</div></td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">Sin dispositivos asociados.</td></tr>`;}
 $('#manualClientDeviceBtn').addEventListener('click',async()=>{try{const r=await api('/api/admin/client-devices/manual',{method:'POST',body:{deviceName:'Dispositivo de prueba'}});openModal(`<h3>Dispositivo de prueba creado</h3><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Usá “Activar por código” para asociarlo a un cliente.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);}catch(e){alert(e.message);}});
-$('#assignByCodeBtn').addEventListener('click',()=>{if(!state.clients.length){alert('Primero creá un cliente.');return;}openModal(`<h3>Activar dispositivo por código</h3><form id="assignForm"><label>Código CO-CHI<input id="assignCode" placeholder="ABCD-1234" required></label><label>Cliente<select id="assignClient">${state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.device_count}/2)</option>`).join('')}</select></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">ACTIVAR</button></div><div id="assignMsg" class="msg"></div></form>`);$('#assignForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#assignCode').value,clientId:Number($('#assignClient').value)}});closeModal();await loadDevices();await loadClients(false);}catch(err){msg($('#assignMsg'),err.message);}});});
+$('#assignByCodeBtn').addEventListener('click',()=>{if(!state.clients.length){alert('Primero creá un cliente.');return;}openModal(`<h3>Activar dispositivo por código</h3><form id="assignForm"><label>Código CO-CHI<input id="assignCode" placeholder="ABCD-1234" required></label><label>Cliente<select id="assignClient">${state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.device_count}/${c.device_limit||2})</option>`).join('')}</select></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">ACTIVAR</button></div><div id="assignMsg" class="msg"></div></form>`);$('#assignForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#assignCode').value,clientId:Number($('#assignClient').value)}});closeModal();await loadDevices();await loadClients(false);}catch(err){msg($('#assignMsg'),err.message);}});});
 $('#devicesBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.closest('tr').dataset.device);try{if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; solo se libera un lugar de los 2 dispositivos.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});await loadDevices();}catch(err){alert(err.message);}});
 
 async function openCreditChooser(){
@@ -497,19 +520,54 @@ $('#newPromoBtn').addEventListener('click',()=>{const d=new Date(),e=new Date(Da
 $('#promotionsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const p=state.promos.find(x=>x.id===Number(b.closest('tr').dataset.promo));if(!p)return;try{await api(`/api/admin/promotions/${p.id}`,{method:'PUT',body:{active:!p.active}});await loadPromos();}catch(err){alert(err.message);}});
 
 
+async function loadPlaybackSecurity(){
+  const d=await api('/api/admin/playback-security');state.playbackSecurity=d;
+  const on=Boolean(d.enabled),workerOk=Boolean(d.worker?.ok);
+  $('#playbackSecurityBadge').className=`badge ${on?'active':'off'}`;
+  $('#playbackSecurityBadge').textContent=on?'SEGURIDAD ENCENDIDA':'MODO COMPATIBLE';
+  $('#playbackSecurityToggleBtn').textContent=on?'APAGAR SEGURIDAD':'ENCENDER SEGURIDAD';
+  $('#playbackSecurityToggleBtn').className=on?'danger-btn':'primary';
+  $('#playbackSecurityRotateBtn').disabled=!d.gatewayConfigured;
+  $('#playbackSecuritySyncBtn').disabled=!d.gatewayConfigured;
+  $('#playbackSecurityState').innerHTML=`<div><b>Gateway:</b> ${esc(d.gatewayConfigured?(d.gatewayUrl||'configurado'):'NO CONFIGURADO')}</div><div><b>Worker:</b> ${workerOk?'EN LÍNEA':'SIN RESPUESTA'} · <b>Generación:</b> ${esc(d.generation)} · <b>Ticket:</b> ${Math.round(Number(d.ticketTtlSeconds||0)/60)} min</div>${d.worker?.error?`<div class="muted small">${esc(d.worker.error)}</div>`:''}`;
+  msg($('#playbackSecurityMsg'),'');
+}
+$('#playbackSecurityToggleBtn')?.addEventListener('click',async()=>{try{
+  const enabled=!state.playbackSecurity?.enabled;
+  if(!confirm(enabled?'¿ENCENDER SEGURIDAD DE REPRODUCCIÓN? El panel verificará primero el Worker. Si no responde, no se activará.':'¿Volver a MODO COMPATIBLE? Las listas volverán a usar sus URLs de reproducción actuales.'))return;
+  await api('/api/admin/playback-security',{method:'PUT',body:{enabled}});await loadPlaybackSecurity();
+  toast(enabled?'Seguridad de reproducción activada.':'Modo compatible restaurado.');
+}catch(e){msg($('#playbackSecurityMsg'),e.message);}});
+$('#playbackSecurityRotateBtn')?.addEventListener('click',async()=>{try{
+  if(!confirm('¿ROTAR LA CLAVE AHORA? Los tickets de reproducción anteriores dejarán de ser válidos cuando el Worker reciba la nueva generación.'))return;
+  const r=await api('/api/admin/playback-security/rotate',{method:'POST'});await loadPlaybackSecurity();toast(`Clave rotada · generación ${r.generation}`);
+}catch(e){msg($('#playbackSecurityMsg'),e.message);}});
+$('#playbackSecuritySyncBtn')?.addEventListener('click',async()=>{try{await api('/api/admin/playback-security/sync',{method:'POST'});await loadPlaybackSecurity();toast('Worker sincronizado.');}catch(e){msg($('#playbackSecurityMsg'),e.message);}});
+
 async function loadDemos(){
   const d=await api('/api/admin/demo-settings');state.demoSettings=d;
   $('#demoToggleBtn').textContent=d.enabled?'DESACTIVAR DEMOS':'ACTIVAR DEMOS';
   $('#demoToggleBtn').className=d.enabled?'danger-btn':'primary';
   const activeCount=Number(d.activeCount||0);
+  const demoMinutes=Number(d.durationMinutes||10);
+  $('#demoDuration10Btn').className=demoMinutes===10?'primary':'ghost';
+  $('#demoDuration60Btn').className=demoMinutes===60?'primary':'ghost';
+  $('#demoDurationState').textContent=`Duración actual para nuevos demos: ${demoMinutes===60?'1 hora':'10 minutos'}.`;
   $('#demoCutAllBtn').disabled=activeCount===0;
   $('#demoCutAllBtn').textContent=activeCount?`CORTAR TODOS LOS DEMOS ACTIVOS (${activeCount})`:'SIN DEMOS ACTIVOS';
   $('#demoGlobalState').innerHTML=d.enabled
     ? `<span class="badge active">DEMOS ACTIVADOS</span> <span class="muted small">Los nuevos demos pueden iniciarse. ADMINISTRACIÓN puede reducir o cortar cualquier demo activo.</span>`
     : `<span class="badge blocked">DEMOS DESACTIVADOS</span> <span class="muted small">No se pueden iniciar nuevos demos. Los demos activos solo continúan hasta su vencimiento o hasta que ADMINISTRACIÓN los corte.</span>`;
+  const blocked=new Set((d.blockedCategories||[]).map(x=>String(x).toLocaleLowerCase('es')));
+  const available=d.availableCategories||[];
+  $('#demoCategoryOptions').innerHTML=available.length?available.map(name=>`<label class="switch-row demo-category-option"><input type="checkbox" class="demoBlockedCategory" value="${esc(name)}" ${blocked.has(String(name).toLocaleLowerCase('es'))?'checked':''}> <span>${esc(name)}</span></label>`).join(''):`<span class="muted small">Publicá contenido para ver las categorías disponibles.</span>`;
+  $('#demoCategoryState').textContent=(d.blockedCategories||[]).length?`Bloqueadas en demos: ${(d.blockedCategories||[]).join(', ')}`:'Las demos actualmente reciben todas las categorías.';
   $('#demosBody').innerHTML=d.demos.length?d.demos.map(x=>{const actions=x.active?`<div class="actions demo-table-actions"><button class="ghost" data-action="demo-10" data-device="${x.device_id}">10 MIN</button><button class="danger-btn" data-action="demo-cut" data-device="${x.device_id}">CORTAR</button></div>`:`<div class="actions demo-table-actions"><span class="muted small">Demo utilizado</span><button class="ghost" data-action="demo-reset" data-device="${x.device_id}">RESETEAR DEMO</button></div>`;return `<tr><td><b>${esc(x.client_name)}</b></td><td>${esc(x.device_name||x.device_uid)}</td><td><code>${esc(x.activation_code)}</code></td><td>${esc(x.granted_by_name)}</td><td>${esc(fmt(x.started_at))}</td><td>${esc(fmt(x.expires_at))}</td><td><span class="badge ${x.active?'active':'blocked'}" ${x.active?liveDemoAttrs(x.remainingSeconds,x.device_id):''}>${x.active?`DEMO ACTIVO · ${fmtDuration(x.remainingSeconds)}`:'FINALIZADO'}</span></td><td>${actions}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">Todavía no se otorgaron demos.</td></tr>';
 }
 $('#demoToggleBtn')?.addEventListener('click',async()=>{try{const enabled=!state.demoSettings?.enabled;if(!confirm(enabled?'¿Activar demos para todas las fichas habilitadas?':'¿Desactivar nuevos demos? Los demos que ya están corriendo seguirán activos salvo que ADMINISTRACIÓN los corte.'))return;await api('/api/admin/demo-settings',{method:'PUT',body:{enabled}});await loadDemos();}catch(e){alert(e.message);}});
+$('#demoDuration10Btn')?.addEventListener('click',async()=>{try{await api('/api/admin/demo-settings',{method:'PUT',body:{durationMinutes:10}});await loadDemos();}catch(e){alert(e.message);}});
+$('#demoDuration60Btn')?.addEventListener('click',async()=>{try{await api('/api/admin/demo-settings',{method:'PUT',body:{durationMinutes:60}});await loadDemos();}catch(e){alert(e.message);}});
+$('#demoCategoriesSaveBtn')?.addEventListener('click',async()=>{try{const blockedCategories=$$('.demoBlockedCategory:checked').map(x=>x.value);await api('/api/admin/demo-settings',{method:'PUT',body:{blockedCategories}});await loadDemos();alert(blockedCategories.length?'Restricciones de demos guardadas.':'Las demos vuelven a recibir todas las categorías.');}catch(e){alert(e.message);}});
 $('#demoCutAllBtn')?.addEventListener('click',async()=>{try{const n=Number(state.demoSettings?.activeCount||0);if(!n)return;if(!confirm(`¿CONFIRMAR CORTE DE TODOS LOS DEMOS ACTIVOS?\n\nSe cortarán ${n} demo${n===1?'':'s'} inmediatamente. Los dispositivos seguirán marcados como DEMO UTILIZADO. Los clientes con servicio pago no se modifican.`))return;const r=await api('/api/admin/demos/expire-all',{method:'POST'});alert(`Se cortaron ${r.expiredCount} demo${r.expiredCount===1?'':'s'}.`);await loadDemos();await loadClients(false);}catch(e){alert(e.message);}});
 $('#demosBody')?.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.dataset.device);try{if(b.dataset.action==='demo-10'){if(!confirm('¿Reducir este demo para que termine dentro de 10 minutos?'))return;const r=await api(`/api/admin/client-devices/${id}/demo/reduce-10`,{method:'POST'});alert(`Demo ajustado. Vence ${fmt(r.expiresAt)}.`);}if(b.dataset.action==='demo-cut'){if(!confirm('¿Cortar este demo ahora? El dispositivo seguirá marcado como DEMO UTILIZADO.'))return;await api(`/api/admin/client-devices/${id}/demo/expire`,{method:'POST'});alert('Demo cortado.');}if(b.dataset.action==='demo-reset'){if(!confirm('¿Resetear este demo? El dispositivo podrá recibir nuevamente un demo de 10 minutos o 1 hora.'))return;await api(`/api/admin/client-devices/${id}/demo/reset`,{method:'POST'});alert('Demo reseteado.');}await loadDemos();await loadClients(false);}catch(err){alert(err.message);}});
 
@@ -527,8 +585,17 @@ function openAdultClientModal(c){
   $('#adultClientForm').addEventListener('submit',async e=>{e.preventDefault();try{const body={policy:$('#adultPolicy').value,locked:$('#adultLocked').checked,clearCustomPin:$('#adultClearPin').checked};const pin=$('#adultClientPin').value.trim();if(pin)body.pin=pin;await api(`/api/admin/clients/${c.id}/adult`,{method:'PUT',body});closeModal();await loadAdultSettings();}catch(err){msg($('#adultClientMsg'),err.message);}});
 }
 
-async function loadSources(){const d=await api('/api/admin/sources');state.sources=d.sources;$('#sourcesList').innerHTML=state.sources.map(s=>`<div class="source-row" data-source="${esc(s.source_key)}"><div class="source-title">${esc(s.label)}</div><label>URL<input class="source-url" value="${esc(s.url||'')}" placeholder="https://..."></label><label class="switch-row"><input class="source-enabled" type="checkbox" ${s.enabled?'checked':''}> Habilitada</label></div>`).join('');msg($('#sourcesMsg'),'');}
-$('#saveSourcesBtn').addEventListener('click',async()=>{try{const sources=$$('.source-row').map(r=>({key:r.dataset.source,url:r.querySelector('.source-url').value.trim(),enabled:r.querySelector('.source-enabled').checked}));await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#sourcesMsg'),'Fuentes guardadas.',true);}catch(e){msg($('#sourcesMsg'),e.message);}});
+async function loadSources(){
+  const d=await api('/api/admin/sources');state.sources=d.sources;
+  $('#sourcesList').innerHTML=state.sources.map(s=>{const priv=s.private_upload;const isMovies=s.source_key==='movies';const privInfo=priv?`<div class="source-private-info"><span class="badge active">FUENTE PRIVADA EN PANEL</span><b>${esc(priv.fileName||'peliculas.json')}</b><span>${Number(priv.stats?.categories||0)} categorías · ${Number(priv.stats?.items||0)} contenidos · ${(Number(priv.bytes||0)/1024).toFixed(1)} KB</span><span>Actualizada: ${esc(fmt(priv.updatedAt||priv.uploadedAt))}</span></div>`:'';return `<div class="source-row" data-source="${esc(s.source_key)}"><div class="source-head"><div class="source-title">${esc(s.label)}</div><label class="switch-row"><input class="source-enabled" type="checkbox" ${s.enabled?'checked':''}> Habilitada</label></div>${privInfo}<div class="source-fields"><label>URL DE ORIGEN PRIVADA<input class="source-url" value="${esc(s.url||'')}" placeholder="https://github.com/.../lista.json" title="${esc(s.url||'')}"></label><label>ENDPOINT PROTEGIDO PARA CO-CHI<input class="source-delivery" value="${esc(s.delivery_url||'')}" readonly title="${esc(s.delivery_url||'')}"></label></div><div class="source-actions">${isMovies?`<input class="private-json-file" type="file" accept=".json,application/json" hidden><button class="primary source-upload-json" type="button">SUBIR JSON ORIGINAL AL PANEL</button>${priv?'<button class="ghost source-remove-private" type="button">VOLVER A URL EXTERNA</button>':''}`:''}<button class="primary source-save-import" type="button">GUARDAR E IMPORTAR URL</button><span class="source-status muted small"></span></div><div class="muted small source-help">${priv?'Esta fuente maestra está guardada de forma privada en Railway/PANEL. No se publica en GitHub. Guardar en JSON original actualizará esta copia privada.':'La APK usa únicamente el endpoint protegido. La URL de origen privada solo la utiliza el backend para importar el JSON.'}</div></div>`}).join('');msg($('#sourcesMsg'),'');}
+$('#saveSourcesBtn').addEventListener('click',async()=>{try{const sources=$$('.source-row').map(r=>({key:r.dataset.source,url:r.querySelector('.source-url').value.trim(),enabled:r.querySelector('.source-enabled').checked}));await api('/api/admin/sources',{method:'PUT',body:{sources}});const text='CAMBIOS GUARDADOS CORRECTAMENTE';msg($('#sourcesMsg'),text,true);toast(text,'ok');await loadSources();msg($('#sourcesMsg'),text,true);}catch(e){const text='NO SE PUDIERON GUARDAR LOS CAMBIOS · '+e.message;msg($('#sourcesMsg'),text);toast(text,'bad');}});
+$('#sourcesList')?.addEventListener('click',async e=>{
+  const row=e.target.closest('.source-row');if(!row)return;const key=row.dataset.source,status=row.querySelector('.source-status'),label=(row.querySelector('.source-title')?.textContent||key).trim();
+  const upload=e.target.closest('.source-upload-json');if(upload){const input=row.querySelector('.private-json-file');input.value='';input.click();return;}
+  const remove=e.target.closest('.source-remove-private');if(remove){if(!confirm('¿Quitar la fuente privada de Películas y volver a usar la URL externa configurada? La copia gestionada y la publicada en la app no se borrarán.'))return;try{await api('/api/admin/sources/movies/private-upload',{method:'DELETE'});toast('Fuente privada quitada. Ahora Películas volverá a usar la URL externa.','ok');await loadSources();}catch(err){toast(err.message,'bad')}return;}
+  const b=e.target.closest('.source-save-import');if(!b)return;const url=row.querySelector('.source-url').value.trim(),enabled=row.querySelector('.source-enabled').checked;if(!url){const text='Ingresá la URL de origen privada.';status.textContent=text;status.className='source-status msg error';toast(text,'bad');return;}b.disabled=true;const old=b.textContent;b.textContent='IMPORTANDO...';status.textContent='Guardando URL e importando JSON...';status.className='source-status muted small';try{const r=await api(`/api/admin/sources/${key}/save-import`,{method:'POST',body:{url,enabled}});const st=r.stats?`${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:'contenido actualizado';const text=`${label}: GUARDADO E IMPORTADO CORRECTAMENTE · ${st}`;status.textContent=text;status.className='source-status msg ok';msg($('#sourcesMsg'),text,true);toast(text,'ok');await loadSources();}catch(err){const text=`${label}: NO SE PUDO IMPORTAR · ${err.message}`;status.textContent=text;status.className='source-status msg error';msg($('#sourcesMsg'),text);toast(text,'bad');}finally{b.disabled=false;b.textContent=old;}
+});
+$('#sourcesList')?.addEventListener('change',async e=>{const input=e.target.closest('.private-json-file');if(!input||!input.files?.[0])return;const row=input.closest('.source-row'),status=row.querySelector('.source-status'),file=input.files[0];if(file.size>25*1024*1024){toast('El JSON supera 25 MB.','bad');return;}if(!confirm(`¿Subir ${file.name} como FUENTE MAESTRA PRIVADA de Películas?\n\nEl archivo quedará en el almacenamiento privado del PANEL y no en GitHub. Se conservarán hasta 5 respaldos anteriores.`))return;status.textContent='Leyendo y validando JSON...';status.className='source-status muted small';try{const raw=await file.text();const json=JSON.parse(raw);if(!Array.isArray(json))throw new Error('El JSON debe ser un arreglo de categorías');const r=await api('/api/admin/sources/movies/upload-json',{method:'POST',body:{fileName:file.name,json}});const text=`Películas: FUENTE PRIVADA GUARDADA · ${r.stats.categories} categorías · ${r.stats.items} contenidos`;toast(text,'ok');msg($('#sourcesMsg'),text,true);await loadSources();}catch(err){const text='NO SE PUDO SUBIR EL JSON · '+err.message;status.textContent=text;status.className='source-status msg error';toast(text,'bad');}});
 
 
 function contentPlain(){
@@ -633,6 +700,94 @@ function editCategory(index=null){
     setContentPlain(d);closeModal();
   };
 }
+function inferSeasonEpisodeFromTemplate(value){
+  let text='';
+  try{text=JSON.stringify(value);}catch{text=String(value||'');}
+  const patterns=[
+    /Temporada\s*0?(\d+)\s*[-–—:]?\s*(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i,
+    /S0?(\d+)E0?(\d+)/i,
+    /(?:^|[^0-9])0?(\d+)[xX]0?(\d+)(?=[^0-9]|$)/,
+    /(?:^|[^A-Za-z0-9])T0?(\d+)[^0-9]+(?:Cap(?:í|i)?tulo|Episodio)?\s*0?(\d+)/i
+  ];
+  for(const re of patterns){const m=text.match(re);if(m)return {season:Number(m[1])||1,episode:Number(m[2])||1};}
+  const ep=text.match(/(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i);
+  return {season:1,episode:ep?(Number(ep[1])||1):1};
+}
+function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeason=1,sourceEpisode=1){
+  if(Array.isArray(value))return value.map(v=>replaceEpisodeSequenceDeep(v,targetSeason,targetEpisode,sourceSeason,sourceEpisode));
+  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,replaceEpisodeSequenceDeep(v,targetSeason,targetEpisode,sourceSeason,sourceEpisode)]));
+  if(typeof value!=='string')return value;
+  const ts=String(targetSeason),te=String(targetEpisode),ss=String(sourceSeason),se=String(sourceEpisode);
+  const ts2=ts.padStart(2,'0'),te2=te.padStart(2,'0');
+  let out=value;
+  // Temporada X - Capítulo Y / Episodio Y.
+  out=out.replace(new RegExp(`(temporada\\s*)0?${ss}(\\s*[-–—:]?\\s*(?:cap(?:í|i)?tulo|episodio)\\s*)0?${se}(?=\\D|$)`,'gi'),(_,a,b)=>`${a}${targetSeason}${b}${targetEpisode}`);
+  // Patrones de archivos/URLs: 01x13, 1x13, S01E13 / s01e13.
+  out=out.replace(new RegExp(`(^|[^0-9])0?${ss}[xX]0?${se}(?=[^0-9]|$)`,'g'),(_,pre)=>`${pre}${ts2}x${te2}`);
+  out=out.replace(new RegExp(`S0?${ss}E0?${se}`,'gi'),m=>`${m[0]==='s'?'s':'S'}${ts2}${m.includes('e')?'e':'E'}${te2}`);
+  // Si el texto solo trae capítulo/episodio, actualizamos el episodio.
+  out=out.replace(new RegExp(`(cap(?:í|i)?tulo\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
+  out=out.replace(new RegExp(`(episodio\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
+  return out;
+}
+function buildSeasonFromTemplate(template,season,count,firstEpisode=1){
+  const source=inferSeasonEpisodeFromTemplate(template);
+  const out=[];
+  for(let i=0;i<count;i++){
+    const ep=firstEpisode+i;
+    const item=replaceEpisodeSequenceDeep(structuredClone(template),season,ep,source.season,source.episode);
+    // Estructura compatible con las series que CO-CHI ya separa correctamente (ej. SILO):
+    // T1 usa nombres 1,2,3...; T2+ usa 2-1,2-2 / 3-1,3-2...
+    item.name=season===1?String(ep):`${season}-${ep}`;
+    if(item.number!==undefined)item.number=ep;
+    if(typeof item.id==='string'&&item.id.trim()){
+      item.id=item.id.replace(/-s\d+e\d+$/i,`-s${season}e${ep}`);
+    }
+    out.push(item);
+  }
+  return out;
+}
+function inferSeasonFromEpisodeEntry(ep){
+  if(!ep||typeof ep!=='object')return null;
+  const name=String(ep.name||'').trim();
+  let m=name.match(/^(\d+)\s*[-x]\s*(\d+)$/i);if(m)return Number(m[1])||1;
+  m=name.match(/^Temporada\s*(\d+)\s*[-–—:]?\s*(?:Cap(?:í|i)?tulo|Episodio)\s*\d+/i);if(m)return Number(m[1])||1;
+  const text=(()=>{try{return JSON.stringify(ep)}catch{return ''}})();
+  m=text.match(/S0?(\d+)E0?\d+/i);if(m)return Number(m[1])||1;
+  m=text.match(/(?:^|[^0-9])0?(\d+)[xX]0?\d+(?=[^0-9]|$)/);if(m)return Number(m[1])||1;
+  // En el formato histórico, capítulos con nombre simple pertenecen a Temporada 1.
+  if(/^\d+$/.test(name))return 1;
+  return null;
+}
+
+function markerTimeToSeconds(value){
+  const raw=String(value??'').trim();
+  if(!raw)return null;
+  if(/^\d+(?:\.\d+)?$/.test(raw))return Math.max(0,Math.round(Number(raw)));
+  const parts=raw.split(':').map(x=>x.trim());
+  if(parts.some(x=>!/^\d+(?:\.\d+)?$/.test(x))||parts.length<2||parts.length>3)throw new Error(`Tiempo inválido: ${raw}. Usá MM:SS o HH:MM:SS`);
+  let sec=0;
+  if(parts.length===2)sec=Number(parts[0])*60+Number(parts[1]);
+  else sec=Number(parts[0])*3600+Number(parts[1])*60+Number(parts[2]);
+  return Math.max(0,Math.round(sec));
+}
+function markerSecondsToTime(value){
+  if(value===null||value===undefined||value==='')return '';
+  const total=Math.max(0,Math.round(Number(value)||0));
+  const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;
+  return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function cleanMarkerRange(start,end,label){
+  if(start===null&&end===null)return null;
+  if(start===null||end===null)throw new Error(`${label}: completá inicio y fin`);
+  if(end<=start)throw new Error(`${label}: el fin debe ser posterior al inicio`);
+  return {start,end};
+}
+function playbackMarkersFromExtra(extra){
+  const src=(extra&&typeof extra.playbackMarkers==='object'&&extra.playbackMarkers)||{};
+  return {version:1,seasons:{...(src.seasons||{})}};
+}
+
 function editContentItem(groupIndex,itemIndex=null){
   let d;try{d=contentPlain();}catch(e){return alert(e.message);}
   const sourceItems=Array.isArray(d[groupIndex]?.samples)?d[groupIndex].samples:[];
@@ -640,16 +795,51 @@ function editContentItem(groupIndex,itemIndex=null){
   const extras={...cur};delete extras.name;delete extras.icon;delete extras.uri;
   const targetOptions=d.map((g,i)=>`<option value="${i}" ${i===groupIndex?'selected':''}>${esc(g.name||`Categoría ${i+1}`)}</option>`).join('');
   const currentPos=itemIndex===null?sourceItems.length+1:itemIndex+1;
-  openModal(`<h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><form id="contentItemForm">
-    <label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label>
-    <label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>
-    <label>URI / URL principal<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label>
-    <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
-    ${itemIndex!==null?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
-    <label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label>
-    <p class="muted small">Podés cambiar de categoría y orden. En Series, <b>temp</b> y sus capítulos siguen editándose en claro; el PANEL cifra al guardar.</p>
-    <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div>
+  const contentKey=$('#contentKey')?.value||'';
+  const isSeries=contentKey==='series';
+  const isTv=contentKey==='tv1'||contentKey==='tv2';
+  const existingFirst=Array.isArray(cur.temp)&&cur.temp.length?cur.temp[0]:{name:'1',icon:cur.icon||'',uri:cur.uri||''};
+  const streamType=String(cur.type||cur.tipo||'auto').toLowerCase();
+  const drmScheme=String(cur.drm_scheme||'').toLowerCase();
+  const existingKeys=Array.isArray(cur.keys)?cur.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):(drmScheme==='clearkey'?String(cur.drm_license_url||''):'');
+  const existingHeaders=cur.headers&&typeof cur.headers==='object'?Object.entries(cur.headers).map(([k,v])=>`${k}: ${v}`).join('\n'):'';
+  const existingBackups=Array.isArray(cur.backupUris)?cur.backupUris.join('\n'):'';
+  openModal(`<div class="content-editor-head"><div><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: aprovechá el ancho de la pantalla para revisar los datos sin bajar tanto.</p></div><button type="button" class="ghost compact-close" data-close>✕</button></div><form id="contentItemForm" class="content-editor-form">
+    <div class="content-editor-grid">
+      <section class="content-editor-column">
+        <label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label>
+        <label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>
+        ${isSeries?`<label>URL principal de la serie (opcional)<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:`<label>URL principal de reproducción<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label>`}
+        ${isTv?`<div class="stream-format-box"><h4>FORMATO DE REPRODUCCIÓN</h4><div class="form-row"><label>Tipo de entrada<select id="ciStreamType"><option value="auto" ${streamType==='auto'?'selected':''}>Automático (recomendado)</option><option value="hls" ${streamType==='hls'?'selected':''}>HLS / M3U8</option><option value="dash" ${streamType==='dash'?'selected':''}>DASH / MPD</option><option value="youtube" ${streamType==='youtube'?'selected':''}>YouTube</option><option value="remote_playlist" ${streamType==='remote_playlist'?'selected':''}>Lista remota M3U/M3U8</option></select></label><label>DRM<select id="ciDrmScheme"><option value="" ${!drmScheme?'selected':''}>Sin DRM</option><option value="clearkey" ${drmScheme==='clearkey'?'selected':''}>ClearKey / MultiKey</option></select></label></div><label id="ciKeysWrap">Claves ClearKey / MultiKey<textarea id="ciKeys" rows="4" spellcheck="false" placeholder="KID:KEY&#10;KID2:KEY2">${esc(existingKeys)}</textarea><span class="muted tiny">Una clave por línea. El PANEL la guarda como arreglo <b>keys</b> compatible con CO-CHI.</span></label><label>Headers opcionales<textarea id="ciHeaders" rows="4" spellcheck="false" placeholder="Referer: https://...&#10;Origin: https://...&#10;User-Agent: ...">${esc(existingHeaders)}</textarea></label><label>Fuentes de respaldo / FAILOVER<textarea id="ciBackupUris" rows="4" spellcheck="false" placeholder="https://respaldo-1/...&#10;https://respaldo-2/...">${esc(existingBackups)}</textarea><span class="muted tiny">Una URL por línea. El backend prueba la principal y usa el primer respaldo saludable al entregar TV1/TV2. Conserva siempre la URL principal original.</span></label><p class="muted tiny">Para Pluto u otra lista remota elegí <b>Lista remota M3U/M3U8</b>. Widevine con servidor de licencias no se muestra todavía porque la APK actual no implementa ese flujo; así evitamos guardar una configuración que no podría reproducir.</p></div>`:''}
+        <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
+        ${itemIndex!==null?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
+      </section>
+      <section class="content-editor-column content-editor-extra">
+        <label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json content-item-json-wide" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label>
+        <p class="muted small">Podés cambiar de categoría y orden. En Series, el PANEL mantiene el formato histórico compatible con CO-CHI y cifra al guardar.</p>
+      </section>
+    </div>
+    ${isSeries?`<div class="content-editor-series-grid"><div class="series-bulk-box">
+      <h4>CARGA RÁPIDA DE TEMPORADA</h4>
+      <p class="muted small">Pegá o revisá el JSON del primer capítulo. El PANEL conserva la estructura que CO-CHI ya interpreta correctamente: <b>T1 = 1, 2, 3...</b>; <b>T2 = 2-1, 2-2...</b>; <b>T3 = 3-1, 3-2...</b>. También avanza patrones de URL como <b>01x01</b> y <b>S01E01</b>, conservando claves, headers e iconos de la plantilla.</p>
+      <div class="form-row"><label>Temporada<input id="ciSeasonNumber" type="number" min="1" value="1"></label><label>Cantidad de capítulos<input id="ciSeasonCount" type="number" min="1" value="${Array.isArray(cur.temp)&&cur.temp.length?cur.temp.length:1}"></label><label>Primer capítulo<input id="ciFirstEpisode" type="number" min="1" value="1"></label></div>
+      <label>Plantilla del primer capítulo<textarea id="ciSeasonTemplate" class="content-item-json" spellcheck="false">${esc(JSON.stringify(existingFirst,null,2))}</textarea></label>
+      <div class="reorder-actions"><button id="ciGenerateSeason" type="button" class="primary">GENERAR TEMPORADA</button></div>
+      <div id="ciSeasonMsg" class="msg"></div>
+    </div>
+    <div class="series-bulk-box">
+      <h4>OMITIR INTRO / RESUMEN / SIGUIENTE EPISODIO</h4>
+      <p class="muted small">Configurá una vez los tiempos de cada temporada. Se aplican a todos sus capítulos. Si un capítulo es diferente, escribí su número en <b>Excepción de capítulo</b> y guardá tiempos propios. Formato: <b>MM:SS</b> o <b>HH:MM:SS</b>.</p>
+      <div class="form-row"><label>Temporada<input id="ciMarkerSeason" type="number" min="1" value="1"></label><label>Excepción de capítulo (opcional)<input id="ciMarkerEpisode" type="number" min="1" placeholder="Ej. 3"></label></div>
+      <div class="form-row"><label>Resumen · inicio<input id="ciRecapStart" placeholder="00:00"></label><label>Resumen · fin<input id="ciRecapEnd" placeholder="00:45"></label></div>
+      <div class="form-row"><label>Intro · inicio<input id="ciIntroStart" placeholder="00:45"></label><label>Intro · fin<input id="ciIntroEnd" placeholder="01:30"></label></div>
+      <label>Siguiente episodio desde<input id="ciNextEpisodeAt" placeholder="42:10"><span class="muted tiny">Cuando la app llegue a este punto podrá ofrecer SIGUIENTE EPISODIO.</span></label>
+      <div class="reorder-actions"><button id="ciLoadMarkers" type="button" class="ghost">CARGAR TIEMPOS</button><button id="ciSaveMarkers" type="button" class="primary">GUARDAR TIEMPOS</button><button id="ciClearMarkers" type="button" class="danger">BORRAR TIEMPOS</button></div>
+      <div id="ciMarkerMsg" class="msg"></div>
+    </div></div>`:''}
+    <div class="modal-actions content-editor-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div>
   </form>`);
+  $('#modal').classList.add('content-editor-modal');
   $$('[data-close]').forEach(x=>x.onclick=closeModal);
   $$('[data-item-move]').forEach(b=>b.onclick=()=>{
     if(itemIndex===null)return;
@@ -660,6 +850,74 @@ function editContentItem(groupIndex,itemIndex=null){
     if(b.dataset.itemMove==='last')to=sourceItems.length-1;
     moveArrayItem(sourceItems,itemIndex,to);d[groupIndex].samples=sourceItems;state.contentOpen.add(groupIndex);setContentPlain(d);closeModal();
   });
+  if(isSeries&&$('#ciGenerateSeason'))$('#ciGenerateSeason').onclick=()=>{
+    try{
+      const season=Math.max(1,Number($('#ciSeasonNumber').value)||1);
+      const count=Math.max(1,Number($('#ciSeasonCount').value)||1);
+      const firstEpisode=Math.max(1,Number($('#ciFirstEpisode').value)||1);
+      const template=JSON.parse($('#ciSeasonTemplate').value.trim()||'{}');
+      const generated=buildSeasonFromTemplate(template,season,count,firstEpisode);
+      const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
+      const existing=Array.isArray(extra.temp)?extra.temp:[];
+      // Las temporadas se acumulan. Detectamos el número con la misma convención histórica de SILO.
+      const seasonExists=existing.some(ep=>inferSeasonFromEpisodeEntry(ep)===season);
+      if(seasonExists){
+        const text=`LA TEMPORADA ${season} YA EXISTE. No se modificó ni reemplazó ningún capítulo.`;
+        msg($('#ciSeasonMsg'),text);toast(text,'error');return;
+      }
+      extra.temp=[...existing,...generated];$('#ciExtras').value=JSON.stringify(extra,null,2);
+      const totalSeasons=new Set(extra.temp.map(inferSeasonFromEpisodeEntry).filter(Boolean)).size;
+      const text=`TEMPORADA ${season} AGREGADA · ${count} capítulos · ${totalSeasons} temporada${totalSeasons===1?'':'s'} en la serie`;
+
+      msg($('#ciSeasonMsg'),text,true);toast(text,'ok');
+    }catch(err){msg($('#ciSeasonMsg'),'No se pudo generar la temporada: '+err.message);}
+  };
+  if(isSeries&&$('#ciLoadMarkers')){
+    const markerFields=()=>({season:Math.max(1,Number($('#ciMarkerSeason').value)||1),episode:Math.max(0,Number($('#ciMarkerEpisode').value)||0)});
+    const readExtra=()=>{const t=$('#ciExtras').value.trim();return t?JSON.parse(t):{};};
+    const writeExtra=x=>{$('#ciExtras').value=JSON.stringify(x,null,2);};
+    const loadMarkerFields=()=>{
+      try{
+        const {season,episode}=markerFields(),extra=readExtra(),pm=playbackMarkersFromExtra(extra);
+        const seasonData=pm.seasons[String(season)]||{};
+        const data=episode?((seasonData.episodes||{})[String(episode)]||{}):seasonData;
+        $('#ciRecapStart').value=markerSecondsToTime(data.recap?.start);$('#ciRecapEnd').value=markerSecondsToTime(data.recap?.end);
+        $('#ciIntroStart').value=markerSecondsToTime(data.intro?.start);$('#ciIntroEnd').value=markerSecondsToTime(data.intro?.end);
+        $('#ciNextEpisodeAt').value=markerSecondsToTime(data.nextEpisodeAt);
+        msg($('#ciMarkerMsg'),`Tiempos cargados: ${episode?`T${season} · capítulo ${episode}`:`Temporada ${season}`}`,true);
+      }catch(err){msg($('#ciMarkerMsg'),'No se pudieron cargar los tiempos: '+err.message);}
+    };
+    $('#ciLoadMarkers').onclick=loadMarkerFields;
+    $('#ciSaveMarkers').onclick=()=>{
+      try{
+        const {season,episode}=markerFields(),extra=readExtra(),pm=playbackMarkersFromExtra(extra),sk=String(season);
+        const recap=cleanMarkerRange(markerTimeToSeconds($('#ciRecapStart').value),markerTimeToSeconds($('#ciRecapEnd').value),'Resumen');
+        const intro=cleanMarkerRange(markerTimeToSeconds($('#ciIntroStart').value),markerTimeToSeconds($('#ciIntroEnd').value),'Intro');
+        const nextEpisodeAt=markerTimeToSeconds($('#ciNextEpisodeAt').value);
+        if(!recap&&!intro&&nextEpisodeAt===null)throw new Error('Ingresá al menos un marcador');
+        const data={};if(recap)data.recap=recap;if(intro)data.intro=intro;if(nextEpisodeAt!==null)data.nextEpisodeAt=nextEpisodeAt;
+        const seasonData={...(pm.seasons[sk]||{})};
+        if(episode){seasonData.episodes={...(seasonData.episodes||{}),[String(episode)]:data};}
+        else{const episodes=seasonData.episodes;if(recap)seasonData.recap=recap;else delete seasonData.recap;if(intro)seasonData.intro=intro;else delete seasonData.intro;if(nextEpisodeAt!==null)seasonData.nextEpisodeAt=nextEpisodeAt;else delete seasonData.nextEpisodeAt;if(episodes)seasonData.episodes=episodes;}
+        pm.seasons[sk]=seasonData;extra.playbackMarkers=pm;writeExtra(extra);
+        const scope=episode?`T${season} · capítulo ${episode}`:`Temporada ${season}`;msg($('#ciMarkerMsg'),`MARCADORES GUARDADOS · ${scope}`,true);toast(`Marcadores guardados · ${scope}`,'ok');
+      }catch(err){msg($('#ciMarkerMsg'),'No se pudieron guardar los tiempos: '+err.message);}
+    };
+    $('#ciClearMarkers').onclick=()=>{
+      try{
+        const {season,episode}=markerFields(),extra=readExtra(),pm=playbackMarkersFromExtra(extra),sk=String(season),seasonData={...(pm.seasons[sk]||{})};
+        if(episode&&seasonData.episodes){delete seasonData.episodes[String(episode)];if(!Object.keys(seasonData.episodes).length)delete seasonData.episodes;}
+        else if(!episode){delete seasonData.recap;delete seasonData.intro;delete seasonData.nextEpisodeAt;}
+        if(Object.keys(seasonData).length)pm.seasons[sk]=seasonData;else delete pm.seasons[sk];
+        if(Object.keys(pm.seasons).length)extra.playbackMarkers=pm;else delete extra.playbackMarkers;writeExtra(extra);loadMarkerFields();toast('Marcadores borrados','ok');
+      }catch(err){msg($('#ciMarkerMsg'),'No se pudieron borrar los tiempos: '+err.message);}
+    };
+    $('#ciMarkerSeason').onchange=loadMarkerFields;$('#ciMarkerEpisode').onchange=loadMarkerFields;loadMarkerFields();
+  }
+  const parseHeaderLines=text=>{const out={};for(const line of String(text||'').split(/\r?\n/)){const i=line.indexOf(':');if(i<=0)continue;const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
+  const parseKeyLines=text=>{const out=[];for(const line of String(text||'').split(/[\r\n,;]+/)){const p=line.trim();if(!p)continue;const i=p.indexOf(':');if(i<=0||i>=p.length-1)throw new Error('Clave inválida. Usá KID:KEY, una por línea.');const kid=p.slice(0,i).trim(),key=p.slice(i+1).trim();if(!kid||!key)throw new Error('Clave inválida. Usá KID:KEY.');out.push({kid,key});}return out;};
+  const refreshStreamFields=()=>{if(!isTv)return;const drm=$('#ciDrmScheme')?.value||'';if($('#ciKeysWrap'))$('#ciKeysWrap').style.display=drm==='clearkey'?'grid':'none';};
+  if(isTv){$('#ciDrmScheme')?.addEventListener('change',refreshStreamFields);$('#ciStreamType')?.addEventListener('change',()=>{if($('#ciStreamType').value==='remote_playlist'){if($('#ciDrmScheme'))$('#ciDrmScheme').value='';refreshStreamFields();}});refreshStreamFields();}
   $('#contentItemForm').onsubmit=e=>{
     e.preventDefault();
     try{
@@ -667,6 +925,14 @@ function editContentItem(groupIndex,itemIndex=null){
       const obj={...extra,name:$('#ciName').value.trim()};
       const icon=$('#ciIcon').value.trim(),uri=$('#ciUri').value.trim();
       if(icon)obj.icon=icon;else delete obj.icon;if(uri)obj.uri=uri;else delete obj.uri;
+      if(isTv){
+        const t=$('#ciStreamType').value||'auto',drm=$('#ciDrmScheme').value||'',headers=parseHeaderLines($('#ciHeaders').value);
+        if(t&&t!=='auto')obj.type=t;else delete obj.type;delete obj.tipo;
+        if(drm==='clearkey'){const keys=parseKeyLines($('#ciKeys').value);if(!keys.length)throw new Error('ClearKey seleccionado: cargá al menos un par KID:KEY.');obj.drm_scheme='clearkey';obj.keys=keys;delete obj.drm_license_url;}else{delete obj.drm_scheme;delete obj.keys;if(String(obj.drm_license_url||'').includes(':'))delete obj.drm_license_url;}
+        if(Object.keys(headers).length)obj.headers=headers;else delete obj.headers;
+        const backups=String($('#ciBackupUris')?.value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(backups.length)obj.backupUris=[...new Set(backups.filter(x=>x!==uri))];else delete obj.backupUris;
+        if(t==='remote_playlist'){delete obj.drm_scheme;delete obj.keys;delete obj.drm_license_url;}
+      }
       const targetGroup=Number($('#ciCategory').value);
       let pos=Math.max(1,Number($('#ciPosition').value)||1)-1;
       if(itemIndex===null){
@@ -733,25 +999,33 @@ $('#contentFormatBtn')?.addEventListener('click',()=>{
 $('#contentImportBtn')?.addEventListener('click',async()=>{
   try{
     const key=$('#contentKey').value;
+    if(!confirm(`ACTUALIZAR DESDE FUENTE traerá los cambios del JSON privado de ${key.toUpperCase()} y conservará el contenido que ya guardaste en el PANEL.\n\n¿Querés continuar?`))return;
     const srcNow=$('#contentSourceUrl').value.trim();
     const saved=(state.sources||[]).find(x=>x.source_key===key);
-    if(srcNow!==String(saved?.url||'').trim()||$('#contentSourceEnabled').checked!==(saved?.enabled!==false)){
-      await saveContentSource();
-    }
-    msg($('#contentMsg'),'Importando y desencriptando...');
-    const r=await api(`/api/admin/content/${key}/import`,{method:'POST'});
-    state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
-    setContentPlain(r.json);
+    if(srcNow!==String(saved?.url||'').trim()||$('#contentSourceEnabled').checked!==(saved?.enabled!==false))await saveContentSource();
+    msg($('#contentMsg'),'Actualizando desde la fuente privada sin perder el contenido guardado en el PANEL...');
+    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:true}});
+    await loadContent(true);
     const st=r.stats?`${r.stats.categories} categorías, ${r.stats.items} contenidos${r.stats.nested?`, ${r.stats.nested} capítulos/entradas`:''}`:'';
-    msg($('#contentMsg'),`Importado y DESENCRIPTADO correctamente desde ${r.sourceUrl}. ${st}. Las categorías quedan plegadas para navegar más rápido.`,true);
-  }catch(e){msg($('#contentMsg'),e.message);}
+    const diag=r.sourceSha256?` · ${r.sourceBytes} bytes · SHA256 ${r.sourceSha256.slice(0,16)}`:'';
+    const text=`ACTUALIZADO Y CONSERVADO · ${key.toUpperCase()} · ${st}${diag}`;msg($('#contentMsg'),text,true);toast(text,'ok');
+  }catch(e){msg($('#contentMsg'),e.message);toast(e.message,'bad');}
 });
 $('#contentSaveBtn')?.addEventListener('click',async()=>{
   try{
     const key=$('#contentKey').value,json=contentPlain();
     const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});
     await loadContent(true);
-    const text=`GUARDADO OK · ${key.toUpperCase()} encriptado${r.stats?` · ${r.stats.items} contenidos`:''}`;
+    const remote=r.remote||{};
+    let text='';
+    if(remote.kind==='private_upload'||r.originalStorage==='private_panel'){
+      const file=remote.fileName?` · ${remote.fileName}`:'';
+      text=`JSON ORIGINAL PRIVADO ACTUALIZADO · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · GUARDADO EN PANEL${file} · respaldo automático · la app todavía no fue modificada`;
+    }else{
+      const where=remote.kind==='release_asset'?`${remote.owner}/${remote.repo} · release ${remote.tag} · ${remote.assetName}`:(remote.filePath?`${remote.owner}/${remote.repo} · ${remote.filePath}`:'GitHub');
+      const verified=remote.verified?' · VERIFICADO EN GITHUB':'';
+      text=`JSON ORIGINAL ACTUALIZADO · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · ${where}${verified} · la app todavía no fue modificada`;
+    }
     msg($('#contentMsg'),text,true);toast(text,'ok');
   }catch(e){
     const text=e instanceof SyntaxError?'JSON inválido: '+e.message:e.message;
@@ -760,26 +1034,35 @@ $('#contentSaveBtn')?.addEventListener('click',async()=>{
 });
 $('#contentUseBtn')?.addEventListener('click',async()=>{
   try{
-    const key=$('#contentKey').value,url=`${location.origin}/api/content/${key}`;
-    const d=await api('/api/admin/sources');
-    const sources=d.sources.map(x=>({key:x.source_key,url:x.source_key===key?url:x.url,enabled:x.source_key===key?true:x.enabled}));
-    await api('/api/admin/sources',{method:'PUT',body:{sources}});
-    // Verify the public managed endpoint answers after assigning it.
-    const vr=await fetch(url,{cache:'no-store'});
-    if(!vr.ok)throw new Error(`La fuente quedó asignada pero la URL pública respondió HTTP ${vr.status}`);
-    const text=`USAR EN LA APP OK · ${key.toUpperCase()} apunta al JSON administrado por el PANEL`;
+    const key=$('#contentKey').value,json=contentPlain();
+    // v0.9.10: esta acción publica la edición actual para la app, sin modificar el JSON original de GitHub.
+    const r=await api(`/api/admin/content/${key}/publish`,{method:'POST',body:{json}});
+    await loadContent(true);
+    const text=`ENCRIPTADO Y CARGADO A LA APP · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · JSON original sin cambios`;
     msg($('#contentMsg'),text,true);toast(text,'ok');
   }catch(e){
-    msg($('#contentMsg'),e.message);toast(e.message,'bad');
+    const text=e instanceof SyntaxError?'JSON inválido: '+e.message:e.message;
+    msg($('#contentMsg'),text);toast(text,'bad');
   }
 });
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}
-  const rel=e.target.closest('[data-action="release-panel"]');if(rel){const card=rel.closest('[data-pdev]');if(!confirm('¿Liberar este dispositivo del PANEL?'))return;try{await api(`/api/admin/panel-devices/${Number(card.dataset.pdev)}/release`,{method:'POST'});closeModal();await loadAccounts();}catch(err){alert(err.message);}}
+  const rel=e.target.closest('[data-action="release-panel"]');if(rel){const card=rel.closest('[data-pdev]');const current=card?.dataset.current==='1';const warning=current?'\n\nEste es el dispositivo que estás usando: al liberarlo se cerrará esta sesión.':'';if(!confirm(`¿Liberar este dispositivo del PANEL?${warning}`))return;try{await api(`/api/admin/panel-devices/${Number(card.dataset.pdev)}/release`,{method:'POST'});closeModal();if(current){setSecret('');location.reload();return;}await loadAccounts();}catch(err){alert(err.message);}}
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
   window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
 bootstrap();
+
+
+async function loadResolverPublished(){const box=$('#resolverPublished');if(!box)return;try{const r=await api('/api/admin/stream-resolver/published'),items=r.items||[];box.innerHTML=items.length?items.map(x=>`<div class="resolver-item resolver-published-item"><div><span class="resolver-type">${esc(x.destination.toUpperCase())}</span> <strong>${esc(x.name)}</strong><div class="muted tiny">${esc(x.category)} · ${esc(x.type||'STREAM')}</div><div class="resolver-code">${esc(x.uri)}</div></div><div class="resolver-actions"><button class="ghost mini" data-resolver-move="${esc(x.id)}" data-from="${esc(x.destination)}">MOVER A ${x.destination==='tv1'?'TV2':'TV1'}</button><button class="danger mini" data-resolver-remove="${esc(x.id)}">QUITAR</button></div></div>`).join(''):'<div class="muted">Todavía no agregaste canales desde el Resolver.</div>';$$('[data-resolver-remove]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Quitar este canal de TV1/TV2? El resto de la lista no se modifica.'))return;try{await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverRemove)}`,{method:'DELETE'});toast('Canal quitado del destino','ok');await loadResolverPublished()}catch(e){alert(e.message)}});$$('[data-resolver-move]').forEach(b=>b.onclick=async()=>{const destination=b.dataset.from==='tv1'?'tv2':'tv1';if(!confirm(`¿Mover este canal a ${destination.toUpperCase()}?`))return;try{const rr=await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverMove)}/move`,{method:'POST',body:{destination}});toast(`${rr.name} movido a ${destination.toUpperCase()}`,'ok');await loadResolverPublished()}catch(e){alert(e.message)}})}catch(e){box.innerHTML=`<div class="msg bad">${esc(e.message)}</div>`}}
+function resolverLooksTemporary(raw){try{const u=new URL(String(raw||''));const keys=[...u.searchParams.keys()].map(x=>x.toLowerCase());return keys.some(k=>['exp','expires','expiry','token','sig','signature','auth','hdnts','hdnea','policy','key-pair-id','x-amz-expires','x-amz-signature'].includes(k)||/(?:^|_)(?:exp|token|sig|auth)(?:$|_)/.test(k))}catch{return false}}
+function resolverHeadersText(headers){return Object.entries(headers||{}).filter(([,v])=>String(v||'').trim()).map(([k,v])=>`${k}: ${v}`).join('\n')}
+function resolverParseHeaders(text){const out={};for(const line of String(text||'').split(/\r?\n/)){const i=line.indexOf(':');if(i<=0)continue;const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v}return out}
+async function publishResolvedStream(x,r,destination){const defaultName=(()=>{try{return new URL(r.pageUrl).hostname.replace(/^www\./,'').split('.')[0].toUpperCase()}catch{return 'CANAL WEB'}})();const detected=x.headers||r.recommendedHeaders||{};const edited=prompt(`Headers que se enviarán junto con la URL a ${destination.toUpperCase()} (podés editarlos):`,resolverHeadersText(detected));if(edited===null)return;const headers=resolverParseHeaders(edited);const temp=resolverLooksTemporary(x.url);const summary=`Destino: ${destination.toUpperCase()}\nTipo: ${x.type||'STREAM'}\nURL: ${x.url}\nOrigen: ${r.pageUrl||x.sourcePage||''}\nHeaders: ${Object.keys(headers).length?Object.keys(headers).join(', '):'ninguno'}${temp?'\n\n⚠ POSIBLE URL TEMPORAL/FIRMADA: puede vencer y requerir volver a resolverla.':''}`;if(!confirm(summary+'\n\n¿Continuar y completar los datos del canal?'))return;const name=prompt(`Nombre del canal para ${destination.toUpperCase()}:`,defaultName);if(!name)return;const category=prompt('Categoría de destino:','RESOLVER WEB');if(!category)return;const icon=prompt('Icono / logo (opcional):','')||'';const result=await api('/api/admin/stream-resolver/publish',{method:'POST',body:{destination,name:name.trim(),category:category.trim(),icon:icon.trim(),url:x.url,pageUrl:r.pageUrl||x.sourcePage||'',headers}});toast(`${result.name} agregado a ${destination.toUpperCase()} · ${result.probe.type} · headers ${Object.keys(headers).length}`,'ok');await loadResolverPublished()}
+function renderResolverResult(r){const out=$('#resolverResults'),play=r.playable||[],others=(r.candidates||[]).filter(x=>!['HLS','DASH','MP4'].includes(x.type));const hdr=Object.entries(r.recommendedHeaders||{}).map(([k,v])=>`<div><strong>${esc(k)}:</strong> <span class="resolver-code">${esc(v)}</span></div>`).join('');out.innerHTML=`<div class="resolver-box"><h4>Resultado</h4><div class="muted small">Página final</div><div class="resolver-code">${esc(r.pageUrl||'')}</div><div class="muted tiny">${(r.pagesChecked||[]).length} ${r.dynamic?'frames/recursos observados dinámicamente':'páginas/recursos inspeccionados, hasta 4 niveles' }.</div></div>`+`<div class="resolver-box"><h4>Fuentes reproducibles (${play.length})</h4>${play.length?play.map((x,i)=>`<div class="resolver-item resolver-playable"><div class="resolver-grow"><span class="resolver-type">${esc(x.type)}</span><span class="resolver-code">${esc(x.url)}</span><div class="muted tiny">Detectado desde: ${esc(x.sourcePage||r.pageUrl||'')}</div>${resolverLooksTemporary(x.url)?'<div class="badge blocked">⚠ POSIBLE URL TEMPORAL / FIRMADA</div>':''}<div class="muted tiny">Headers: ${esc(Object.keys(x.headers||r.recommendedHeaders||{}).join(', ')||'ninguno')}</div></div><div class="resolver-actions"><button class="ghost mini" data-resolver-probe="${i}">PROBAR</button><button class="primary mini" data-resolver-tv1="${i}">+ TV1</button><button class="primary mini" data-resolver-tv2="${i}">+ TV2</button></div><div class="resolver-probe-result" id="resolverProbe${i}"></div></div>`).join(''):'<div class="muted">No se detectó una fuente directa todavía.</div>'}</div>`+`<div class="resolver-box"><h4>Headers sugeridos para prueba</h4><div class="resolver-headers">${hdr}</div></div>`+`<div class="resolver-box"><h4>Recursos/iframes/scripts encontrados (${others.length})</h4>${others.slice(0,35).map(x=>`<div class="resolver-item"><span class="resolver-type">${esc(x.type)}</span><span class="resolver-code">${esc(x.url)}</span></div>`).join('')||'<div class="muted">Ninguno.</div>'}</div>`;$$('[data-resolver-probe]').forEach(b=>b.onclick=async()=>{const i=Number(b.dataset.resolverProbe),x=play[i],dst=$(`#resolverProbe${i}`);b.disabled=true;b.textContent='PROBANDO...';try{const pr=await api('/api/admin/stream-resolver/probe',{method:'POST',body:{url:x.url,headers:x.headers||r.recommendedHeaders||{}}});dst.innerHTML=pr.ok?`<span class="badge active">REPRODUCIBLE · ${esc(pr.type)} · HTTP ${pr.status}</span>`:`<span class="badge blocked">NO CONFIRMADO · HTTP ${pr.status} · ${esc(pr.type)}</span>`}catch(e){dst.innerHTML=`<span class="badge blocked">${esc(e.message)}</span>`}finally{b.disabled=false;b.textContent='PROBAR'}});$$('[data-resolver-tv1]').forEach(b=>b.onclick=()=>publishResolvedStream(play[Number(b.dataset.resolverTv1)],r,'tv1').catch(e=>alert(e.message)));$$('[data-resolver-tv2]').forEach(b=>b.onclick=()=>publishResolvedStream(play[Number(b.dataset.resolverTv2)],r,'tv2').catch(e=>alert(e.message)))}
+$('#resolverBtn')?.addEventListener('click',async()=>{const url=$('#resolverUrl').value.trim(),btn=$('#resolverBtn'),out=$('#resolverResults');if(!url){msg($('#resolverMsg'),'Ingresá una URL para analizar.');return}btn.disabled=true;btn.textContent='ANALIZANDO HASTA 4 NIVELES...';out.innerHTML='';msg($('#resolverMsg'),'');try{const r=await api('/api/admin/stream-resolver',{method:'POST',body:{url}});state.lastResolver=r;const play=r.playable||[];msg($('#resolverMsg'),play.length?`Encontré ${play.length} fuente(s) HLS/DASH/MP4. Podés probarlas y enviarlas a TV1 o TV2.`:`No apareció una fuente directa. Se siguieron iframes y scripts públicos hasta 4 niveles.`,play.length>0);renderResolverResult(r)}catch(e){msg($('#resolverMsg'),e.message)}finally{btn.disabled=false;btn.textContent='ANALIZAR PÁGINA'}});
+$('#resolverDynamicBtn')?.addEventListener('click',async()=>{const url=$('#resolverUrl').value.trim(),btn=$('#resolverDynamicBtn'),out=$('#resolverResults');if(!url){msg($('#resolverMsg'),'Ingresá una URL para analizar.');return}if(!confirm('El análisis dinámico abrirá temporalmente la página en un navegador del servidor durante unos segundos. ¿Continuar?'))return;btn.disabled=true;$('#resolverBtn').disabled=true;btn.textContent='ABRIENDO REPRODUCTOR...';out.innerHTML='';msg($('#resolverMsg'),'Ejecutando página y observando solicitudes públicas del reproductor. Puede tardar 10–25 segundos...');try{const r=await api('/api/admin/stream-resolver/dynamic',{method:'POST',body:{url}});state.lastResolver=r;const play=r.playable||[];msg($('#resolverMsg'),play.length?`Análisis dinámico: encontré ${play.length} fuente(s) reproducible(s). Ya podés probarlas o enviarlas a TV1/TV2.`:`El navegador cargó la página, pero no confirmó una fuente HLS/DASH/MP4 pública.`,play.length>0);renderResolverResult(r)}catch(e){msg($('#resolverMsg'),e.message)}finally{btn.disabled=false;$('#resolverBtn').disabled=false;btn.textContent='ANÁLISIS DINÁMICO'}});
+loadResolverPublished();

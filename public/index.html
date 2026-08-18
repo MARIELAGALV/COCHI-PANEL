@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.8.2</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.42</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -56,8 +56,15 @@
         <button class="nav-btn admin-only" data-view="promotions">★ <span>Promociones</span></button>
         <button class="nav-btn admin-only" data-view="demos">⏱ <span>Demos</span></button>
         <button class="nav-btn admin-only" data-view="adults">🔒 <span>Adultos</span></button>
-        <button class="nav-btn admin-only" data-view="sources">⌁ <span>Fuentes</span></button>
-        <button class="nav-btn admin-only" data-view="content">▤ <span>Manager contenido</span></button>
+        <button class="nav-btn admin-only" data-view="security">🛡 <span>Seguridad</span></button>
+        <div class="nav-group admin-only" id="contentToolsGroup">
+          <button class="nav-group-toggle" id="contentToolsToggle" type="button" aria-expanded="true">✎ <span>Edición de contenido</span><b>⌄</b></button>
+          <div class="nav-submenu">
+            <button class="nav-btn nav-sub-btn" data-view="content">▤ <span>Manager / edición</span></button>
+            <button class="nav-btn nav-sub-btn" data-view="sources">⌁ <span>Fuentes / JSON</span></button>
+            <button class="nav-btn nav-sub-btn" data-view="resolver">⌕ <span>Resolver stream</span></button>
+          </div>
+        </div>
       </nav>
       <div class="sidebar-bottom">
         <div class="status-dot-row"><span class="dot"></span> Backend activo</div>
@@ -77,10 +84,12 @@
         <div class="neon-card panel-card">
           <div class="card-head"><div><h3>Reglas activas</h3><p class="muted">Base comercial de CO-CHI PANEL.</p></div></div>
           <div class="rule-grid rule-grid-compact">
-            <div class="rule-card"><b>Servicio del cliente</b><span>1 crédito activa o renueva 30 días e incluye hasta 2 dispositivos.</span></div>
+            <div class="rule-card"><b>Servicio del cliente</b><span>1 crédito activa 30 días e incluye hasta 2 dispositivos. Si el perfil amplía su capacidad, la renovación cobra todos los bloques de 2 dispositivos juntos.</span></div>
+            <div class="rule-card"><b>Dispositivos adicionales</b><span>Se pueden sumar +2 dispositivos al mismo cliente por 1 crédito. Todos respetan una única fecha de vencimiento: la del perfil del cliente.</span></div>
+            <div class="rule-card"><b>Cambios de dispositivo</b><span>Máximo 2 eliminaciones/reemplazos por cliente cada mes. Cambiar o eliminar códigos no reinicia el derecho a demo.</span></div>
             <div class="rule-card"><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los días restantes se conservan y se suman 30 días.</span></div>
             <div class="rule-card"><b>Paneles y cargas</b><span>Cada ficha PANEL admite hasta 2 dispositivos. La carga mínima es de 10 créditos.</span></div>
-            <div class="rule-card"><b>Demos</b><span>Demos de 10 minutos o 1 hora cuando estén disponibles para tu panel.</span></div>
+            <div class="rule-card"><b>Demos</b><span>Los demos usan la duración definida globalmente por ADMINISTRACIÓN.</span></div>
           </div>
         </div>
       </section>
@@ -122,13 +131,19 @@
 
       <section id="view-demos" class="view admin-only">
         <div class="neon-card panel-card control-card">
-          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · ADMINISTRACIÓN elige 10 minutos o 1 hora · control exclusivo de ADMINISTRACIÓN.</p></div><div class="demo-global-actions"><button id="demoToggleBtn" class="primary">CARGANDO...</button><button id="demoCutAllBtn" class="danger-btn">CORTAR TODOS LOS DEMOS ACTIVOS</button></div></div>
+          <div class="card-head"><div><h3>Control global de demos</h3><p class="muted">1 demo por dispositivo · ADMINISTRACIÓN activa/desactiva y elige 10 minutos o 1 hora · aplicación automática al vincular.</p></div><div class="demo-global-actions"><button id="demoToggleBtn" class="primary">CARGANDO...</button><button id="demoCutAllBtn" class="danger-btn">CORTAR TODOS LOS DEMOS ACTIVOS</button></div></div>
           <div id="demoGlobalState" class="control-status"></div>
+          <div class="demo-duration-control"><h4>Duración global del demo</h4><p class="muted">ADMINISTRACIÓN define la duración que recibirán los nuevos demos.</p><div class="demo-global-actions"><button id="demoDuration10Btn" class="ghost">10 MINUTOS</button><button id="demoDuration60Btn" class="ghost">1 HORA</button></div><div id="demoDurationState" class="muted small"></div></div>
+          <div class="demo-category-control">
+            <div class="card-head"><div><h4>Contenido excluido de las demos</h4><p class="muted">Marcá categorías completas. Solo se ocultan mientras el dispositivo está en modo DEMO; al pasar a servicio normal recupera todo automáticamente.</p></div><button id="demoCategoriesSaveBtn" class="primary">GUARDAR RESTRICCIONES</button></div>
+            <div id="demoCategoryOptions" class="demo-category-grid"></div>
+            <div id="demoCategoryState" class="muted small"></div>
+          </div>
           <div class="rule-grid">
             <div class="rule-card"><b>1 por dispositivo</b><span>Un dispositivo que ya usó demo no puede recibir otro.</span></div>
-            <div class="rule-card"><b>10 min / 1 hora</b><span>ADMINISTRACIÓN elige la duración al otorgar el demo. El tiempo comienza al activarlo sobre un código vinculado.</span></div>
+            <div class="rule-card"><b>10 min / 1 hora</b><span>La duración se define globalmente aquí en ADMINISTRACIÓN y se aplica automáticamente al otorgar un demo.</span></div>
             <div class="rule-card"><b>Sin consumo</b><span>El demo no descuenta créditos.</span></div>
-            <div class="rule-card"><b>Saldo requerido</b><span>Una ficha con 0 créditos no puede otorgar demos.</span></div>
+            <div class="rule-card"><b>Aplicación automática</b><span>Los vendedores no otorgan demos manualmente. Al vincular un dispositivo a un cliente sin servicio, se aplica automáticamente la configuración global de ADMINISTRACIÓN.</span></div>
           </div>
         </div>
         <div class="neon-card table-card mt18"><div class="card-head panel-pad"><div><h3>Historial de demos</h3><p class="muted">Registro por dispositivo.</p></div></div><div class="table-wrap"><table>
@@ -153,14 +168,40 @@
         </table></div></div>
       </section>
 
+
+      <section id="view-security" class="view admin-only">
+        <div class="neon-card panel-card control-card">
+          <div class="card-head"><div><h3>Seguridad de reproducción</h3><p class="muted">Gateway exclusivo de CO-CHI en Cloudflare. APAGADO = comportamiento compatible actual. ENCENDIDO = las URLs reales se sustituyen por tickets cifrados del gateway.</p></div><span id="playbackSecurityBadge" class="badge off">CARGANDO</span></div>
+          <div class="rule-grid">
+            <div class="rule-card"><b>Separado de BLAF</b><span>Usa un Worker y una cuenta Cloudflare exclusivos para CO-CHI.</span></div>
+            <div class="rule-card"><b>URL real oculta</b><span>El catálogo entregado a la app contiene únicamente URLs temporales del gateway.</span></div>
+            <div class="rule-card"><b>Rotación</b><span>Al rotar la generación, los tickets anteriores dejan de ser aceptados por el Worker.</span></div>
+            <div class="rule-card"><b>Activación segura</b><span>El panel no permite encender este modo si el Worker no confirma la sincronización.</span></div>
+          </div>
+          <div class="demo-global-actions mt18"><button id="playbackSecurityToggleBtn" class="primary">CARGANDO...</button><button id="playbackSecurityRotateBtn" class="danger-btn">ROTAR CLAVE</button><button id="playbackSecuritySyncBtn" class="ghost">SINCRONIZAR WORKER</button></div>
+          <div id="playbackSecurityState" class="control-status"></div>
+          <div id="playbackSecurityMsg" class="msg"></div>
+        </div>
+      </section>
+
       <section id="view-sources" class="view admin-only">
-        <div class="neon-card panel-card sources-card"><div class="card-head"><div><h3>Fuentes de contenido</h3><p class="muted">TV1, TV2, Películas y Series quedan fuera del APK.</p></div><button id="saveSourcesBtn" class="primary">GUARDAR CAMBIOS</button></div><div id="sourcesList" class="sources-list"></div><div id="sourcesMsg" class="msg"></div></div>
+        <div class="neon-card panel-card sources-card"><div class="card-head"><div><h3>Fuentes privadas y salida protegida</h3><p class="muted">Configurá aquí los 4 orígenes reales. CO-CHI nunca recibe estas URLs: consume únicamente los endpoints protegidos del backend.</p></div><button id="saveSourcesBtn" class="primary">GUARDAR CAMBIOS</button></div><div id="sourcesList" class="sources-list"></div><div id="sourcesMsg" class="msg"></div></div>
+      </section>
+
+
+      <section id="view-resolver" class="view admin-only">
+        <div class="neon-card panel-card resolver-card">
+          <div class="card-head"><div><h3>Resolver stream web · ESTÁTICO + DINÁMICO</h3><p class="muted">Pegá una página pública. Primero analiza HTML/iframes y, si hace falta, puede ejecutar un navegador temporal para observar las solicitudes públicas del reproductor.</p></div><span class="badge">TEST</span></div>
+          <div class="resolver-form"><label>URL de la página<input id="resolverUrl" type="url" placeholder="https://www.enlace.org/envivo/"></label><button id="resolverBtn" class="primary" type="button">ANALIZAR PÁGINA</button><button id="resolverDynamicBtn" class="ghost" type="button">ANÁLISIS DINÁMICO</button></div>
+          <div class="muted tiny">El modo dinámico abre un navegador limpio por unos segundos y observa solo solicitudes públicas. No inicia sesión ni intenta saltar DRM o controles de acceso.</div>
+          <div id="resolverMsg" class="msg"></div><div id="resolverResults" class="resolver-results"></div><div class="resolver-box resolver-published-box"><h4>Canales agregados desde Resolver</h4><p class="muted small">Podés enviarlos a TV1 o TV2 y quitarlos después sin afectar los demás canales.</p><div id="resolverPublished"></div></div>
+        </div>
       </section>
 
       <section id="view-content" class="view admin-only">
         <div class="neon-card panel-card content-manager">
           <div class="card-head"><div><h3>Manager de Contenido</h3><p class="muted">Importá las listas actuales y trabajá con los datos desencriptados. Al guardar, CO-CHI PANEL vuelve a cifrar automáticamente el JSON que consume la app.</p></div></div>
-          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">IMPORTAR Y DESENCRIPTAR</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentSaveBtn" class="primary">GUARDAR + ENCRIPTAR</button><button id="contentUseBtn" class="code-btn">USAR EN LA APP</button></div>
+          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">ACTUALIZAR DESDE FUENTE</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentSaveBtn" class="primary" title="Guarda esta edición en la fuente maestra. Si existe un JSON privado en el PANEL, actualiza solo esa copia privada; si no, usa la fuente GitHub configurada. No publica todavía en la app">GUARDAR EN JSON ORIGINAL</button><button id="contentUseBtn" class="code-btn" title="Guarda esta edición, la encripta y la publica inmediatamente para CO-CHI">ENCRIPTAR Y CARGAR A LA APP</button></div>
           <div class="content-security-note"><strong>MODO ADMIN DESENCRIPTADO</strong><span>Lo que ves y editás aquí es legible. La URL pública del PANEL entrega el contenido cifrado para CO-CHI.</span></div>
           <div class="content-source-card">
             <div class="content-source-head"><div><h4>Origen del JSON</h4><p class="muted small">Acá podés ver o cambiar la URL/repo desde donde se importa TV1, TV2, Películas o Series.</p></div><span id="contentSourceLabel" class="badge active">TV1</span></div>
