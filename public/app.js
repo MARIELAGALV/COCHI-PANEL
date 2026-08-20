@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, content:{} };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{} };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -146,15 +146,50 @@ function renderAccounts(){
     return `<tr data-account="${x.id}"><td><b>${esc(x.name)}</b>${x.is_root_admin?'<div class="muted small">Panel principal</div>':`<div class="muted small">${esc(x.contact||'')}</div>`}</td><td><span class="role-chip role-${x.role_level}">${esc(x.role_name)}</span></td><td>${esc(x.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div></td><td>${x.panel_device_count}/2</td><td>${stat}<div class="muted small">${x.next_inactivity_block_at?`Límite: ${esc(fmt(x.next_inactivity_block_at))}`:''}</div></td><td><button class="ghost" data-action="account-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
-async function loadAccounts(render=true){const d=await api('/api/admin/accounts');state.accounts=d.accounts;if(render)renderAccounts();}
+async function loadAccounts(render=true){
+  const d=await api('/api/admin/accounts');
+  state.accounts=d.accounts;
+  state.roleSettings={enabledRoleLevels:Array.isArray(d.enabledRoleLevels)?d.enabledRoleLevels:[1,2,3,4],creatableRoleLevels:Array.isArray(d.creatableRoleLevels)?d.creatableRoleLevels:[]};
+  renderRoleCreationSettings();
+  updateNewAccountButton();
+  if(render)renderAccounts();
+}
 $('#accountSearch')?.addEventListener('input',renderAccounts);
 
 $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
+function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
+function updateNewAccountButton(){
+  const b=$('#newAccountBtn');if(!b)return;
+  const levels=currentCreatableRoleLevels();
+  b.classList.toggle('hidden',levels.length===0);
+  b.disabled=levels.length===0;
+}
+function renderRoleCreationSettings(){
+  if(state.me?.role_level!==1)return;
+  const enabled=new Set((state.roleSettings?.enabledRoleLevels||[]).map(Number));
+  $$('.role-create-toggle').forEach(x=>x.checked=enabled.has(Number(x.value)));
+  const names=[...enabled].sort((a,b)=>a-b).map(x=>roleNames[x]).filter(Boolean);
+  const st=$('#roleCreationState');if(st)st.textContent=names.length?`Habilitadas: ${names.join(', ')}`:'Todas las categorías PANEL están desactivadas para nuevas altas.';
+}
+$('#roleSettingsForm')?.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const enabledRoleLevels=$$('.role-create-toggle:checked').map(x=>Number(x.value));
+  try{
+    const r=await api('/api/admin/role-settings',{method:'PUT',body:{enabledRoleLevels}});
+    state.roleSettings.enabledRoleLevels=r.enabledRoleLevels||[];
+    msg($('#roleSettingsMsg'),'Categorías de creación guardadas.',true);
+    await loadAccounts();
+  }catch(err){msg($('#roleSettingsMsg'),err.message);}
+});
 function allowedRoleOptions(current=null){
-  const min=state.me.role_level===1?1:state.me.role_level;return [1,2,3,4].filter(x=>x>=min).map(x=>`<option value="${x}" ${current===x?'selected':''}>${roleNames[x]}</option>`).join('');
+  let levels=currentCreatableRoleLevels();
+  if(current!==null&&current!==undefined&&!levels.includes(Number(current)))levels=[Number(current),...levels];
+  levels=[...new Set(levels)].filter(x=>[1,2,3,4].includes(x));
+  return levels.map(x=>`<option value="${x}" ${Number(current)===x?'selected':''}>${roleNames[x]}</option>`).join('');
 }
 function openAccountModal(a=null){
   const admin=state.me.role_level===1,root=Boolean(a?.is_root_admin);
+  if(!a&&currentCreatableRoleLevels().length===0){toast('No hay categorías PANEL habilitadas para crear.','error');return;}
   
   const accountSummary=a?`
     <div class="edit-summary-grid">

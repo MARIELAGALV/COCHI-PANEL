@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.46</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.49</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -95,7 +95,20 @@
       </section>
 
       <section id="view-accounts" class="view">
-        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Solo categorías PANEL 1–4. Los clientes finales nunca aparecen acá.</span></div>
+        <div class="neon-card panel-card control-card admin-only" id="roleCreationCard">
+          <div class="card-head"><div><h3>Categorías habilitadas para crear</h3><p class="muted">Tildá únicamente las categorías PANEL que querés permitir crear. Destildar una categoría no borra ni bloquea las cuentas existentes.</p></div></div>
+          <form id="roleSettingsForm">
+            <div class="rule-grid">
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="1"> Administración</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="2"> Distribuidor</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="3"> Revendedor</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="4"> Vendedor</label>
+            </div>
+            <div class="panel-control-actions mt10"><button class="primary" type="submit">GUARDAR CATEGORÍAS</button><span id="roleCreationState" class="muted small"></span></div>
+            <div id="roleSettingsMsg" class="msg"></div>
+          </form>
+        </div>
+        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
         </table></div></div>

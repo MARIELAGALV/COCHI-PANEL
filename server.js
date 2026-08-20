@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.46';
+const VERSION = '0.9.49';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -530,6 +530,21 @@ function getSetting(key,fallback=''){const r=db.prepare('SELECT setting_value FR
 function setSetting(key,value){db.prepare(`INSERT INTO settings(setting_key,setting_value,updated_at) VALUES (?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at`).run(key,String(value),nowIso());}
 function boolSetting(key,fallback=false){return getSetting(key,fallback?'1':'0')==='1';}
 
+const PANEL_ROLE_LEVELS=[1,2,3,4];
+function enabledPanelRoleLevels(){
+  try{
+    const parsed=JSON.parse(getSetting('panel_enabled_role_levels','[1,2,3,4]'));
+    if(!Array.isArray(parsed))return [...PANEL_ROLE_LEVELS];
+    return [...new Set(parsed.map(Number).filter(x=>PANEL_ROLE_LEVELS.includes(x)))].sort((a,b)=>a-b);
+  }catch{return [...PANEL_ROLE_LEVELS];}
+}
+function isPanelRoleCreationEnabled(level){return enabledPanelRoleLevels().includes(Number(level));}
+function creatablePanelRoleLevelsFor(actor){
+  const enabled=enabledPanelRoleLevels();
+  if(Number(actor?.role_level)===1)return enabled;
+  return enabled.filter(level=>level>Number(actor?.role_level||99));
+}
+
 // ---- v0.9.42 / Seguridad de reproducción CO-CHI ----
 function playbackGeneration(){
   const n=Number(getSetting('playback_generation','1'));
@@ -564,9 +579,35 @@ function httpStreamUrl(v){
 }
 function objectPlaybackHeaders(obj){
   if(!obj||typeof obj!=='object')return {};
-  const src=(obj.headers&&typeof obj.headers==='object'&&!Array.isArray(obj.headers))?obj.headers:{};
   const out={};
-  for(const [k,v] of Object.entries(src))if(v!==undefined&&v!==null&&String(v).trim())out[String(k).slice(0,80)]=String(v).slice(0,4000);
+  const merge=(src)=>{
+    if(!src||typeof src!=='object'||Array.isArray(src))return;
+    for(const [k,v] of Object.entries(src)){
+      if(v===undefined||v===null||!String(v).trim())continue;
+      out[String(k).slice(0,80)]=String(v).slice(0,4000);
+    }
+  };
+
+  // Formato moderno: { headers: { Origin, Referer, User-Agent, ... } }
+  merge(obj.headers);
+
+  // Formato histórico de TV1/TV2 (también reconocido por la APK):
+  // { drm_header: [ { Origin, Referer, User-Agent, ... } ] }
+  // v0.9.46 no copiaba estos headers al ticket del Gateway, por lo que
+  // el Worker pedía el MPD/HLS al origen sin los headers requeridos.
+  if(Array.isArray(obj.drm_header)){
+    for(const entry of obj.drm_header)merge(entry);
+  }else{
+    merge(obj.drm_header);
+  }
+
+  // Alias tolerados para fuentes importadas de otros formatos.
+  if(Array.isArray(obj.drm_headers)){
+    for(const entry of obj.drm_headers)merge(entry);
+  }else{
+    merge(obj.drm_headers);
+  }
+
   for(const [srcKey,dstKey] of [['referer','Referer'],['referrer','Referer'],['origin','Origin'],['userAgent','User-Agent'],['user_agent','User-Agent'],['cookie','Cookie']]){
     if(obj[srcKey]!==undefined&&obj[srcKey]!==null&&String(obj[srcKey]).trim()&&!out[dstKey])out[dstKey]=String(obj[srcKey]).slice(0,4000);
   }
@@ -902,7 +943,7 @@ function clientRenewCreditCost(c){return Math.max(1,Math.ceil(clientDeviceLimit(
 function monthStartIso(){const d=new Date();return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)).toISOString();}
 function clientDeviceChangesThisMonth(clientId){return Number(db.prepare('SELECT COUNT(*) n FROM client_device_changes WHERE client_id=? AND created_at>=?').get(clientId,monthStartIso()).n);}
 function demoEverUsedByUid(uid){return Boolean(db.prepare('SELECT 1 FROM demo_device_history WHERE device_uid=? AND reset_by_admin_at IS NULL').get(uid));}
-function canCreateLevel(actor,level){if(level<1||level>5)return false;if(actor.role_level===1)return true;return level>=actor.role_level;}
+function canCreateLevel(actor,level){level=Number(level);if(!PANEL_ROLE_LEVELS.includes(level)||!isPanelRoleCreationEnabled(level))return false;if(Number(actor.role_level)===1)return true;return level>Number(actor.role_level); }
 function wouldCycle(accountId,newParentId){
   let cur=newParentId; let guard=0;
   while(cur && guard++<100){if(cur===accountId)return true;const r=accountRaw(cur);cur=r?r.parent_id:null;}
@@ -1437,10 +1478,22 @@ async function route(req,res){
       let rows=actor.role_level===1?db.prepare('SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY role_level,id').all():db.prepare('SELECT * FROM accounts WHERE parent_id=? AND deleted_at IS NULL ORDER BY role_level,id').all(actor.id);
       rows=rows.filter(x=>x.id!==actor.id || actor.role_level===1).map(accountPublic);
       for(const x of rows){x.panel_device_count=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(x.id).n);x.parent_name=x.parent_id?(accountRaw(x.parent_id)?.name||null):null;}
-      return sendJson(res,200,{accounts:rows});
+      return sendJson(res,200,{accounts:rows,enabledRoleLevels:enabledPanelRoleLevels(),creatableRoleLevels:creatablePanelRoleLevelsFor(actor)});
+    }
+    if(p==='/api/admin/role-settings'&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede configurar las categorías habilitadas'});
+      const b=await readJson(req),raw=Array.isArray(b.enabledRoleLevels)?b.enabledRoleLevels:[];
+      const enabled=[...new Set(raw.map(Number).filter(x=>PANEL_ROLE_LEVELS.includes(x)))].sort((a,b)=>a-b);
+      setSetting('panel_enabled_role_levels',JSON.stringify(enabled));
+      audit(actor.id,'panel_role_creation_settings_changed','settings',null,enabled.map(x=>roles[x]).join(', '));
+      return sendJson(res,200,{ok:true,enabledRoleLevels:enabled});
     }
     if(p==='/api/admin/accounts'&&m==='POST'){
-      const b=await readJson(req),level=Number(b.roleLevel);if(level===5)return sendJson(res,400,{error:'CLIENTE final no es una ficha PANEL. Se crea únicamente desde la sección Clientes finales'});if(!canCreateLevel(actor,level))return sendJson(res,403,{error:'No podés crear una categoría superior a la tuya'});
+      const b=await readJson(req),level=Number(b.roleLevel);
+      if(level===5)return sendJson(res,400,{error:'CLIENTE final no es una ficha PANEL. Se crea únicamente desde la sección Clientes finales'});
+      if(!PANEL_ROLE_LEVELS.includes(level))return sendJson(res,400,{error:'Categoría PANEL inválida'});
+      if(!isPanelRoleCreationEnabled(level))return sendJson(res,403,{error:`La categoría ${roles[level]} está desactivada por ADMINISTRACIÓN`});
+      if(!canCreateLevel(actor,level))return sendJson(res,403,{error:'Solo podés crear categorías inferiores a la tuya'});
       const name=String(b.name||'').trim();if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});const t=nowIso(),code=generateCode('accounts');
       const r=db.prepare('INSERT INTO accounts(name,role_level,parent_id,contact,notes,credits,active,inactivity_blocked,activation_code,created_at,updated_at) VALUES (?,?,?,?,?,0,1,0,?,?,?)')
         .run(name,level,actor.id,String(b.contact||'').trim(),String(b.notes||'').trim(),code,t,t);
@@ -1457,7 +1510,7 @@ async function route(req,res){
         if(b.active!==undefined&&!b.active)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal no puede bloquearse ni deshabilitarse'});
       }
       if(actor.role_level===1&&!rootProtected){
-        if(b.roleLevel!==undefined){role=Number(b.roleLevel);if(role<1||role>4)return sendJson(res,400,{error:'Categoría inválida'});}
+        if(b.roleLevel!==undefined){const requestedRole=Number(b.roleLevel);if(!PANEL_ROLE_LEVELS.includes(requestedRole))return sendJson(res,400,{error:'Categoría inválida'});if(requestedRole!==Number(target.role_level)&&!isPanelRoleCreationEnabled(requestedRole))return sendJson(res,409,{error:`La categoría ${roles[requestedRole]} está desactivada por ADMINISTRACIÓN`});role=requestedRole;}
         if(b.parentId!==undefined){parent=b.parentId===null?null:Number(b.parentId);if(parent===id||wouldCycle(id,parent))return sendJson(res,400,{error:'Relación de propietario inválida'});}
       } else if(actor.role_level!==1&&(b.roleLevel!==undefined||b.parentId!==undefined))return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar categoría o propietario'});
       const name=b.name!==undefined?String(b.name).trim():target.name;if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});
