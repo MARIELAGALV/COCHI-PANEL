@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.50';
+const VERSION = '0.9.51';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -26,6 +26,14 @@ const DEFAULT_ADULT_MAX_ATTEMPTS = 5;
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || IS_PRODUCTION;
 const RATE_BUCKETS = new Map();
+
+// v0.9.51 — Buscador de series y películas.
+// La credencial TMDb vive solo en el backend; nunca se entrega a la APK.
+const TMDB_API_BASE = 'https://api.themoviedb.org/3';
+const TMDB_API_KEY = String(process.env.TMDB_API_KEY || '').trim();
+const TMDB_READ_TOKEN = String(process.env.TMDB_READ_TOKEN || '').trim();
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
 
 // v0.9.43 — Gateway de reproducción separado para CO-CHI con compatibilidad estricta.
 // La seguridad queda APAGADA por defecto y solo puede habilitarse si Railway
@@ -1271,7 +1279,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
@@ -1281,6 +1289,52 @@ async function route(req,res){
     const r=db.prepare('INSERT INTO accounts(name,role_level,parent_id,contact,notes,credits,active,inactivity_blocked,activation_code,created_at,updated_at) VALUES (?,1,NULL,?,?,0,1,0,?,?,?)')
       .run(name,String(b.contact||'').trim(),String(b.notes||'').trim(),code,t,t);
     return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,role:'ADMINISTRACIÓN'});
+  }
+
+  // v0.9.51 — proxy autenticado de búsqueda. No expone la credencial de TMDb.
+  if(p==='/api/client-device/media-search'&&m==='GET'){
+    if(!rateLimit(req,res,'client_media_search',120,10*60*1000))return;
+    let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});
+    d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);
+    if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const q=String(u.searchParams.get('q')||'').trim();
+    if(q.length<2)return sendJson(res,400,{error:'Escribí al menos 2 letras'});
+    if(q.length>100)return sendJson(res,400,{error:'Búsqueda demasiado larga'});
+    if(!TMDB_API_KEY&&!TMDB_READ_TOKEN)return sendJson(res,503,{error:'Buscador de series y películas no configurado'});
+    const target=new URL(TMDB_API_BASE+'/search/multi');
+    target.searchParams.set('include_adult','false');
+    target.searchParams.set('language','es-AR');
+    target.searchParams.set('page','1');
+    target.searchParams.set('query',q);
+    if(TMDB_API_KEY)target.searchParams.set('api_key',TMDB_API_KEY);
+    const headers={Accept:'application/json','User-Agent':'CO-CHI-PANEL/'+VERSION};
+    if(TMDB_READ_TOKEN)headers.Authorization='Bearer '+TMDB_READ_TOKEN;
+    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+    try{
+      const r=await fetch(target,{method:'GET',headers,redirect:'follow',signal:ctl.signal});
+      const text=await r.text();
+      if(!r.ok)return sendJson(res,502,{error:'No se pudo realizar la búsqueda'});
+      const payload=JSON.parse(text),items=Array.isArray(payload?.results)?payload.results:[],results=[];
+      for(const item of items){
+        if(results.length>=30)break;
+        const type=String(item?.media_type||'');
+        if(type!=='movie'&&type!=='tv')continue;
+        if(item?.adult===true)continue;
+        const tv=type==='tv';
+        const title=String(tv?item?.name:item?.title||'').trim();
+        if(!title)continue;
+        const original=String(tv?item?.original_name:item?.original_title||'').trim();
+        const date=String(tv?item?.first_air_date:item?.release_date||'');
+        results.push({
+          id:Number(item?.id||0),media_type:type,title,original_title:original,
+          year:/^\d{4}/.test(date)?date.slice(0,4):'',poster_path:String(item?.poster_path||''),
+          overview:String(item?.overview||'').trim()
+        });
+      }
+      return sendJson(res,200,{ok:true,query:q,results});
+    }catch(e){
+      return sendJson(res,502,{error:'No se pudo realizar la búsqueda'});
+    }finally{clearTimeout(timer)}
   }
 
   const publicContent=p.match(/^\/api\/content\/(tv1|tv2|movies|series)$/);
