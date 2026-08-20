@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.49';
+const VERSION = '0.9.50';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1045,12 +1045,19 @@ function ensureAutomaticDemoForLinkedDevice(d){
   if(d.status==='pending'&&!demoRow(d.id)&&demoEverUsedByUid(d.device_uid)){
     const repairKey='demo_legacy_repair_0940_'+sha(String(d.device_uid)).slice(0,24);
     if(getSetting(repairKey,'0')!=='1'){
-      db.exec('BEGIN');
+      // v0.9.50: esta reparación puede ejecutarse mientras assign-by-code ya
+      // está dentro de una transacción. SAVEPOINT funciona tanto anidado como
+      // fuera de una transacción y evita "cannot start a transaction within a transaction".
+      db.exec('SAVEPOINT demo_legacy_repair_0940');
       try{
         db.prepare('DELETE FROM demo_device_history WHERE device_uid=?').run(d.device_uid);
         setSetting(repairKey,'1');
-        db.exec('COMMIT');
-      }catch(e){db.exec('ROLLBACK');throw e;}
+        db.exec('RELEASE SAVEPOINT demo_legacy_repair_0940');
+      }catch(e){
+        try{db.exec('ROLLBACK TO SAVEPOINT demo_legacy_repair_0940')}catch{}
+        try{db.exec('RELEASE SAVEPOINT demo_legacy_repair_0940')}catch{}
+        throw e;
+      }
     }
   }
   return grantConfiguredDemoToDevice(d,c,{grantedByAccountId:rootAdminId()});
