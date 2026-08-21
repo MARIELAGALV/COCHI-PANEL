@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.54';
+const VERSION = '0.9.56';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -41,15 +41,21 @@ function parseMediaProviders(){
   const raw=String(process.env.COCHI_MEDIA_PROVIDERS_JSON||'').trim();
   if(!raw)return [];
   try{
-    const parsed=JSON.parse(raw);if(!Array.isArray(parsed))return [];
+    // Railway puede guardar un array, un único objeto o, por compatibilidad, una URL directa.
+    let parsed;
+    if(/^https?:\/\//i.test(raw)) parsed=[{name:'Catálogo Railway',url:raw,mode:'catalog',enabled:true}];
+    else {
+      parsed=JSON.parse(raw);
+      if(!Array.isArray(parsed)) parsed=(parsed&&typeof parsed==='object')?[parsed]:[];
+    }
     return parsed.map((x,i)=>({
-      name:String(x?.name||`Proveedor ${i+1}`).trim().slice(0,80),
-      url:String(x?.url||'').trim(),token:String(x?.token||'').trim(),
+      name:String(x?.name||x?.nombre||`Proveedor ${i+1}`).trim().slice(0,80),
+      url:String(x?.url||x?.catalogUrl||x?.catalog_url||'').trim(),token:String(x?.token||'').trim(),
       mode:['auto','resolver','catalog'].includes(String(x?.mode||'auto').toLowerCase())?String(x?.mode||'auto').toLowerCase():'auto',
       cacheSeconds:Math.max(10,Math.min(900,Number(x?.cacheSeconds||60))),
       enabled:x?.enabled!==false
     })).filter(x=>x.enabled&&/^https?:\/\//i.test(x.url));
-  }catch(e){console.warn('[MEDIA-PROVIDERS] JSON inválido:',e.message);return []}
+  }catch(e){console.warn('[MEDIA-PROVIDERS] COCHI_MEDIA_PROVIDERS_JSON inválido:',e.message);return []}
 }
 const MEDIA_PROVIDERS=parseMediaProviders();
 const MEDIA_PROVIDER_CACHE=new Map();
@@ -1346,12 +1352,17 @@ function providerCatalogSearchPayload(payload,providerName,query,limit=30){
     if(!item||typeof item!=='object'||item.adult===true)return;
     const title=providerCatalogTitle(item);if(!title)return;
     const normalized=mediaNormTitle(title);if(!normalized||(!normalized.includes(wanted)&&!wanted.includes(normalized)))return;
-    // Evita que una categoría/grupo con "name" sea mostrada como película.
+    // Evita mostrar categorías/grupos como si fueran películas, pero no exige que el item ya tenga
+    // año/póster: muchos catálogos CO-CHI traen solo título + URI/enlaces.
     const direct=providerCatalogDirectOptions(item,parent,providerName,0);
     const hasMediaHints=Boolean(providerCatalogYear(item)||providerCatalogPoster(item,parent)||providerCatalogOverview(item,parent)||
-      providerString(item,'type','tipo','media_type','mediaType','tmdb_id','tmdbId','imdb_id','imdbId')||
-      Array.isArray(item?.seasons)||Array.isArray(item?.temporadas)||Array.isArray(item?.episodes)||Array.isArray(item?.episodios));
-    if(!direct.length&&!hasMediaHints)return;
+      providerString(item,'type','tipo','media_type','mediaType','tmdb_id','tmdbId','imdb_id','imdbId','id')||
+      Array.isArray(item?.seasons)||Array.isArray(item?.temporadas)||Array.isArray(item?.episodes)||Array.isArray(item?.episodios)||
+      Array.isArray(item?.sources)||Array.isArray(item?.options)||Array.isArray(item?.servers)||Array.isArray(item?.streams)||Array.isArray(item?.videos));
+    const containerOnly=Boolean(!direct.length&&!hasMediaHints&&
+      ['samples','items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups','catalog','catalogo']
+        .some(k=>item[k]&&typeof item[k]==='object'));
+    if(containerOnly)return;
     const mediaType=providerCatalogMediaType(item,parent),year=providerCatalogYear(item),dedupe=`${mediaType}|${normalized}|${year}`;
     if(seen.has(dedupe))return;seen.add(dedupe);
     out.push({
@@ -1377,13 +1388,17 @@ function providerCatalogSearchPayload(payload,providerName,query,limit=30){
   walk(payload,{},0);return out;
 }
 function providerLooksLikeCatalog(provider){
-  try{const u=new URL(provider.url);return provider.mode==='catalog'||(provider.mode==='auto'&&/\.json(?:$|\?)/i.test(u.pathname+u.search))}catch{return false}
+  // En v0.9.56 "auto" también puede ser un catálogo aunque Railway/GitHub/CDN use una URL
+  // que no termine literalmente en .json. Solo "resolver" queda fuera de la búsqueda inicial.
+  try{new URL(provider.url);return provider.mode==='catalog'||provider.mode==='auto'}catch{return false}
 }
 async function remoteProviderCatalogSearch(query,limit=30){
   const providers=MEDIA_PROVIDERS.filter(providerLooksLikeCatalog);if(!providers.length)return [];
   const settled=await Promise.all(providers.map(async provider=>{
-    try{const target=new URL(provider.url),payload=await providerFetchJson(provider,target);return providerCatalogSearchPayload(payload,provider.name,query,limit)}
-    catch(e){console.warn(`[MEDIA-PROVIDER-SEARCH] ${provider.name}: ${String(e?.message||e)}`);return []}
+    try{
+      const target=new URL(provider.url),payload=await providerFetchJson(provider,target);
+      return providerCatalogSearchPayload(payload,provider.name,query,limit);
+    }catch(e){console.warn(`[MEDIA-PROVIDER-SEARCH] ${provider.name}: ${String(e?.message||e)}`);return []}
   }));
   const out=[],seen=new Set();
   for(const list of settled)for(const item of list){
@@ -1401,7 +1416,7 @@ function mergeMediaSearchResults(...lists){
 }
 function normalizeProviderOption(raw,providerName,index){
   if(!raw||typeof raw!=='object')return null;
-  const url=String(raw.url||raw.uri||raw.stream||'').trim();if(!/^https?:\/\//i.test(url))return null;
+  const url=String(raw.url||raw.uri||raw.stream||raw.file||raw.src||raw.video_url||raw.videoUrl||raw.link||raw.media_url||raw.mediaUrl||raw.movie_url||raw.movieUrl||raw.playback_url||raw.playbackUrl||'').trim();if(!/^https?:\/\//i.test(url))return null;
   const headers={};for(const [k,v] of Object.entries(raw.headers||{}))if(k&&v!==undefined&&v!==null)headers[String(k)]=String(v);
   const drm=raw.drm&&typeof raw.drm==='object'?raw.drm:{};
   let pairs=String(raw.clear_key_pairs||raw.clearKeyPairs||raw.clearkey||drm.clear_key_pairs||drm.clearKeyPairs||'').trim();
@@ -1427,11 +1442,43 @@ function flattenProviderPayload(payload,providerName){
   }
   return raw.map((x,i)=>normalizeProviderOption(x,providerName,i)).filter(Boolean);
 }
+// v0.9.56 — detección de contenido por terminación multimedia, no por la URL del catálogo.
+// Se inspecciona el PATH de la URL, por lo que también reconoce: pelicula.mp4?token=... o stream.m3u8?expires=...
+const PROVIDER_MEDIA_EXTENSIONS=['mkv','mp4','m3u8','mpd','webm','avi','mov','m4v','ts','m2ts','mp3','aac','m4a','flac','ogg','wav'];
+function providerMediaExtension(value){
+  const raw=String(value||'').trim();if(!/^https?:\/\//i.test(raw))return '';
+  try{
+    const target=new URL(raw);let pathname='';
+    try{pathname=decodeURIComponent(target.pathname||'')}catch{pathname=target.pathname||''}
+    const m=pathname.match(/\.([a-z0-9]{2,8})$/i);if(!m)return '';
+    const ext=String(m[1]||'').toLowerCase();return PROVIDER_MEDIA_EXTENSIONS.includes(ext)?ext:'';
+  }catch{return ''}
+}
+function providerLooksLikeMediaUrl(value){return Boolean(providerMediaExtension(value))}
+function providerFindMediaUrls(node,depth=0,out=[],seen=new Set()){
+  if(depth>3||node===null||node===undefined||out.length>=50)return out;
+  if(typeof node==='string'){
+    const value=node.trim();if(providerLooksLikeMediaUrl(value)&&!seen.has(value)){seen.add(value);out.push(value)}
+    return out;
+  }
+  if(Array.isArray(node)){for(const x of node){providerFindMediaUrls(x,depth+1,out,seen);if(out.length>=50)break}return out}
+  if(typeof node!=='object')return out;
+  // No atravesamos contenedores de otras películas/series para no adjudicar sus streams al título padre.
+  const catalogContainers=new Set(['items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups','catalog','catalogo']);
+  for(const [key,value] of Object.entries(node)){
+    if(catalogContainers.has(String(key).toLowerCase()))continue;
+    if(typeof value==='string'){
+      const v=value.trim();if(providerLooksLikeMediaUrl(v)&&!seen.has(v)){seen.add(v);out.push(v)}
+    }else if(value&&typeof value==='object')providerFindMediaUrls(value,depth+1,out,seen);
+    if(out.length>=50)break;
+  }
+  return out;
+}
 function providerString(o,...keys){
   for(const k of keys){const v=o&&typeof o==='object'?o[k]:'';if(v!==undefined&&v!==null&&String(v).trim())return String(v).trim()}
   return '';
 }
-function providerCatalogTitle(item){return providerString(item,'title','name','nombre','titulo','movie','show')}
+function providerCatalogTitle(item){return providerString(item,'title','name','nombre','titulo','movie','show','label','display_name','displayName','nombre_pelicula','nombrePelicula','nombre_serie','nombreSerie')}
 function providerCatalogYear(item){return mediaYear(item,providerCatalogTitle(item))}
 function providerCatalogLanguage(item,parent={}){return providerString(item,'language','idioma','audio')||providerString(parent,'language','idioma','audio')}
 function providerCatalogSubtitles(item,parent={}){return providerString(item,'subtitles','subtitulos','subs')||providerString(parent,'subtitles','subtitulos','subs')}
@@ -1451,26 +1498,30 @@ function providerMatchScore(item,params){
   return score;
 }
 function providerCatalogDirectOptions(item,parent,providerName,startIndex=0){
-  const options=[];
+  const options=[],seenUrls=new Set();
   if(!item||typeof item!=='object')return options;
   const inherited={
     language:providerCatalogLanguage(item,parent),subtitles:providerCatalogSubtitles(item,parent),
     quality:providerCatalogQuality(item,parent),type:providerCatalogType(item,parent),
     server:providerString(item,'server','servidor','host')||providerString(parent,'server','servidor','name','nombre')||providerName
   };
-  const nestedKeys=['sources','options','servers','servidores','links','enlaces','mirrors','streams','videos'];
+  function pushOption(raw){
+    const o=normalizeProviderOption(raw,providerName,startIndex+options.length);if(!o||seenUrls.has(o.url))return;
+    seenUrls.add(o.url);const ext=providerMediaExtension(o.url);if(ext&&(!o.type||o.type==='auto'))o.type=ext;options.push(o);
+  }
+  const nestedKeys=['sources','options','servers','servidores','links','enlaces','mirrors','streams','videos','files','archivos','playback'];
   for(const key of nestedKeys){
     const arr=Array.isArray(item[key])?item[key]:[];
     for(const x of arr){
-      if(typeof x==='string'){
-        const o=normalizeProviderOption({...inherited,url:x},providerName,startIndex+options.length);if(o)options.push(o);
-      }else if(x&&typeof x==='object'){
-        const o=normalizeProviderOption({...inherited,...x,language:providerString(x,'language','idioma','audio')||inherited.language,subtitles:providerString(x,'subtitles','subtitulos','subs')||inherited.subtitles,quality:providerString(x,'quality','calidad','qualityLabel')||inherited.quality,server:providerString(x,'server','servidor','host','name')||inherited.server},providerName,startIndex+options.length);if(o)options.push(o);
-      }
+      if(typeof x==='string')pushOption({...inherited,url:x});
+      else if(x&&typeof x==='object')pushOption({...inherited,...x,language:providerString(x,'language','idioma','audio')||inherited.language,subtitles:providerString(x,'subtitles','subtitulos','subs')||inherited.subtitles,quality:providerString(x,'quality','calidad','qualityLabel')||inherited.quality,server:providerString(x,'server','servidor','host','name')||inherited.server});
     }
   }
-  const direct=providerString(item,'stream','uri','video_url','videoUrl','file','src','url','link');
-  if(direct){const o=normalizeProviderOption({...inherited,...item,url:direct,language:inherited.language,subtitles:inherited.subtitles,quality:inherited.quality,server:inherited.server},providerName,startIndex+options.length);if(o)options.push(o)}
+  const direct=providerString(item,'stream','uri','video_url','videoUrl','file','src','url','link','media_url','mediaUrl','movie_url','movieUrl','playback_url','playbackUrl');
+  if(direct)pushOption({...inherited,...item,url:direct,language:inherited.language,subtitles:inherited.subtitles,quality:inherited.quality,server:inherited.server});
+
+  // Si el proveedor usa nombres de campos desconocidos, igualmente detectamos el stream por su extensión.
+  for(const mediaUrl of providerFindMediaUrls(item))pushOption({...inherited,url:mediaUrl});
   return options;
 }
 function extractCatalogOptions(payload,providerName,params){
@@ -1499,19 +1550,28 @@ async function providerFetchJson(provider,target){
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
     const r=await fetch(target,{headers,redirect:'follow',signal:ctl.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const text=await r.text();const payload=JSON.parse(text);MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload});return payload;
+    let text=await r.text();text=text.replace(/^\uFEFF/,'').trim();
+    let payload=JSON.parse(text);
+    // Algunos endpoints devuelven el JSON válido serializado dentro de un string.
+    if(typeof payload==='string'){const nested=payload.trim();if(nested.startsWith('{')||nested.startsWith('['))payload=JSON.parse(nested)}
+    MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload});return payload;
   }finally{clearTimeout(timer)}
 }
 async function fetchMediaProvider(provider,params){
   try{
-    const target=new URL(provider.url);
-    const isJsonCatalog=/\.json(?:$|\?)/i.test(target.pathname+target.search);
-    const addQuery=provider.mode==='resolver'||(provider.mode==='auto'&&!isJsonCatalog);
-    if(addQuery)for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&String(v)!=='')target.searchParams.set(k,String(v));
-    const payload=await providerFetchJson(provider,target);
-    const direct=flattenProviderPayload(payload,provider.name);if(direct.length)return direct;
-    if(provider.mode!=='resolver')return extractCatalogOptions(payload,provider.name,params);
-    return [];
+    // v0.9.56: jamás usamos ".json" en la URL para decidir qué tipo de proveedor es.
+    // catalog/auto primero leen la URL TAL CUAL y buscan el título + sus streams por extensión.
+    if(provider.mode!=='resolver'){
+      const catalogTarget=new URL(provider.url),catalogPayload=await providerFetchJson(provider,catalogTarget);
+      const catalogOptions=extractCatalogOptions(catalogPayload,provider.name,params);if(catalogOptions.length)return catalogOptions;
+      if(provider.mode==='catalog')return [];
+    }
+
+    // resolver, o fallback de auto: recién aquí agregamos los parámetros de la película.
+    const resolverTarget=new URL(provider.url);
+    for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&String(v)!=='')resolverTarget.searchParams.set(k,String(v));
+    const resolverPayload=await providerFetchJson(provider,resolverTarget);
+    return flattenProviderPayload(resolverPayload,provider.name);
   }catch(e){console.warn(`[MEDIA-PROVIDER] ${provider.name}: ${String(e?.message||e)}`);return []}
 }
 function mediaLanguageRank(option){
@@ -1529,7 +1589,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaEngine:'remote-v2',serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v4',mediaDetection:'media-extensions-v1',mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
