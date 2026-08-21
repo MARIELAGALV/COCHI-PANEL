@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.56';
+const VERSION = '0.9.57';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1543,17 +1543,68 @@ function extractCatalogOptions(payload,providerName,params){
   }
   return out;
 }
+function providerTitleFromMediaUrl(rawUrl){
+  try{
+    const u=new URL(String(rawUrl||''));let base=String(u.pathname||'').split('/').filter(Boolean).pop()||'';
+    try{base=decodeURIComponent(base)}catch{}
+    base=base.replace(/\.([a-z0-9]{2,8})$/i,'').replace(/[._]+/g,' ').replace(/[-]+/g,' ').replace(/\s+/g,' ').trim();
+    // Limpia etiquetas técnicas frecuentes del nombre de archivo sin quitar el año.
+    base=base.replace(/\b(?:2160p|1080p|720p|480p|4k|uhd|hdr10?|webrip|web[ -]?dl|bluray|brrip|dvdrip|x26[45]|h26[45]|hevc|av1|aac|ac3|eac3|dts)\b/gi,' ')
+      .replace(/\s+/g,' ').trim();
+    return base.slice(0,180);
+  }catch{return ''}
+}
+function providerTextCatalog(text,sourceUrl=''){
+  const body=String(text||'').replace(/^\uFEFF/,'').replace(/\\\//g,'/').replace(/\r/g,'');
+  const out=[],seen=new Set();
+  const add=(rawUrl,title='')=>{
+    let url=String(rawUrl||'').trim().replace(/^[\s'"(<]+|[\s'")>,;]+$/g,'');
+    if(!url)return;
+    try{url=new URL(url,sourceUrl||undefined).toString()}catch{return}
+    if(!providerLooksLikeMediaUrl(url)||seen.has(url))return;seen.add(url);
+    const cleanTitle=String(title||'').replace(/^[-|,:;=\s]+|[-|,:;=\s]+$/g,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    out.push({title:(cleanTitle||providerTitleFromMediaUrl(url)||`Media ${out.length+1}`).slice(0,180),url,type:providerMediaExtension(url)||'auto'});
+  };
+  // M3U/M3U8: #EXTINF aporta el título y la línea siguiente la URL.
+  let extinfTitle='';
+  for(const rawLine of body.split('\n')){
+    const line=rawLine.trim();if(!line)continue;
+    if(/^#EXTINF:/i.test(line)){const comma=line.indexOf(',');extinfTitle=comma>=0?line.slice(comma+1).trim():'';continue}
+    if(line.startsWith('#'))continue;
+    const abs=line.match(/https?:\/\/[^\s'"<>]+/i);
+    if(abs){const prefix=line.slice(0,abs.index||0).trim();add(abs[0],extinfTitle||prefix);extinfTitle='';continue}
+    if(extinfTitle){add(line,extinfTitle);extinfTitle=''}
+  }
+  // Texto/HTML/JSON imperfecto: rescata cualquier URL absoluta con extensión multimedia.
+  for(const m of body.matchAll(/https?:\/\/[^\s'"<>]+/gi))add(m[0],'');
+  // También tolera href/src relativos que terminen en una extensión admitida.
+  for(const m of body.matchAll(/["']([^"']+\.(?:mkv|mp4|m3u8|mpd|webm|avi|mov|m4v|ts|m2ts|mp3|aac|m4a|flac|ogg|wav)(?:[?#][^"']*)?)["']/gi))add(m[1],'');
+  if(sourceUrl&&providerLooksLikeMediaUrl(sourceUrl))add(sourceUrl,'');
+  return out;
+}
 async function providerFetchJson(provider,target){
   const cacheKey=`${provider.name}|${target.toString()}`;const cached=MEDIA_PROVIDER_CACHE.get(cacheKey),now=Date.now();
   if(cached&&now-cached.at<provider.cacheSeconds*1000)return cached.payload;
-  const headers={Accept:'application/json','User-Agent':'CO-CHI-PANEL/'+VERSION};if(provider.token)headers.Authorization='Bearer '+provider.token;
+  const headers={Accept:'application/json,text/plain,application/x-mpegURL,application/vnd.apple.mpegurl,text/html,*/*','User-Agent':'CO-CHI-PANEL/'+VERSION};if(provider.token)headers.Authorization='Bearer '+provider.token;
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
     const r=await fetch(target,{headers,redirect:'follow',signal:ctl.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);
     let text=await r.text();text=text.replace(/^\uFEFF/,'').trim();
-    let payload=JSON.parse(text);
-    // Algunos endpoints devuelven el JSON válido serializado dentro de un string.
-    if(typeof payload==='string'){const nested=payload.trim();if(nested.startsWith('{')||nested.startsWith('['))payload=JSON.parse(nested)}
+    let payload;
+    try{
+      payload=JSON.parse(text);
+      // Algunos endpoints devuelven el JSON válido serializado dentro de un string.
+      if(typeof payload==='string'){
+        const nested=payload.trim();
+        if(nested.startsWith('{')||nested.startsWith('['))payload=JSON.parse(nested);
+        else payload=providerTextCatalog(nested,r.url||target.toString());
+      }
+    }catch{
+      // v0.9.57: Railway ya no necesita entregar JSON. Se aceptan M3U, texto, HTML o listas
+      // y se construye un catálogo a partir de URLs con extensión multimedia reconocida.
+      payload=providerTextCatalog(text,r.url||target.toString());
+      if(!payload.length)throw new Error('Respuesta sin JSON válido ni enlaces multimedia reconocibles');
+    }
     MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload});return payload;
   }finally{clearTimeout(timer)}
 }
@@ -1589,7 +1640,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v4',mediaDetection:'media-extensions-v1',mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v5',mediaDetection:'media-extensions-v2-flex-source',mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
