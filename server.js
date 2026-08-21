@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.57';
+const VERSION = '0.9.58';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1305,7 +1305,7 @@ function mediaNormTitle(value){
     .replace(/&/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
 }
 function mediaYear(item,title=''){
-  const raw=String(item?.year||item?.release_year||item?.releaseYear||item?.date||item?.release_date||'');
+  const raw=String(item?.year||item?.anio||item?.['año']||item?.release_year||item?.releaseYear||item?.date||item?.release_date||'');
   const m=raw.match(/(?:19|20)\d{2}/)||String(title||'').match(/(?:19|20)\d{2}/);return m?m[0]:'';
 }
 function localCatalogSearch(query){
@@ -1337,8 +1337,8 @@ function providerCatalogMediaType(item,parent={}){
   return 'movie';
 }
 function providerCatalogPoster(item,parent={}){
-  return providerString(item,'poster_url','posterUrl','poster','logo','image','imagen','thumbnail','thumb','cover','portada')||
-    providerString(parent,'poster_url','posterUrl','poster','logo','image','imagen','thumbnail','thumb','cover','portada');
+  return providerString(item,'poster_url','posterUrl','poster','icono','iconpng','logo','image','imagen','thumbnail','thumb','cover','portada','iconoHorizontal')||
+    providerString(parent,'poster_url','posterUrl','poster','icono','iconpng','logo','image','imagen','thumbnail','thumb','cover','portada','iconoHorizontal');
 }
 function providerCatalogOverview(item,parent={}){
   return providerString(item,'overview','description','descripcion','sinopsis','synopsis','plot')||
@@ -1386,6 +1386,38 @@ function providerCatalogSearchPayload(payload,providerName,query,limit=30){
     }
   }
   walk(payload,{},0);return out;
+}
+
+// v0.9.58 — Adaptadores acumulativos de catálogos remotos.
+// Cada formato nuevo se transforma a la estructura normal que ya entiende el buscador,
+// sin reemplazar ni alterar los adaptadores anteriores (JSON flexible / M3U / texto / HTML).
+function providerLooksLikeCochiEncryptedCatalog(payload){
+  if(!Array.isArray(payload))return false;
+  let coded=0,plain=0;
+  for(const group of payload){
+    const arr=Array.isArray(group?.samples)?group.samples:[];
+    for(const sample of arr.slice(0,8)){
+      if(sample&&typeof sample==='object'&&typeof sample.code==='string'&&sample.code.trim().length>=24)coded++;
+      else if(sample&&typeof sample==='object'&&(sample.name||sample.title||sample.url||sample.uri))plain++;
+    }
+    if(coded>=1)break;
+  }
+  return coded>0&&plain===0;
+}
+function providerAdaptCatalogPayload(payload,providerName='Proveedor'){
+  let current=payload,format='generic-json';
+  // Adaptador #1: formato histórico CO-CHI/BLAF con samples[].code en AES-256-ECB + Base64.
+  // Se intenta solo cuando la forma del catálogo coincide; si no abre con la clave configurada,
+  // se conserva el payload original para que otros adaptadores puedan intentar reconocerlo.
+  if(providerLooksLikeCochiEncryptedCatalog(current)){
+    try{
+      current=decryptManagedContent(current);
+      format='cochi-aes256-ecb';
+    }catch(e){
+      console.warn(`[MEDIA-ADAPTER] ${providerName}: catálogo tipo CO-CHI cifrado detectado pero no se pudo abrir: ${String(e?.message||e)}`);
+    }
+  }
+  return {payload:current,format};
 }
 function providerLooksLikeCatalog(provider){
   // En v0.9.56 "auto" también puede ser un catálogo aunque Railway/GitHub/CDN use una URL
@@ -1507,7 +1539,10 @@ function providerCatalogDirectOptions(item,parent,providerName,startIndex=0){
   };
   function pushOption(raw){
     const o=normalizeProviderOption(raw,providerName,startIndex+options.length);if(!o||seenUrls.has(o.url))return;
-    seenUrls.add(o.url);const ext=providerMediaExtension(o.url);if(ext&&(!o.type||o.type==='auto'))o.type=ext;options.push(o);
+    seenUrls.add(o.url);const ext=providerMediaExtension(o.url);
+    // Algunos catálogos usan type=PELICULA/SERIE para describir el contenido, no el protocolo del stream.
+    // Si la URL tiene una extensión multimedia conocida, esa extensión manda para reproducción.
+    if(ext&&(!o.type||o.type==='auto'||/^(?:pel[ií]cula|movie|film|serie|series|tv|show)$/i.test(String(o.type))))o.type=ext;options.push(o);
   }
   const nestedKeys=['sources','options','servers','servidores','links','enlaces','mirrors','streams','videos','files','archivos','playback'];
   for(const key of nestedKeys){
@@ -1605,7 +1640,9 @@ async function providerFetchJson(provider,target){
       payload=providerTextCatalog(text,r.url||target.toString());
       if(!payload.length)throw new Error('Respuesta sin JSON válido ni enlaces multimedia reconocibles');
     }
-    MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload});return payload;
+    // v0.9.58: aplicar adaptadores acumulativos después de obtener el payload base.
+    const adapted=providerAdaptCatalogPayload(payload,provider.name);payload=adapted.payload;
+    MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload,format:adapted.format});return payload;
   }finally{clearTimeout(timer)}
 }
 async function fetchMediaProvider(provider,params){
@@ -1640,7 +1677,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v5',mediaDetection:'media-extensions-v2-flex-source',mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v6',mediaDetection:'media-adapters-v3-cochi-encrypted',mediaAdapters:['generic-json-flex','m3u-text-html','cochi-aes256-ecb'],mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
