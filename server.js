@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.51';
+const VERSION = '0.9.52';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -27,12 +27,29 @@ const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'prod
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || IS_PRODUCTION;
 const RATE_BUCKETS = new Map();
 
-// v0.9.51 — Buscador de series y películas.
+// v0.9.52 — Buscador de series y películas + proveedores de reproducción.
 // La credencial TMDb vive solo en el backend; nunca se entrega a la APK.
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const TMDB_API_KEY = String(process.env.TMDB_API_KEY || '').trim();
 const TMDB_READ_TOKEN = String(process.env.TMDB_READ_TOKEN || '').trim();
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+
+// v0.9.52 — Proveedores de reproducción autorizados y reemplazables sin recompilar la APK.
+// Formato: [{"name":"Mi fuente","url":"https://.../resolve","token":"...","enabled":true}]
+function parseMediaProviders(){
+  const raw=String(process.env.COCHI_MEDIA_PROVIDERS_JSON||'').trim();
+  if(!raw)return [];
+  try{
+    const parsed=JSON.parse(raw);if(!Array.isArray(parsed))return [];
+    return parsed.map((x,i)=>({
+      name:String(x?.name||`Proveedor ${i+1}`).trim().slice(0,80),
+      url:String(x?.url||'').trim(),token:String(x?.token||'').trim(),
+      enabled:x?.enabled!==false
+    })).filter(x=>x.enabled&&/^https?:\/\//i.test(x.url));
+  }catch(e){console.warn('[MEDIA-PROVIDERS] JSON inválido:',e.message);return []}
+}
+const MEDIA_PROVIDERS=parseMediaProviders();
 
 
 // v0.9.43 — Gateway de reproducción separado para CO-CHI con compatibilidad estricta.
@@ -1273,13 +1290,84 @@ async function applyTvFailover(payload){
   }}return out;
 }
 
+
+function mediaNormTitle(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+    .replace(/&/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
+}
+function mediaYear(item,title=''){
+  const raw=String(item?.year||item?.release_year||item?.releaseYear||item?.date||item?.release_date||'');
+  const m=raw.match(/(?:19|20)\d{2}/)||String(title||'').match(/(?:19|20)\d{2}/);return m?m[0]:'';
+}
+function localCatalogSearch(query){
+  const wanted=mediaNormTitle(query),out=[],seen=new Set();
+  for(const [key,type] of [['movies','movie'],['series','tv']]){
+    const row=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get(key);if(!row?.json_text)continue;
+    let clear;try{clear=decryptManagedContent(JSON.parse(row.json_text))}catch{continue}
+    for(const group of (Array.isArray(clear)?clear:[]))for(const item of (Array.isArray(group?.samples)?group.samples:[])){
+      if(!item||typeof item!=='object'||item.adult===true)continue;
+      const title=String(item.name||item.title||'').trim();if(!title)continue;
+      const normalized=mediaNormTitle(title);if(!normalized||(!normalized.includes(wanted)&&!wanted.includes(normalized)))continue;
+      const year=mediaYear(item,title),dedupe=`${type}|${normalized}|${year}`;if(seen.has(dedupe))continue;seen.add(dedupe);
+      out.push({id:0,media_type:type,title,original_title:String(item.original_title||item.originalName||'').trim(),year,
+        poster_path:'',poster_url:String(item.logo||item.poster||item.image||item.thumbnail||'').trim(),
+        overview:String(item.description||item.overview||item.synopsis||'').trim(),source:'cochi'});
+      if(out.length>=30)return out;
+    }
+  }
+  return out;
+}
+function normalizeProviderOption(raw,providerName,index){
+  if(!raw||typeof raw!=='object')return null;
+  const url=String(raw.url||raw.uri||raw.stream||'').trim();if(!/^https?:\/\//i.test(url))return null;
+  const headers={};for(const [k,v] of Object.entries(raw.headers||{}))if(k&&v!==undefined&&v!==null)headers[String(k)]=String(v);
+  const drm=raw.drm&&typeof raw.drm==='object'?raw.drm:{};
+  let pairs=String(raw.clear_key_pairs||raw.clearKeyPairs||raw.clearkey||drm.clear_key_pairs||drm.clearKeyPairs||'').trim();
+  if(!pairs&&raw.kid&&raw.key)pairs=`${String(raw.kid).trim()}:${String(raw.key).trim()}`;
+  return {
+    provider:String(raw.provider||providerName||'Proveedor').trim().slice(0,80),
+    server:String(raw.server||raw.servidor||raw.provider||providerName||`Servidor ${index+1}`).trim().slice(0,80),
+    language:String(raw.language||raw.idioma||raw.audio||'').trim().slice(0,80),
+    subtitles:String(raw.subtitles||raw.subtitulos||raw.subs||'').trim().slice(0,80),
+    quality:String(raw.quality||raw.qualityLabel||raw.calidad||'').trim().slice(0,40),
+    type:String(raw.type||raw.tipo||'auto').trim().slice(0,20),url,headers,clear_key_pairs:pairs,
+    priority:Number.isFinite(Number(raw.priority))?Number(raw.priority):100+index
+  };
+}
+function flattenProviderPayload(payload,providerName){
+  const raw=[];
+  if(Array.isArray(payload))raw.push(...payload);
+  if(Array.isArray(payload?.options))raw.push(...payload.options);
+  if(Array.isArray(payload?.sources))raw.push(...payload.sources);
+  if(Array.isArray(payload?.groups))for(const g of payload.groups){
+    const arr=Array.isArray(g?.options)?g.options:Array.isArray(g?.sources)?g.sources:[];
+    for(const x of arr)raw.push({...x,server:x?.server||g?.server||g?.name||providerName,language:x?.language||g?.language||'',subtitles:x?.subtitles||g?.subtitles||''});
+  }
+  return raw.map((x,i)=>normalizeProviderOption(x,providerName,i)).filter(Boolean);
+}
+async function fetchMediaProvider(provider,params){
+  const target=new URL(provider.url);for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&String(v)!=='')target.searchParams.set(k,String(v));
+  const headers={Accept:'application/json','User-Agent':'CO-CHI-PANEL/'+VERSION};if(provider.token)headers.Authorization='Bearer '+provider.token;
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),9000);
+  try{const r=await fetch(target,{headers,redirect:'follow',signal:ctl.signal});if(!r.ok)return [];const payload=await r.json();return flattenProviderPayload(payload,provider.name)}
+  catch(e){console.warn(`[MEDIA-PROVIDER] ${provider.name}: ${String(e?.message||e)}`);return []}finally{clearTimeout(timer)}
+}
+function mediaLanguageRank(option){
+  const l=String(option?.language||'').toLowerCase(),s=String(option?.subtitles||'').toLowerCase();
+  if(l.includes('lat')||l.includes('es-419')||l.includes('es-la'))return 0;
+  if(l.includes('cast')||l.includes('es-es'))return 1;
+  if(l==='es'||l.includes('españ')||l.includes('spanish'))return 2;
+  if(s.includes('es')||s.includes('spanish')||s.includes('españ'))return 3;
+  if(!l)return 5;return 4;
+}
+
 async function route(req,res){
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const p=u.pathname,m=req.method||'GET';
   if(m==='POST'&&['/api/setup','/api/panel/activate','/api/panel/session','/api/client-device/register','/api/client-device/status','/api/client-device/session','/api/client-device/adult/verify'].includes(p)){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
@@ -1300,7 +1388,7 @@ async function route(req,res){
     const q=String(u.searchParams.get('q')||'').trim();
     if(q.length<2)return sendJson(res,400,{error:'Escribí al menos 2 letras'});
     if(q.length>100)return sendJson(res,400,{error:'Búsqueda demasiado larga'});
-    if(!TMDB_API_KEY&&!TMDB_READ_TOKEN)return sendJson(res,503,{error:'Buscador de series y películas no configurado'});
+    if(!TMDB_API_KEY&&!TMDB_READ_TOKEN)return sendJson(res,200,{ok:true,query:q,provider:'cochi-local',results:localCatalogSearch(q)});
     const target=new URL(TMDB_API_BASE+'/search/multi');
     target.searchParams.set('include_adult','false');
     target.searchParams.set('language','es-AR');
@@ -1313,7 +1401,7 @@ async function route(req,res){
     try{
       const r=await fetch(target,{method:'GET',headers,redirect:'follow',signal:ctl.signal});
       const text=await r.text();
-      if(!r.ok)return sendJson(res,502,{error:'No se pudo realizar la búsqueda'});
+      if(!r.ok)return sendJson(res,200,{ok:true,query:q,provider:'cochi-local-fallback',results:localCatalogSearch(q)});
       const payload=JSON.parse(text),items=Array.isArray(payload?.results)?payload.results:[],results=[];
       for(const item of items){
         if(results.length>=30)break;
@@ -1333,8 +1421,32 @@ async function route(req,res){
       }
       return sendJson(res,200,{ok:true,query:q,results});
     }catch(e){
-      return sendJson(res,502,{error:'No se pudo realizar la búsqueda'});
+      return sendJson(res,200,{ok:true,query:q,provider:'cochi-local-fallback',results:localCatalogSearch(q)});
     }finally{clearTimeout(timer)}
+  }
+
+
+  // v0.9.52 — opciones directas de reproducción desde proveedores autorizados.
+  // El PANEL normaliza los resultados y la APK nunca abre páginas web.
+  if(p==='/api/client-device/media-playback-options'&&m==='GET'){
+    if(!rateLimit(req,res,'client_media_playback_options',120,10*60*1000))return;
+    let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});
+    d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);
+    if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const mediaType=String(u.searchParams.get('media_type')||'').trim();
+    const mediaId=String(u.searchParams.get('media_id')||'').trim();
+    const title=String(u.searchParams.get('title')||'').trim().slice(0,180);
+    const originalTitle=String(u.searchParams.get('original_title')||'').trim().slice(0,180);
+    const year=String(u.searchParams.get('year')||'').trim().slice(0,8);
+    if(!title)return sendJson(res,400,{error:'Título requerido'});
+    const params={media_type:mediaType,media_id:mediaId,title,original_title:originalTitle,year,language:'es-AR'};
+    const settled=await Promise.all(MEDIA_PROVIDERS.map(provider=>fetchMediaProvider(provider,params)));
+    const options=[],seen=new Set();
+    for(const list of settled)for(const option of list){
+      const key=`${option.url}|${option.type}|${option.clear_key_pairs}`;if(seen.has(key))continue;seen.add(key);options.push(option);if(options.length>=40)break;
+    }
+    options.sort((a,b)=>mediaLanguageRank(a)-mediaLanguageRank(b)||Number(a.priority||100)-Number(b.priority||100)||String(a.server).localeCompare(String(b.server)));
+    return sendJson(res,200,{ok:true,title,media_type:mediaType,providersConfigured:MEDIA_PROVIDERS.length,options});
   }
 
   const publicContent=p.match(/^\/api\/content\/(tv1|tv2|movies|series)$/);
