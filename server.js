@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.52';
+const VERSION = '0.9.53';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -45,11 +45,14 @@ function parseMediaProviders(){
     return parsed.map((x,i)=>({
       name:String(x?.name||`Proveedor ${i+1}`).trim().slice(0,80),
       url:String(x?.url||'').trim(),token:String(x?.token||'').trim(),
+      mode:['auto','resolver','catalog'].includes(String(x?.mode||'auto').toLowerCase())?String(x?.mode||'auto').toLowerCase():'auto',
+      cacheSeconds:Math.max(10,Math.min(900,Number(x?.cacheSeconds||60))),
       enabled:x?.enabled!==false
     })).filter(x=>x.enabled&&/^https?:\/\//i.test(x.url));
   }catch(e){console.warn('[MEDIA-PROVIDERS] JSON inválido:',e.message);return []}
 }
 const MEDIA_PROVIDERS=parseMediaProviders();
+const MEDIA_PROVIDER_CACHE=new Map();
 
 
 // v0.9.43 — Gateway de reproducción separado para CO-CHI con compatibilidad estricta.
@@ -1345,12 +1348,130 @@ function flattenProviderPayload(payload,providerName){
   }
   return raw.map((x,i)=>normalizeProviderOption(x,providerName,i)).filter(Boolean);
 }
-async function fetchMediaProvider(provider,params){
-  const target=new URL(provider.url);for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&String(v)!=='')target.searchParams.set(k,String(v));
+function providerString(o,...keys){
+  for(const k of keys){const v=o&&typeof o==='object'?o[k]:'';if(v!==undefined&&v!==null&&String(v).trim())return String(v).trim()}
+  return '';
+}
+function providerCatalogTitle(item){return providerString(item,'title','name','nombre','titulo','movie','show')}
+function providerCatalogYear(item){return mediaYear(item,providerCatalogTitle(item))}
+function providerCatalogLanguage(item,parent={}){return providerString(item,'language','idioma','audio')||providerString(parent,'language','idioma','audio')}
+function providerCatalogSubtitles(item,parent={}){return providerString(item,'subtitles','subtitulos','subs')||providerString(parent,'subtitles','subtitulos','subs')}
+function providerCatalogQuality(item,parent={}){return providerString(item,'quality','calidad','qualityLabel')||providerString(parent,'quality','calidad','qualityLabel')}
+function providerCatalogType(item,parent={}){return providerString(item,'type','tipo','format','formato')||providerString(parent,'type','tipo','format','formato')||'auto'}
+function providerMatchScore(item,params){
+  const wanted=mediaNormTitle(params?.title||''),original=mediaNormTitle(params?.original_title||''),title=mediaNormTitle(providerCatalogTitle(item));
+  if(!wanted||!title)return 999;
+  let score=999;
+  if(title===wanted)score=0;
+  else if(original&&title===original)score=1;
+  else if(title.includes(wanted)||wanted.includes(title))score=4;
+  else return 999;
+  const y=providerCatalogYear(item),wy=String(params?.year||'').match(/(?:19|20)\d{2}/)?.[0]||'';
+  if(wy&&y&&wy!==y)score+=20;
+  else if(wy&&y&&wy===y)score-=1;
+  return score;
+}
+function providerCatalogSearchResults(payload,providerName,query){
+  const wanted=mediaNormTitle(query),out=[],seen=new Set();
+  function walk(node,parent={},depth=0){
+    if(depth>8||node===null||node===undefined||out.length>=40)return;
+    if(Array.isArray(node)){for(const x of node)walk(x,parent,depth+1);return}
+    if(typeof node!=='object')return;
+    const title=providerCatalogTitle(node),norm=mediaNormTitle(title);
+    if(title&&norm&&wanted&&(norm.includes(wanted)||wanted.includes(norm))){
+      const year=providerCatalogYear(node),typeRaw=providerString(node,'media_type','type','tipo').toLowerCase();
+      const mediaType=typeRaw.includes('serie')||typeRaw==='tv'?'tv':'movie';
+      const key=`${mediaType}|${norm}|${year}`;
+      if(!seen.has(key)){
+        seen.add(key);
+        out.push({id:0,media_type:mediaType,title,original_title:providerString(node,'original_title','originalName','original_name'),year,
+          poster_path:'',poster_url:providerString(node,'poster_url','poster','logo','image','thumbnail','cover'),
+          overview:providerString(node,'overview','description','descripcion','synopsis','sinopsis'),source:'provider',provider:providerName});
+      }
+    }
+    const containerKeys=['samples','items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups'];
+    for(const key of containerKeys)if(node[key]&&typeof node[key]==='object')walk(node[key],node,depth+1);
+  }
+  walk(payload,{},0);return out;
+}
+async function remoteCatalogSearch(query){
+  const providers=MEDIA_PROVIDERS.filter(p=>p.mode==='catalog'||/\.json(?:$|\?)/i.test(new URL(p.url).pathname+new URL(p.url).search));
+  const settled=await Promise.all(providers.map(async provider=>{
+    try{const payload=await providerFetchJson(provider,new URL(provider.url));return providerCatalogSearchResults(payload,provider.name,query)}
+    catch(e){console.warn(`[MEDIA-PROVIDER-SEARCH] ${provider.name}: ${String(e?.message||e)}`);return []}
+  }));
+  const out=[],seen=new Set();for(const list of settled)for(const item of list){
+    const key=`${item.media_type}|${mediaNormTitle(item.title)}|${item.year}`;if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=30)return out;
+  }return out;
+}
+function mergeMediaSearchResults(...lists){
+  const out=[],seen=new Set();for(const list of lists)for(const item of (Array.isArray(list)?list:[])){
+    const key=`${item.media_type}|${mediaNormTitle(item.title)}|${item.year||''}`;if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=30)return out;
+  }return out;
+}
+function providerCatalogDirectOptions(item,parent,providerName,startIndex=0){
+  const options=[];
+  if(!item||typeof item!=='object')return options;
+  const inherited={
+    language:providerCatalogLanguage(item,parent),subtitles:providerCatalogSubtitles(item,parent),
+    quality:providerCatalogQuality(item,parent),type:providerCatalogType(item,parent),
+    server:providerString(item,'server','servidor','host')||providerString(parent,'server','servidor','name','nombre')||providerName
+  };
+  const nestedKeys=['sources','options','servers','servidores','links','enlaces','mirrors','streams','videos'];
+  for(const key of nestedKeys){
+    const arr=Array.isArray(item[key])?item[key]:[];
+    for(const x of arr){
+      if(typeof x==='string'){
+        const o=normalizeProviderOption({...inherited,url:x},providerName,startIndex+options.length);if(o)options.push(o);
+      }else if(x&&typeof x==='object'){
+        const o=normalizeProviderOption({...inherited,...x,language:providerString(x,'language','idioma','audio')||inherited.language,subtitles:providerString(x,'subtitles','subtitulos','subs')||inherited.subtitles,quality:providerString(x,'quality','calidad','qualityLabel')||inherited.quality,server:providerString(x,'server','servidor','host','name')||inherited.server},providerName,startIndex+options.length);if(o)options.push(o);
+      }
+    }
+  }
+  const direct=providerString(item,'stream','uri','video_url','videoUrl','file','src','url','link');
+  if(direct){const o=normalizeProviderOption({...inherited,...item,url:direct,language:inherited.language,subtitles:inherited.subtitles,quality:inherited.quality,server:inherited.server},providerName,startIndex+options.length);if(o)options.push(o)}
+  return options;
+}
+function extractCatalogOptions(payload,providerName,params){
+  const matches=[];
+  function walk(node,parent={},depth=0){
+    if(depth>8||node===null||node===undefined)return;
+    if(Array.isArray(node)){for(const x of node)walk(x,parent,depth+1);return}
+    if(typeof node!=='object')return;
+    const title=providerCatalogTitle(node),score=title?providerMatchScore(node,params):999;
+    if(score<999)matches.push({score,item:node,parent});
+    const containerKeys=['samples','items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups'];
+    for(const key of containerKeys)if(node[key]&&typeof node[key]==='object')walk(node[key],node,depth+1);
+  }
+  walk(payload,{},0);
+  matches.sort((a,b)=>a.score-b.score);
+  const out=[];for(const m of matches){
+    for(const o of providerCatalogDirectOptions(m.item,m.parent,providerName,out.length)){out.push(o);if(out.length>=40)return out}
+    if(out.length&&m.score<=0)break;
+  }
+  return out;
+}
+async function providerFetchJson(provider,target){
+  const cacheKey=`${provider.name}|${target.toString()}`;const cached=MEDIA_PROVIDER_CACHE.get(cacheKey),now=Date.now();
+  if(cached&&now-cached.at<provider.cacheSeconds*1000)return cached.payload;
   const headers={Accept:'application/json','User-Agent':'CO-CHI-PANEL/'+VERSION};if(provider.token)headers.Authorization='Bearer '+provider.token;
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),9000);
-  try{const r=await fetch(target,{headers,redirect:'follow',signal:ctl.signal});if(!r.ok)return [];const payload=await r.json();return flattenProviderPayload(payload,provider.name)}
-  catch(e){console.warn(`[MEDIA-PROVIDER] ${provider.name}: ${String(e?.message||e)}`);return []}finally{clearTimeout(timer)}
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+  try{
+    const r=await fetch(target,{headers,redirect:'follow',signal:ctl.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const text=await r.text();const payload=JSON.parse(text);MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload});return payload;
+  }finally{clearTimeout(timer)}
+}
+async function fetchMediaProvider(provider,params){
+  try{
+    const target=new URL(provider.url);
+    const isJsonCatalog=/\.json(?:$|\?)/i.test(target.pathname+target.search);
+    const addQuery=provider.mode==='resolver'||(provider.mode==='auto'&&!isJsonCatalog);
+    if(addQuery)for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&String(v)!=='')target.searchParams.set(k,String(v));
+    const payload=await providerFetchJson(provider,target);
+    const direct=flattenProviderPayload(payload,provider.name);if(direct.length)return direct;
+    if(provider.mode!=='resolver')return extractCatalogOptions(payload,provider.name,params);
+    return [];
+  }catch(e){console.warn(`[MEDIA-PROVIDER] ${provider.name}: ${String(e?.message||e)}`);return []}
 }
 function mediaLanguageRank(option){
   const l=String(option?.language||'').toLowerCase(),s=String(option?.subtitles||'').toLowerCase();
@@ -1367,7 +1488,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaEngine:'remote-v1',serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
@@ -1388,7 +1509,10 @@ async function route(req,res){
     const q=String(u.searchParams.get('q')||'').trim();
     if(q.length<2)return sendJson(res,400,{error:'Escribí al menos 2 letras'});
     if(q.length>100)return sendJson(res,400,{error:'Búsqueda demasiado larga'});
-    if(!TMDB_API_KEY&&!TMDB_READ_TOKEN)return sendJson(res,200,{ok:true,query:q,provider:'cochi-local',results:localCatalogSearch(q)});
+    if(!TMDB_API_KEY&&!TMDB_READ_TOKEN){
+      const remote=await remoteCatalogSearch(q),local=localCatalogSearch(q);
+      return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote':'cochi-local',results:mergeMediaSearchResults(remote,local)});
+    }
     const target=new URL(TMDB_API_BASE+'/search/multi');
     target.searchParams.set('include_adult','false');
     target.searchParams.set('language','es-AR');
@@ -1401,7 +1525,7 @@ async function route(req,res){
     try{
       const r=await fetch(target,{method:'GET',headers,redirect:'follow',signal:ctl.signal});
       const text=await r.text();
-      if(!r.ok)return sendJson(res,200,{ok:true,query:q,provider:'cochi-local-fallback',results:localCatalogSearch(q)});
+      if(!r.ok){const remote=await remoteCatalogSearch(q);return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote-fallback':'cochi-local-fallback',results:mergeMediaSearchResults(remote,localCatalogSearch(q))});}
       const payload=JSON.parse(text),items=Array.isArray(payload?.results)?payload.results:[],results=[];
       for(const item of items){
         if(results.length>=30)break;
@@ -1419,14 +1543,16 @@ async function route(req,res){
           overview:String(item?.overview||'').trim()
         });
       }
-      return sendJson(res,200,{ok:true,query:q,results});
+      const remote=await remoteCatalogSearch(q);
+      return sendJson(res,200,{ok:true,query:q,results:mergeMediaSearchResults(remote,results,localCatalogSearch(q))});
     }catch(e){
-      return sendJson(res,200,{ok:true,query:q,provider:'cochi-local-fallback',results:localCatalogSearch(q)});
+      const remote=await remoteCatalogSearch(q);
+      return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote-fallback':'cochi-local-fallback',results:mergeMediaSearchResults(remote,localCatalogSearch(q))});
     }finally{clearTimeout(timer)}
   }
 
 
-  // v0.9.52 — opciones directas de reproducción desde proveedores autorizados.
+  // v0.9.53 — motor remoto: resolver API o recorrer catálogos JSON autorizados.
   // El PANEL normaliza los resultados y la APK nunca abre páginas web.
   if(p==='/api/client-device/media-playback-options'&&m==='GET'){
     if(!rateLimit(req,res,'client_media_playback_options',120,10*60*1000))return;
