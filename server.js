@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.53';
+const VERSION = '0.9.54';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1320,6 +1320,85 @@ function localCatalogSearch(query){
   }
   return out;
 }
+
+// v0.9.54 — los catálogos remotos también alimentan el buscador inicial.
+// Así un proveedor JSON puede aportar título/póster/año y luego sus opciones de reproducción.
+function providerCatalogMediaType(item,parent={}){
+  const raw=(providerString(item,'media_type','mediaType','type','tipo','content_type','contentType')||providerString(parent,'media_type','mediaType','type','tipo','content_type','contentType')).toLowerCase();
+  if(/series?|tv|show|episod|temporad/.test(raw))return 'tv';
+  if(/movie|pel[ií]cula|film/.test(raw))return 'movie';
+  if(Array.isArray(item?.seasons)||Array.isArray(item?.temporadas)||Array.isArray(item?.episodes)||Array.isArray(item?.episodios))return 'tv';
+  return 'movie';
+}
+function providerCatalogPoster(item,parent={}){
+  return providerString(item,'poster_url','posterUrl','poster','logo','image','imagen','thumbnail','thumb','cover','portada')||
+    providerString(parent,'poster_url','posterUrl','poster','logo','image','imagen','thumbnail','thumb','cover','portada');
+}
+function providerCatalogOverview(item,parent={}){
+  return providerString(item,'overview','description','descripcion','sinopsis','synopsis','plot')||
+    providerString(parent,'overview','description','descripcion','sinopsis','synopsis','plot');
+}
+function providerCatalogOriginalTitle(item){return providerString(item,'original_title','originalTitle','original_name','originalName')}
+function providerCatalogSearchPayload(payload,providerName,query,limit=30){
+  const wanted=mediaNormTitle(query),out=[],seen=new Set();
+  if(!wanted)return out;
+  function addCandidate(item,parent={}){
+    if(!item||typeof item!=='object'||item.adult===true)return;
+    const title=providerCatalogTitle(item);if(!title)return;
+    const normalized=mediaNormTitle(title);if(!normalized||(!normalized.includes(wanted)&&!wanted.includes(normalized)))return;
+    // Evita que una categoría/grupo con "name" sea mostrada como película.
+    const direct=providerCatalogDirectOptions(item,parent,providerName,0);
+    const hasMediaHints=Boolean(providerCatalogYear(item)||providerCatalogPoster(item,parent)||providerCatalogOverview(item,parent)||
+      providerString(item,'type','tipo','media_type','mediaType','tmdb_id','tmdbId','imdb_id','imdbId')||
+      Array.isArray(item?.seasons)||Array.isArray(item?.temporadas)||Array.isArray(item?.episodes)||Array.isArray(item?.episodios));
+    if(!direct.length&&!hasMediaHints)return;
+    const mediaType=providerCatalogMediaType(item,parent),year=providerCatalogYear(item),dedupe=`${mediaType}|${normalized}|${year}`;
+    if(seen.has(dedupe))return;seen.add(dedupe);
+    out.push({
+      id:0,media_type:mediaType,title,original_title:providerCatalogOriginalTitle(item),year,
+      poster_path:'',poster_url:providerCatalogPoster(item,parent),overview:providerCatalogOverview(item,parent),
+      source:'remote-provider',provider:providerName,playback_available:direct.length>0
+    });
+  }
+  function walk(node,parent={},depth=0){
+    if(out.length>=limit||depth>10||node===null||node===undefined)return;
+    if(Array.isArray(node)){for(const x of node){walk(x,parent,depth+1);if(out.length>=limit)break}return}
+    if(typeof node!=='object')return;
+    addCandidate(node,parent);
+    // Recorremos contenedores conocidos primero y luego objetos/arrays desconocidos para tolerar JSON variados.
+    const preferred=['samples','items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups','catalog','catalogo'];
+    const done=new Set();
+    for(const key of preferred){if(node[key]&&typeof node[key]==='object'){done.add(key);walk(node[key],node,depth+1);if(out.length>=limit)return}}
+    for(const [key,value] of Object.entries(node)){
+      if(done.has(key)||value===null||typeof value!=='object')continue;
+      walk(value,node,depth+1);if(out.length>=limit)return;
+    }
+  }
+  walk(payload,{},0);return out;
+}
+function providerLooksLikeCatalog(provider){
+  try{const u=new URL(provider.url);return provider.mode==='catalog'||(provider.mode==='auto'&&/\.json(?:$|\?)/i.test(u.pathname+u.search))}catch{return false}
+}
+async function remoteProviderCatalogSearch(query,limit=30){
+  const providers=MEDIA_PROVIDERS.filter(providerLooksLikeCatalog);if(!providers.length)return [];
+  const settled=await Promise.all(providers.map(async provider=>{
+    try{const target=new URL(provider.url),payload=await providerFetchJson(provider,target);return providerCatalogSearchPayload(payload,provider.name,query,limit)}
+    catch(e){console.warn(`[MEDIA-PROVIDER-SEARCH] ${provider.name}: ${String(e?.message||e)}`);return []}
+  }));
+  const out=[],seen=new Set();
+  for(const list of settled)for(const item of list){
+    const key=`${item.media_type}|${mediaNormTitle(item.title)}|${item.year}`;if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=limit)return out;
+  }
+  return out;
+}
+function mergeMediaSearchResults(...lists){
+  const out=[],seen=new Set();
+  for(const list of lists)for(const item of (Array.isArray(list)?list:[])){
+    if(!item||!item.title)continue;const key=`${item.media_type||'movie'}|${mediaNormTitle(item.title)}|${item.year||''}`;
+    if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=30)return out;
+  }
+  return out;
+}
 function normalizeProviderOption(raw,providerName,index){
   if(!raw||typeof raw!=='object')return null;
   const url=String(raw.url||raw.uri||raw.stream||'').trim();if(!/^https?:\/\//i.test(url))return null;
@@ -1370,44 +1449,6 @@ function providerMatchScore(item,params){
   if(wy&&y&&wy!==y)score+=20;
   else if(wy&&y&&wy===y)score-=1;
   return score;
-}
-function providerCatalogSearchResults(payload,providerName,query){
-  const wanted=mediaNormTitle(query),out=[],seen=new Set();
-  function walk(node,parent={},depth=0){
-    if(depth>8||node===null||node===undefined||out.length>=40)return;
-    if(Array.isArray(node)){for(const x of node)walk(x,parent,depth+1);return}
-    if(typeof node!=='object')return;
-    const title=providerCatalogTitle(node),norm=mediaNormTitle(title);
-    if(title&&norm&&wanted&&(norm.includes(wanted)||wanted.includes(norm))){
-      const year=providerCatalogYear(node),typeRaw=providerString(node,'media_type','type','tipo').toLowerCase();
-      const mediaType=typeRaw.includes('serie')||typeRaw==='tv'?'tv':'movie';
-      const key=`${mediaType}|${norm}|${year}`;
-      if(!seen.has(key)){
-        seen.add(key);
-        out.push({id:0,media_type:mediaType,title,original_title:providerString(node,'original_title','originalName','original_name'),year,
-          poster_path:'',poster_url:providerString(node,'poster_url','poster','logo','image','thumbnail','cover'),
-          overview:providerString(node,'overview','description','descripcion','synopsis','sinopsis'),source:'provider',provider:providerName});
-      }
-    }
-    const containerKeys=['samples','items','movies','peliculas','series','results','content','contenido','data','categories','categorias','groups'];
-    for(const key of containerKeys)if(node[key]&&typeof node[key]==='object')walk(node[key],node,depth+1);
-  }
-  walk(payload,{},0);return out;
-}
-async function remoteCatalogSearch(query){
-  const providers=MEDIA_PROVIDERS.filter(p=>p.mode==='catalog'||/\.json(?:$|\?)/i.test(new URL(p.url).pathname+new URL(p.url).search));
-  const settled=await Promise.all(providers.map(async provider=>{
-    try{const payload=await providerFetchJson(provider,new URL(provider.url));return providerCatalogSearchResults(payload,provider.name,query)}
-    catch(e){console.warn(`[MEDIA-PROVIDER-SEARCH] ${provider.name}: ${String(e?.message||e)}`);return []}
-  }));
-  const out=[],seen=new Set();for(const list of settled)for(const item of list){
-    const key=`${item.media_type}|${mediaNormTitle(item.title)}|${item.year}`;if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=30)return out;
-  }return out;
-}
-function mergeMediaSearchResults(...lists){
-  const out=[],seen=new Set();for(const list of lists)for(const item of (Array.isArray(list)?list:[])){
-    const key=`${item.media_type}|${mediaNormTitle(item.title)}|${item.year||''}`;if(seen.has(key))continue;seen.add(key);out.push(item);if(out.length>=30)return out;
-  }return out;
 }
 function providerCatalogDirectOptions(item,parent,providerName,startIndex=0){
   const options=[];
@@ -1488,7 +1529,7 @@ async function route(req,res){
     const strict=p==='/api/client-device/status'?600:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaEngine:'remote-v1',serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaEngine:'remote-v2',serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
@@ -1500,7 +1541,8 @@ async function route(req,res){
     return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,role:'ADMINISTRACIÓN'});
   }
 
-  // v0.9.51 — proxy autenticado de búsqueda. No expone la credencial de TMDb.
+  // v0.9.54 — buscador unificado: catálogos remotos + catálogo CO-CHI + TMDb opcional.
+  // Los proveedores JSON configurados en COCHI_MEDIA_PROVIDERS_JSON aparecen en la búsqueda inicial.
   if(p==='/api/client-device/media-search'&&m==='GET'){
     if(!rateLimit(req,res,'client_media_search',120,10*60*1000))return;
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});
@@ -1509,10 +1551,17 @@ async function route(req,res){
     const q=String(u.searchParams.get('q')||'').trim();
     if(q.length<2)return sendJson(res,400,{error:'Escribí al menos 2 letras'});
     if(q.length>100)return sendJson(res,400,{error:'Búsqueda demasiado larga'});
+
+    // Priorizamos resultados de proveedores remotos porque son los que pueden tener reproducción directa.
+    const [remoteResults,localResults]=await Promise.all([
+      remoteProviderCatalogSearch(q,30),
+      Promise.resolve(localCatalogSearch(q))
+    ]);
     if(!TMDB_API_KEY&&!TMDB_READ_TOKEN){
-      const remote=await remoteCatalogSearch(q),local=localCatalogSearch(q);
-      return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote':'cochi-local',results:mergeMediaSearchResults(remote,local)});
+      const results=mergeMediaSearchResults(remoteResults,localResults);
+      return sendJson(res,200,{ok:true,query:q,provider:'cochi-remote+local',providersConfigured:MEDIA_PROVIDERS.length,remoteResults:remoteResults.length,results});
     }
+
     const target=new URL(TMDB_API_BASE+'/search/multi');
     target.searchParams.set('include_adult','false');
     target.searchParams.set('language','es-AR');
@@ -1525,10 +1574,13 @@ async function route(req,res){
     try{
       const r=await fetch(target,{method:'GET',headers,redirect:'follow',signal:ctl.signal});
       const text=await r.text();
-      if(!r.ok){const remote=await remoteCatalogSearch(q);return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote-fallback':'cochi-local-fallback',results:mergeMediaSearchResults(remote,localCatalogSearch(q))});}
-      const payload=JSON.parse(text),items=Array.isArray(payload?.results)?payload.results:[],results=[];
+      if(!r.ok){
+        const results=mergeMediaSearchResults(remoteResults,localResults);
+        return sendJson(res,200,{ok:true,query:q,provider:'cochi-remote+local-fallback',providersConfigured:MEDIA_PROVIDERS.length,remoteResults:remoteResults.length,results});
+      }
+      const payload=JSON.parse(text),items=Array.isArray(payload?.results)?payload.results:[],tmdbResults=[];
       for(const item of items){
-        if(results.length>=30)break;
+        if(tmdbResults.length>=30)break;
         const type=String(item?.media_type||'');
         if(type!=='movie'&&type!=='tv')continue;
         if(item?.adult===true)continue;
@@ -1537,22 +1589,22 @@ async function route(req,res){
         if(!title)continue;
         const original=String(tv?item?.original_name:item?.original_title||'').trim();
         const date=String(tv?item?.first_air_date:item?.release_date||'');
-        results.push({
+        tmdbResults.push({
           id:Number(item?.id||0),media_type:type,title,original_title:original,
           year:/^\d{4}/.test(date)?date.slice(0,4):'',poster_path:String(item?.poster_path||''),
-          overview:String(item?.overview||'').trim()
+          overview:String(item?.overview||'').trim(),source:'tmdb'
         });
       }
-      const remote=await remoteCatalogSearch(q);
-      return sendJson(res,200,{ok:true,query:q,results:mergeMediaSearchResults(remote,results,localCatalogSearch(q))});
+      const results=mergeMediaSearchResults(remoteResults,localResults,tmdbResults);
+      return sendJson(res,200,{ok:true,query:q,provider:'cochi-remote+local+tmdb',providersConfigured:MEDIA_PROVIDERS.length,remoteResults:remoteResults.length,results});
     }catch(e){
-      const remote=await remoteCatalogSearch(q);
-      return sendJson(res,200,{ok:true,query:q,provider:remote.length?'cochi-remote-fallback':'cochi-local-fallback',results:mergeMediaSearchResults(remote,localCatalogSearch(q))});
+      const results=mergeMediaSearchResults(remoteResults,localResults);
+      return sendJson(res,200,{ok:true,query:q,provider:'cochi-remote+local-fallback',providersConfigured:MEDIA_PROVIDERS.length,remoteResults:remoteResults.length,results});
     }finally{clearTimeout(timer)}
   }
 
 
-  // v0.9.53 — motor remoto: resolver API o recorrer catálogos JSON autorizados.
+  // v0.9.54 — motor remoto: resolver API o recorrer catálogos JSON autorizados.
   // El PANEL normaliza los resultados y la APK nunca abre páginas web.
   if(p==='/api/client-device/media-playback-options'&&m==='GET'){
     if(!rateLimit(req,res,'client_media_playback_options',120,10*60*1000))return;
