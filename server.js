@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.58';
+const VERSION = '0.9.59';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1191,14 +1191,18 @@ function originFor(raw){try{return new URL(String(raw||'')).origin}catch{return 
 function candidateHeaders(sourcePage){return {Referer:String(sourcePage||''),Origin:originFor(sourcePage),'User-Agent':'Android/CO-CHI (Media3)'};}
 function extractWebCandidates(html,base){
   const found=new Map();
-  const add=(raw,kind)=>{const cleaned=String(raw||'').replace(/\\\//g,'/').replace(/&amp;/g,'&').trim();const url=absoluteCandidate(cleaned,base);if(!url||!/^https?:/i.test(url))return;const low=url.toLowerCase();let type=kind;if(/\.m3u8(?:[?#]|$)/i.test(low))type='HLS';else if(/\.mpd(?:[?#]|$)/i.test(low))type='DASH';else if(/\.mp4(?:[?#]|$)/i.test(low))type='MP4';else if(/\.(?:json)(?:[?#]|$)/i.test(low)||/(?:config|player|stream|live|source|manifest)/i.test(low))type=type==='SCRIPT'?'SCRIPT':'CONFIG';if(!found.has(url))found.set(url,{url,type,sourcePage:base,headers:candidateHeaders(base)});};
+  // v0.9.59: normaliza URLs visibles en HTML/JS/JSON, incluidas barras escapadas y escapes unicode comunes.
+  const decodeEmbedded=(raw)=>String(raw||'').replace(/\\u002[fF]/g,'/').replace(/\\u003[aA]/g,':').replace(/\\u0026/g,'&').replace(/\\\//g,'/');
+  const add=(raw,kind)=>{let cleaned=decodeEmbedded(raw).replace(/&amp;/g,'&').trim();if(cleaned.startsWith('//')){try{cleaned=new URL(base).protocol+cleaned}catch{}};const url=absoluteCandidate(cleaned,base);if(!url||!/^https?:/i.test(url))return;const low=url.toLowerCase();let type=kind;if(/\.m3u8(?:[?#]|$)/i.test(low))type='HLS';else if(/\.mpd(?:[?#]|$)/i.test(low))type='DASH';else if(/\.mp4(?:[?#]|$)/i.test(low))type='MP4';else if(/\.(?:json)(?:[?#]|$)/i.test(low)||/(?:config|player|stream|live|source|manifest)/i.test(low))type=type==='SCRIPT'?'SCRIPT':'CONFIG';if(!found.has(url))found.set(url,{url,type,sourcePage:base,headers:candidateHeaders(base)});};
   for(const m of html.matchAll(/<(iframe|source|video|audio|script)[^>]+(?:src|data-src)=['"]([^'"]+)['"]/gi)){const tag=String(m[1]||'').toLowerCase();add(m[2],tag==='iframe'?'IFRAME':tag==='script'?'SCRIPT':'MEDIA');}
   for(const m of html.matchAll(/(?:href|data-href)=['"]([^'"]+)['"]/gi))add(m[1],'LINK');
   for(const m of html.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi))add(m[1],'MEDIA');
   for(const m of html.matchAll(/https?:\?\/\?\/[^\s'"<>]+/gi))add(m[0],'LINK');
   for(const m of html.matchAll(/(?:fetch|axios\.(?:get|post)|url|file|src|source|manifest|playlist|hls|dash)\s*[:=(]\s*['"]([^'"]+)['"]/gi))add(m[1],'CONFIG');
   for(const m of html.matchAll(/['"](\/[^'"]*(?:config|player|stream|live|manifest|playlist)[^'"]*)['"]/gi))add(m[1],'CONFIG');
-  return [...found.values()].slice(0,180);
+  // También busca URLs absolutas/protocol-relative aunque estén dentro de JSON o JavaScript minificado.
+  for(const m of decodeEmbedded(html).matchAll(/(?:https?:)?\/\/[^\s'"<>\\]+/gi))add(m[0],'LINK');
+  return [...found.values()].slice(0,240);
 }
 async function probePlayableUrl(rawUrl,headers={}){
   assertPublicHttpUrl(rawUrl);const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
@@ -1388,7 +1392,7 @@ function providerCatalogSearchPayload(payload,providerName,query,limit=30){
   walk(payload,{},0);return out;
 }
 
-// v0.9.58 — Adaptadores acumulativos de catálogos remotos.
+// v0.9.59 — Adaptadores acumulativos de catálogos remotos.
 // Cada formato nuevo se transforma a la estructura normal que ya entiende el buscador,
 // sin reemplazar ni alterar los adaptadores anteriores (JSON flexible / M3U / texto / HTML).
 function providerLooksLikeCochiEncryptedCatalog(payload){
@@ -1640,7 +1644,7 @@ async function providerFetchJson(provider,target){
       payload=providerTextCatalog(text,r.url||target.toString());
       if(!payload.length)throw new Error('Respuesta sin JSON válido ni enlaces multimedia reconocibles');
     }
-    // v0.9.58: aplicar adaptadores acumulativos después de obtener el payload base.
+    // v0.9.59: aplicar adaptadores acumulativos después de obtener el payload base.
     const adapted=providerAdaptCatalogPayload(payload,provider.name);payload=adapted.payload;
     MEDIA_PROVIDER_CACHE.set(cacheKey,{at:now,payload,format:adapted.format});return payload;
   }finally{clearTimeout(timer)}
