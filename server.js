@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.59';
+const VERSION = '0.9.60';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1177,7 +1177,7 @@ async function safeWebFetch(rawUrl, referer=''){
   if(!/^https?:$/.test(u.protocol)||isPrivateHost(u.hostname))throw new Error('Solo se permiten URLs web públicas HTTP/HTTPS');
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
-    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.9)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
+    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.60)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
     if(referer)headers.Referer=referer;
     const r=await fetch(u,{headers,redirect:'follow',signal:ctl.signal});
     if(!r.ok)throw new Error(`La página respondió HTTP ${r.status}`);
@@ -1189,12 +1189,33 @@ async function safeWebFetch(rawUrl, referer=''){
 function absoluteCandidate(v,base){try{return new URL(String(v||'').replace(/&amp;/g,'&'),base).href}catch{return ''}}
 function originFor(raw){try{return new URL(String(raw||'')).origin}catch{return ''}}
 function candidateHeaders(sourcePage){return {Referer:String(sourcePage||''),Origin:originFor(sourcePage),'User-Agent':'Android/CO-CHI (Media3)'};}
+function iframePriority(rawUrl=''){
+  const u=String(rawUrl||'').toLowerCase();let score=0;
+  if(/(?:player|embed|stream|live|watch|channel|ch\d+|video|hls|dash)/i.test(u))score+=30;
+  if(/\.(?:html?|php)(?:[?#]|$)/i.test(u))score+=8;
+  if(/(?:ads?|doubleclick|googlesyndication|popunder|banner|analytics|tracker|pixel|click)/i.test(u))score-=35;
+  return score;
+}
 function extractWebCandidates(html,base){
   const found=new Map();
-  // v0.9.59: normaliza URLs visibles en HTML/JS/JSON, incluidas barras escapadas y escapes unicode comunes.
+  // v0.9.60: normaliza URLs visibles en HTML/JS/JSON, incluidas barras escapadas y escapes unicode comunes.
   const decodeEmbedded=(raw)=>String(raw||'').replace(/\\u002[fF]/g,'/').replace(/\\u003[aA]/g,':').replace(/\\u0026/g,'&').replace(/\\\//g,'/');
-  const add=(raw,kind)=>{let cleaned=decodeEmbedded(raw).replace(/&amp;/g,'&').trim();if(cleaned.startsWith('//')){try{cleaned=new URL(base).protocol+cleaned}catch{}};const url=absoluteCandidate(cleaned,base);if(!url||!/^https?:/i.test(url))return;const low=url.toLowerCase();let type=kind;if(/\.m3u8(?:[?#]|$)/i.test(low))type='HLS';else if(/\.mpd(?:[?#]|$)/i.test(low))type='DASH';else if(/\.mp4(?:[?#]|$)/i.test(low))type='MP4';else if(/\.(?:json)(?:[?#]|$)/i.test(low)||/(?:config|player|stream|live|source|manifest)/i.test(low))type=type==='SCRIPT'?'SCRIPT':'CONFIG';if(!found.has(url))found.set(url,{url,type,sourcePage:base,headers:candidateHeaders(base)});};
-  for(const m of html.matchAll(/<(iframe|source|video|audio|script)[^>]+(?:src|data-src)=['"]([^'"]+)['"]/gi)){const tag=String(m[1]||'').toLowerCase();add(m[2],tag==='iframe'?'IFRAME':tag==='script'?'SCRIPT':'MEDIA');}
+  const add=(raw,kind,meta={})=>{let cleaned=decodeEmbedded(raw).replace(/&amp;/g,'&').trim();if(cleaned.startsWith('//')){try{cleaned=new URL(base).protocol+cleaned}catch{}};const url=absoluteCandidate(cleaned,base);if(!url||!/^https?:/i.test(url))return;const low=url.toLowerCase();let type=kind;if(/\.m3u8(?:[?#]|$)/i.test(low))type='HLS';else if(/\.mpd(?:[?#]|$)/i.test(low))type='DASH';else if(/\.mp4(?:[?#]|$)/i.test(low))type='MP4';else if(/\.(?:json)(?:[?#]|$)/i.test(low)||/(?:config|player|stream|live|source|manifest)/i.test(low))type=type==='SCRIPT'?'SCRIPT':type==='IFRAME'?'IFRAME':'CONFIG';const item={url,type,sourcePage:base,headers:candidateHeaders(base),...meta};if(type==='IFRAME')item.priority=iframePriority(url);if(!found.has(url))found.set(url,item);else if(type==='IFRAME'&&found.get(url).type!=='IFRAME')found.set(url,item);};
+  // Iframes: no se fija un nombre ni dominio. Lee varios atributos usados por lazy-loaders y players.
+  for(const m of html.matchAll(/<iframe\b([^>]*)>/gi)){
+    const attrs=m[1]||'';let picked='';
+    for(const a of ['src','data-src','data-lazy-src','data-url','data-player','data-frame','data-embed']){
+      const q=new RegExp('(?:^|\\s)'+a+'\\s*=\\s*["\\\']([^"\\\']+)["\\\']','i').exec(attrs);
+      const bare=new RegExp('(?:^|\\s)'+a+'\\s*=\\s*([^\\s>]+)','i').exec(attrs);
+      const v=q?.[1]||bare?.[1]||'';if(v&&v!=='about:blank'){picked=v;break}
+    }
+    if(picked)add(picked,'IFRAME',{iframe:true});
+  }
+  // Otros recursos HTML.
+  for(const m of html.matchAll(/<(source|video|audio|script)[^>]+(?:src|data-src)=['"]([^'"]+)['"]/gi)){const tag=String(m[1]||'').toLowerCase();add(m[2],tag==='script'?'SCRIPT':'MEDIA');}
+  // Iframes creados o modificados por JavaScript.
+  for(const m of decodeEmbedded(html).matchAll(/(?:iframe\w*\s*\.\s*src|\.setAttribute\(\s*['"]src['"]\s*,)\s*(?:=|,)??\s*['"]([^'"]+)['"]/gi))add(m[1],'IFRAME',{iframe:true,dynamicHint:true});
+  for(const m of decodeEmbedded(html).matchAll(/(?:createElement\(\s*['"]iframe['"]\s*\)[\s\S]{0,500}?(?:src|data-src)\s*[:=]\s*['"]([^'"]+)['"])/gi))add(m[1],'IFRAME',{iframe:true,dynamicHint:true});
   for(const m of html.matchAll(/(?:href|data-href)=['"]([^'"]+)['"]/gi))add(m[1],'LINK');
   for(const m of html.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi))add(m[1],'MEDIA');
   for(const m of html.matchAll(/https?:\?\/\?\/[^\s'"<>]+/gi))add(m[0],'LINK');
@@ -1202,16 +1223,19 @@ function extractWebCandidates(html,base){
   for(const m of html.matchAll(/['"](\/[^'"]*(?:config|player|stream|live|manifest|playlist)[^'"]*)['"]/gi))add(m[1],'CONFIG');
   // También busca URLs absolutas/protocol-relative aunque estén dentro de JSON o JavaScript minificado.
   for(const m of decodeEmbedded(html).matchAll(/(?:https?:)?\/\/[^\s'"<>\\]+/gi))add(m[0],'LINK');
-  return [...found.values()].slice(0,240);
+  return [...found.values()].sort((a,b)=>(b.type==='IFRAME'?b.priority||0:0)-(a.type==='IFRAME'?a.priority||0:0)).slice(0,300);
 }
 async function probePlayableUrl(rawUrl,headers={}){
   assertPublicHttpUrl(rawUrl);const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{const cleanHeaders={};for(const [k,v] of Object.entries(headers||{})){if(v)cleanHeaders[k]=String(v).slice(0,1000)}cleanHeaders['User-Agent']=cleanHeaders['User-Agent']||'Android/CO-CHI (Media3)';cleanHeaders.Accept=cleanHeaders.Accept||'*/*';cleanHeaders.Range='bytes=0-65535';const r=await fetch(rawUrl,{headers:cleanHeaders,redirect:'follow',signal:ctl.signal});const ct=String(r.headers.get('content-type')||'').toLowerCase();let body='';try{body=Buffer.from(await r.arrayBuffer()).subarray(0,65536).toString('utf8')}catch{}const low=String(r.url||rawUrl).toLowerCase();let type=/\.m3u8(?:[?#]|$)/i.test(low)||body.includes('#EXTM3U')||ct.includes('mpegurl')?'HLS':/\.mpd(?:[?#]|$)/i.test(low)||ct.includes('dash+xml')||/<MPD[\s>]/i.test(body)?'DASH':/\.mp4(?:[?#]|$)/i.test(low)||ct.includes('video/mp4')?'MP4':'';return {ok:r.ok&&Boolean(type),status:r.status,type:type||'DESCONOCIDO',contentType:ct,finalUrl:r.url||rawUrl};}finally{clearTimeout(timer)}
 }
 async function resolvePublicStreamPage(rawUrl){
-  const first=await safeWebFetch(rawUrl),pages=[first.url],visited=new Set([first.url]),all=new Map(),queue=[{page:first,depth:0}];let fetched=0;
-  while(queue.length&&fetched<28){const {page,depth}=queue.shift();fetched++;const items=extractWebCandidates(page.text,page.url);for(const c of items){if(!all.has(c.url))all.set(c.url,c)}if(depth>=4)continue;for(const x of items.filter(v=>['IFRAME','SCRIPT','CONFIG'].includes(v.type)).slice(0,12)){if(visited.has(x.url))continue;visited.add(x.url);try{const sub=await safeWebFetch(x.url,page.url);pages.push(sub.url);queue.push({page:sub,depth:depth+1})}catch{}}}
-  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type));return {pageUrl:first.url,pagesChecked:pages,candidates,playable,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental: sigue iframes, scripts y configuraciones públicas hasta 4 niveles. No evita DRM, autenticación ni controles de acceso.'};
+  const first=await safeWebFetch(rawUrl),pages=[first.url],visited=new Set([first.url]),all=new Map(),queue=[{page:first,depth:0,parent:''}];let fetched=0,maxDepthSeen=0;
+  while(queue.length&&fetched<40){const {page,depth}=queue.shift();fetched++;maxDepthSeen=Math.max(maxDepthSeen,depth);const items=extractWebCandidates(page.text,page.url);for(const c of items){if(!all.has(c.url))all.set(c.url,c)}if(depth>=6)continue;
+    const follow=items.filter(v=>['IFRAME','SCRIPT','CONFIG'].includes(v.type)).sort((a,b)=>((b.type==='IFRAME'?100:0)+(b.priority||0))-((a.type==='IFRAME'?100:0)+(a.priority||0))).slice(0,18);
+    for(const x of follow){if(visited.has(x.url))continue;visited.add(x.url);try{const sub=await safeWebFetch(x.url,page.url);pages.push(sub.url);queue.push({page:sub,depth:depth+1,parent:page.url})}catch{}}
+  }
+  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.60: detecta iframes dinámicamente, prioriza candidatos de reproductor y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -1231,10 +1255,10 @@ async function resolveDynamicPublicStreamPage(rawUrl){
   assertPublicHttpUrl(rawUrl);const executablePath=process.env.CHROMIUM_PATH||'/usr/bin/chromium';
   if(!fs.existsSync(executablePath))throw new Error('Chromium no está instalado en el servidor. Volvé a desplegar esta versión completa.');
   const browser=await puppeteer.launch({executablePath,headless:true,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-first-run','--no-zygote']});
-  const found=new Map(),bodyJobs=[];let finalPage=rawUrl;
+  const found=new Map(),bodyJobs=[],observedFrames=new Map();let finalPage=rawUrl;
   const add=(url,type,sourcePage,headers={})=>{if(!url||!publicBrowserUrl(url))return;const kind=type||streamKind(url);if(!kind)return;if(!found.has(url))found.set(url,{url,type:kind,sourcePage:sourcePage||finalPage,headers:selectedBrowserHeaders(headers,sourcePage||finalPage),dynamic:true});};
   try{
-    const page=await browser.newPage();await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.9');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    const page=await browser.newPage();page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.60');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{const url=req.url();if(!publicBrowserUrl(url)){req.abort().catch(()=>{});return}const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers());req.continue().catch(()=>{});});
     page.on('response',resp=>{try{const url=resp.url(),headers=resp.headers(),kind=streamKind(url,headers['content-type']);if(kind)add(url,kind,resp.request().frame()?.url()||finalPage,resp.request().headers());const rt=resp.request().resourceType(),len=Number(headers['content-length']||0);if(['xhr','fetch','script','document'].includes(rt)&&(!len||len<1000000)){bodyJobs.push((async()=>{try{const text=(await resp.text()).slice(0,1000000);const re=/https?:\\?\/\\?\/[^\s'"<>]+(?:\.m3u8|\.mpd|\.mp4)(?:\?[^\s'"<>]*)?/gi;for(const m of text.matchAll(re)){const clean=m[0].replace(/\\\//g,'/');add(clean,streamKind(clean),resp.url(),resp.request().headers())}for(const m of text.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi)){const abs=absoluteCandidate(m[1].replace(/\\\//g,'/'),resp.url());add(abs,streamKind(abs),resp.url(),resp.request().headers())}}catch{}})())}}catch{}});
     const nav=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:18000});finalPage=page.url()||nav?.url()||rawUrl;await new Promise(r=>setTimeout(r,8000));
@@ -1242,8 +1266,8 @@ async function resolveDynamicPublicStreamPage(rawUrl){
     for(const frame of page.frames()){const fu=frame.url();if(publicBrowserUrl(fu)){const kind=streamKind(fu);if(kind)add(fu,kind,finalPage,{referer:finalPage})}}
     await Promise.allSettled(bodyJobs.slice(0,120));const candidates=[...found.values()].slice(0,80),playable=[];
     for(const c of candidates.slice(0,18)){try{const pr=await probePlayableUrl(c.url,c.headers);c.probe=pr;if(pr.ok){c.type=pr.type;c.url=pr.finalUrl||c.url;playable.push(c)}}catch{}}
-    const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];
-    return {pageUrl:finalPage,pagesChecked:frameUrls,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico: ejecutó la página en un navegador limpio y observó únicamente solicitudes públicas generadas por el reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
+    const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.60: ejecutó la página, registró navegaciones de iframes sin fijar dominio/ruta y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
