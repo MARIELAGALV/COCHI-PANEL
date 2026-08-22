@@ -1177,7 +1177,7 @@ async function safeWebFetch(rawUrl, referer=''){
   if(!/^https?:$/.test(u.protocol)||isPrivateHost(u.hostname))throw new Error('Solo se permiten URLs web públicas HTTP/HTTPS');
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
-    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.60)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
+    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.61)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
     if(referer)headers.Referer=referer;
     const r=await fetch(u,{headers,redirect:'follow',signal:ctl.signal});
     if(!r.ok)throw new Error(`La página respondió HTTP ${r.status}`);
@@ -1229,13 +1229,13 @@ async function probePlayableUrl(rawUrl,headers={}){
   assertPublicHttpUrl(rawUrl);const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{const cleanHeaders={};for(const [k,v] of Object.entries(headers||{})){if(v)cleanHeaders[k]=String(v).slice(0,1000)}cleanHeaders['User-Agent']=cleanHeaders['User-Agent']||'Android/CO-CHI (Media3)';cleanHeaders.Accept=cleanHeaders.Accept||'*/*';cleanHeaders.Range='bytes=0-65535';const r=await fetch(rawUrl,{headers:cleanHeaders,redirect:'follow',signal:ctl.signal});const ct=String(r.headers.get('content-type')||'').toLowerCase();let body='';try{body=Buffer.from(await r.arrayBuffer()).subarray(0,65536).toString('utf8')}catch{}const low=String(r.url||rawUrl).toLowerCase();let type=/\.m3u8(?:[?#]|$)/i.test(low)||body.includes('#EXTM3U')||ct.includes('mpegurl')?'HLS':/\.mpd(?:[?#]|$)/i.test(low)||ct.includes('dash+xml')||/<MPD[\s>]/i.test(body)?'DASH':/\.mp4(?:[?#]|$)/i.test(low)||ct.includes('video/mp4')?'MP4':'';return {ok:r.ok&&Boolean(type),status:r.status,type:type||'DESCONOCIDO',contentType:ct,finalUrl:r.url||rawUrl};}finally{clearTimeout(timer)}
 }
-async function resolvePublicStreamPage(rawUrl){
-  const first=await safeWebFetch(rawUrl),pages=[first.url],visited=new Set([first.url]),all=new Map(),queue=[{page:first,depth:0,parent:''}];let fetched=0,maxDepthSeen=0;
+async function resolvePublicStreamPage(rawUrl,initialReferer=''){
+  const first=await safeWebFetch(rawUrl,initialReferer),pages=[first.url],visited=new Set([first.url]),all=new Map(),queue=[{page:first,depth:0,parent:''}];let fetched=0,maxDepthSeen=0;
   while(queue.length&&fetched<40){const {page,depth}=queue.shift();fetched++;maxDepthSeen=Math.max(maxDepthSeen,depth);const items=extractWebCandidates(page.text,page.url);for(const c of items){if(!all.has(c.url))all.set(c.url,c)}if(depth>=6)continue;
     const follow=items.filter(v=>['IFRAME','SCRIPT','CONFIG'].includes(v.type)).sort((a,b)=>((b.type==='IFRAME'?100:0)+(b.priority||0))-((a.type==='IFRAME'?100:0)+(a.priority||0))).slice(0,18);
     for(const x of follow){if(visited.has(x.url))continue;visited.add(x.url);try{const sub=await safeWebFetch(x.url,page.url);pages.push(sub.url);queue.push({page:sub,depth:depth+1,parent:page.url})}catch{}}
   }
-  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.60: detecta iframes dinámicamente, prioriza candidatos de reproductor y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
+  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.61: detecta iframes dinámicamente, separa candidatos de reproductor del resto y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -1251,14 +1251,14 @@ function selectedBrowserHeaders(reqHeaders={},sourcePage=''){
   pick('referer','Referer');pick('origin','Origin');pick('user-agent','User-Agent');pick('cookie','Cookie');
   if(!h.Referer&&sourcePage)h.Referer=sourcePage;if(!h.Origin&&sourcePage)h.Origin=originFor(sourcePage);if(!h['User-Agent'])h['User-Agent']='Android/CO-CHI (Media3)';return h;
 }
-async function resolveDynamicPublicStreamPage(rawUrl){
+async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
   assertPublicHttpUrl(rawUrl);const executablePath=process.env.CHROMIUM_PATH||'/usr/bin/chromium';
   if(!fs.existsSync(executablePath))throw new Error('Chromium no está instalado en el servidor. Volvé a desplegar esta versión completa.');
   const browser=await puppeteer.launch({executablePath,headless:true,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-first-run','--no-zygote']});
   const found=new Map(),bodyJobs=[],observedFrames=new Map();let finalPage=rawUrl;
   const add=(url,type,sourcePage,headers={})=>{if(!url||!publicBrowserUrl(url))return;const kind=type||streamKind(url);if(!kind)return;if(!found.has(url))found.set(url,{url,type:kind,sourcePage:sourcePage||finalPage,headers:selectedBrowserHeaders(headers,sourcePage||finalPage),dynamic:true});};
   try{
-    const page=await browser.newPage();page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.60');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    const page=await browser.newPage();if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.61');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{const url=req.url();if(!publicBrowserUrl(url)){req.abort().catch(()=>{});return}const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers());req.continue().catch(()=>{});});
     page.on('response',resp=>{try{const url=resp.url(),headers=resp.headers(),kind=streamKind(url,headers['content-type']);if(kind)add(url,kind,resp.request().frame()?.url()||finalPage,resp.request().headers());const rt=resp.request().resourceType(),len=Number(headers['content-length']||0);if(['xhr','fetch','script','document'].includes(rt)&&(!len||len<1000000)){bodyJobs.push((async()=>{try{const text=(await resp.text()).slice(0,1000000);const re=/https?:\\?\/\\?\/[^\s'"<>]+(?:\.m3u8|\.mpd|\.mp4)(?:\?[^\s'"<>]*)?/gi;for(const m of text.matchAll(re)){const clean=m[0].replace(/\\\//g,'/');add(clean,streamKind(clean),resp.url(),resp.request().headers())}for(const m of text.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi)){const abs=absoluteCandidate(m[1].replace(/\\\//g,'/'),resp.url());add(abs,streamKind(abs),resp.url(),resp.request().headers())}}catch{}})())}}catch{}});
     const nav=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:18000});finalPage=page.url()||nav?.url()||rawUrl;await new Promise(r=>setTimeout(r,8000));
@@ -1267,7 +1267,7 @@ async function resolveDynamicPublicStreamPage(rawUrl){
     await Promise.allSettled(bodyJobs.slice(0,120));const candidates=[...found.values()].slice(0,80),playable=[];
     for(const c of candidates.slice(0,18)){try{const pr=await probePlayableUrl(c.url,c.headers);c.probe=pr;if(pr.ok){c.type=pr.type;c.url=pr.finalUrl||c.url;playable.push(c)}}catch{}}
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.60: ejecutó la página, registró navegaciones de iframes sin fijar dominio/ruta y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.61: ejecutó la página o iframe seleccionado con su Referer, registró navegaciones de iframes y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -1984,6 +1984,19 @@ async function route(req,res){
       const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Ingresá una URL web'});
       try{const result=await resolveDynamicPublicStreamPage(url);audit(actor.id,'stream_resolver_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo ejecutar el análisis dinámico: '+e.message});}
+    }
+    if(p==='/api/admin/stream-resolver/iframe'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede probar iframes'});
+      const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
+      try{const result=await resolvePublicStreamPage(url,referer);audit(actor.id,'stream_resolver_iframe','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
+      catch(e){return sendJson(res,400,{error:'No se pudo probar el iframe: '+e.message});}
+    }
+    if(p==='/api/admin/stream-resolver/iframe/dynamic'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede buscar streams dentro de iframes'});
+      if(!rateLimit(req,res,'dynamic_iframe_resolver',12,10*60*1000))return;
+      const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
+      try{const result=await resolveDynamicPublicStreamPage(url,referer);audit(actor.id,'stream_resolver_iframe_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
+      catch(e){return sendJson(res,400,{error:'No se pudo buscar el stream dentro del iframe: '+e.message});}
     }
     if(p==='/api/admin/stream-resolver/published'&&m==='GET'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});return sendJson(res,200,{items:resolverPublishedEntries()});}
     if(p==='/api/admin/stream-resolver/probe'&&m==='POST'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL'});try{return sendJson(res,200,await probePlayableUrl(url,b.headers||{}));}catch(e){return sendJson(res,400,{error:'No se pudo probar la fuente: '+e.message});}}
