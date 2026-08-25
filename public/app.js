@@ -692,6 +692,7 @@ function contentPlain(){
 function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'';renderContentVisual();}
 function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
 function contentItemMeta(x){const bits=[];if(x?.uri)bits.push(x.uri);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
+function contentItemHidden(x){return x?._cochiHidden===true;}
 function moveArrayItem(arr,from,to){
   if(!Array.isArray(arr)||from<0||from>=arr.length)return;
   to=Math.max(0,Math.min(arr.length-1,to));if(from===to)return;
@@ -707,6 +708,7 @@ function renderContentVisual(){
   try{data=contentPlain();}catch(e){box.innerHTML=`<div class="empty error">JSON inválido: ${esc(e.message)}</div>`;return;}
   if(!data.length){box.innerHTML='<div class="empty muted">La lista está vacía. Podés agregar una categoría.</div>';return;}
   const q=String($('#contentSearch')?.value||state.contentQuery||'').trim().toLowerCase();state.contentQuery=q;
+  const contentKey=$('#contentKey')?.value||'',isTvGrid=contentKey==='tv1'||contentKey==='tv2';
   const visible=data.map((g,gi)=>{
     const items=Array.isArray(g.samples)?g.samples:[];
     const catMatch=String(g.name||'').toLowerCase().includes(q);
@@ -718,14 +720,14 @@ function renderContentVisual(){
       <div class="content-category-head">
         <button class="category-toggle" data-category-toggle="${gi}" aria-expanded="${isOpen?'true':'false'}">
           <span class="category-chevron">${isOpen?'▾':'▸'}</span>
-          <span><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${items.length} contenidos · posición ${gi+1}/${data.length}</span></span>
+          <span><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${items.length} contenidos${isTvGrid&&items.some(contentItemHidden)?` · ${items.filter(contentItemHidden).length} oculto${items.filter(contentItemHidden).length===1?'':'s'}`:''} · posición ${gi+1}/${data.length}</span></span>
         </button>
         <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
       </div>
-      <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>`<div class="content-item">
+      <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>`<div class="content-item ${contentItemHidden(x)?'content-item-hidden':''}">
         ${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
-        <div class="content-item-main"><strong>${esc(contentItemName(x))}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}</span></div>
-        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button><button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
+        <div class="content-item-main"><strong>${esc(contentItemName(x))}${contentItemHidden(x)?' <span class="hidden-channel-badge">OCULTO</span>':''}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}${contentItemHidden(x)?' · no aparece en CO-CHI':''}</span></div>
+        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button>${isTvGrid?`<button class="${contentItemHidden(x)?'primary':'ghost'} mini" data-content-visibility="${gi}:${si}">${contentItemHidden(x)?'MOSTRAR':'OCULTAR'}</button>`:''}<button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
       </div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
     </div>`;
   }).join('');
@@ -750,6 +752,20 @@ function renderContentVisual(){
   });
   $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
   $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
+  $$('[data-content-visibility]').forEach(b=>b.onclick=async()=>{
+    const [g,i]=b.dataset.contentVisibility.split(':').map(Number),d=contentPlain(),item=d[g]?.samples?.[i];if(!item)return;
+    const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
+    const wasHidden=contentItemHidden(item),name=contentItemName(item);
+    b.disabled=true;const oldText=b.textContent;b.textContent=wasHidden?'MOSTRANDO...':'OCULTANDO...';
+    try{
+      if(wasHidden)delete item._cochiHidden;else item._cochiHidden=true;
+      await quickPublishContent(key,d,{syncOriginal:true,successText:`${name} ${wasHidden?'MOSTRADO':'OCULTADO'}`});
+      state.contentOpen.add(g);setContentPlain(d);
+    }catch(err){
+      if(wasHidden)item._cochiHidden=true;else delete item._cochiHidden;
+      msg($('#contentMsg'),'No se pudo cambiar la visibilidad: '+err.message);toast(err.message,'bad');b.disabled=false;b.textContent=oldText;
+    }
+  });
   $$('[data-content-delete]').forEach(b=>b.onclick=()=>{
     const [g,i]=b.dataset.contentDelete.split(':').map(Number),d=contentPlain(),name=contentItemName(d[g].samples[i]);
     if(confirm(`¿Eliminar ${name}?`)){d[g].samples.splice(i,1);setContentPlain(d);}
