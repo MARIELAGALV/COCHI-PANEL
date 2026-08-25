@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.61</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.62</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -95,11 +95,21 @@
       </section>
 
       <section id="view-accounts" class="view">
+        <div class="neon-card panel-card control-card root-admin-only" id="adminManagementCard">
+          <div class="card-head"><div><h3>Administradores independientes</h3><p class="muted">Creá otra cuenta ADMINISTRACIÓN con su propio código de acceso. Sus sesiones y sus 2 dispositivos quedan separados de tu cuenta principal.</p></div><button id="newAdminBtn" class="primary" type="button">+ NUEVO ADMINISTRADOR</button></div>
+          <div class="rule-grid rule-grid-compact">
+            <div class="rule-card"><b>Sesiones separadas</b><span>Cuando el otro administrador inicia sesión, no cierra ni reemplaza la sesión de la ADMINISTRACIÓN principal.</span></div>
+            <div class="rule-card"><b>Acceso administrativo</b><span>Puede gestionar clientes, vendedores, contenido y las funciones de ADMINISTRACIÓN con su propia identidad.</span></div>
+            <div class="rule-card"><b>Principal protegida</b><span>Un administrador secundario no puede modificar tu cuenta, regenerar tu código ni liberar tus dispositivos.</span></div>
+            <div class="rule-card"><b>Administradores creados</b><span><strong id="secondaryAdminCount">0</strong> administrador(es) independiente(s).</span></div>
+          </div>
+          <div id="adminManagementState" class="muted small mt10"></div>
+        </div>
         <div class="neon-card panel-card control-card admin-only" id="roleCreationCard">
           <div class="card-head"><div><h3>Categorías habilitadas para crear</h3><p class="muted">Tildá únicamente las categorías PANEL que querés permitir crear. Destildar una categoría no borra ni bloquea las cuentas existentes.</p></div></div>
           <form id="roleSettingsForm">
             <div class="rule-grid">
-              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="1"> Administración</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="1"> Administración <span class="muted small">(solo principal crea nuevas cuentas)</span></label>
               <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="2"> Distribuidor</label>
               <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="3"> Revendedor</label>
               <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="4"> Vendedor</label>

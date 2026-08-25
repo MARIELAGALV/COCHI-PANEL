@@ -80,12 +80,16 @@ async function loginSaved(){
 }
 $('#logoutBtn').addEventListener('click',async()=>{await api('/api/panel/logout',{method:'POST'}).catch(()=>{});show('activateView');$('#existingDeviceBtn').classList.toggle('hidden',!secret());});
 
+function applyAccessVisibility(){
+  $$('.admin-only').forEach(x=>x.classList.toggle('hidden',state.me?.role_level!==1));
+  $$('.root-admin-only').forEach(x=>x.classList.toggle('hidden',!state.me?.is_root_admin));
+}
 function enterApp(){
   show('appView');
   $('#meName').textContent=state.me.name;
-  $('#roleEyebrow').textContent=state.me.role_name;
+  $('#roleEyebrow').textContent=state.me.is_root_admin?'ADMINISTRACIÓN PRINCIPAL':state.me.role_name;
   $('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;
-  $$('.admin-only').forEach(x=>x.classList.toggle('hidden',state.me.role_level!==1));
+  applyAccessVisibility();
   switchView('dashboard');
 }
 
@@ -105,7 +109,7 @@ function switchView(name){
   const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción'};
   $('#pageTitle').textContent=t[name]||name;refreshCurrent();
 }
-async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;}
+async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#roleEyebrow').textContent=state.me.is_root_admin?'ADMINISTRACIÓN PRINCIPAL':state.me.role_name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;applyAccessVisibility();}
 async function refreshCurrent(){
   try{
     await refreshMe();const v=document.body.dataset.view||'dashboard';
@@ -143,7 +147,9 @@ function renderAccounts(){
     const blocked=x.inactivity_blocked;
     const stat=x.is_root_admin?'<span class="badge active">PROTEGIDA</span>':x.manual_blocked?`<span class="badge blocked">BLOQUEADA</span><div class="muted small">${esc(x.block_reason||'')}</div>`:!x.active?'<span class="badge blocked">DESHABILITADA</span>':blocked?'<span class="badge pending">BLOQUEO 2 MESES</span>':'<span class="badge active">ACTIVA</span>';
     const creditValue=x.role_level===1?'—':x.credits;
-    return `<tr data-account="${x.id}"><td><b>${esc(x.name)}</b>${x.is_root_admin?'<div class="muted small">Panel principal</div>':`<div class="muted small">${esc(x.contact||'')}</div>`}</td><td><span class="role-chip role-${x.role_level}">${esc(x.role_name)}</span></td><td>${esc(x.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div></td><td>${x.panel_device_count}/2</td><td>${stat}<div class="muted small">${x.next_inactivity_block_at?`Límite: ${esc(fmt(x.next_inactivity_block_at))}`:''}</div></td><td><button class="ghost" data-action="account-edit">Editar</button></td></tr>`;
+    const adminLabel=x.is_root_admin?'Panel principal':(x.role_level===1?'Administrador independiente':esc(x.contact||''));
+    const action=x.can_edit!==false?'<button class="ghost" data-action="account-edit">Editar</button>':'<span class="muted small">Protegido</span>';
+    return `<tr data-account="${x.id}"><td><b>${esc(x.name)}</b><div class="muted small">${adminLabel}</div></td><td><span class="role-chip role-${x.role_level}">${esc(x.role_name)}</span></td><td>${esc(x.parent_name||'—')}</td><td class="credit-number"><div>${creditValue}</div></td><td>${x.panel_device_count}/2</td><td>${stat}<div class="muted small">${x.next_inactivity_block_at?`Límite: ${esc(fmt(x.next_inactivity_block_at))}`:''}</div></td><td>${action}</td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay paneles que coincidan con la búsqueda.':'No hay fichas PANEL visibles.'}</td></tr>`;
 }
 async function loadAccounts(render=true){
@@ -152,12 +158,24 @@ async function loadAccounts(render=true){
   state.roleSettings={enabledRoleLevels:Array.isArray(d.enabledRoleLevels)?d.enabledRoleLevels:[1,2,3,4],creatableRoleLevels:Array.isArray(d.creatableRoleLevels)?d.creatableRoleLevels:[]};
   renderRoleCreationSettings();
   updateNewAccountButton();
+  updateAdminManagementCard();
   if(render)renderAccounts();
 }
 $('#accountSearch')?.addEventListener('input',renderAccounts);
 
 $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
+$('#newAdminBtn')?.addEventListener('click',()=>openAccountModal(null,1));
 function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
+function updateAdminManagementCard(){
+  const card=$('#adminManagementCard'),count=$('#secondaryAdminCount'),stateEl=$('#adminManagementState'),btn=$('#newAdminBtn');
+  if(!card)return;
+  const root=Boolean(state.me?.is_root_admin);card.classList.toggle('hidden',!root);if(!root)return;
+  const admins=(state.accounts||[]).filter(x=>Number(x.role_level)===1&&!x.is_root_admin);
+  if(count)count.textContent=String(admins.length);
+  const enabled=(state.roleSettings?.enabledRoleLevels||[]).map(Number).includes(1);
+  if(btn){btn.disabled=!enabled;btn.title=enabled?'Crear un administrador con código propio':'Habilitá la categoría Administración para crear nuevos administradores';}
+  if(stateEl)stateEl.textContent=enabled?'Cada administrador usa su propio código y sus propias sesiones.':'La creación de Administradores está desactivada en Categorías habilitadas.';
+}
 function updateNewAccountButton(){
   const b=$('#newAccountBtn');if(!b)return;
   const levels=currentCreatableRoleLevels();
@@ -187,9 +205,12 @@ function allowedRoleOptions(current=null){
   levels=[...new Set(levels)].filter(x=>[1,2,3,4].includes(x));
   return levels.map(x=>`<option value="${x}" ${Number(current)===x?'selected':''}>${roleNames[x]}</option>`).join('');
 }
-function openAccountModal(a=null){
-  const admin=state.me.role_level===1,root=Boolean(a?.is_root_admin);
-  if(!a&&currentCreatableRoleLevels().length===0){toast('No hay categorías PANEL habilitadas para crear.','error');return;}
+function openAccountModal(a=null,forcedRole=null){
+  const admin=state.me.role_level===1,root=Boolean(a?.is_root_admin),secondaryAdmin=Boolean(a&&Number(a.role_level)===1&&!root),adminIdentityLocked=Boolean(a?.admin_identity_locked);
+  if(a&&a.can_edit===false){toast('Esta cuenta ADMINISTRACIÓN está protegida.','error');return;}
+  if(!a&&forcedRole===1&&!state.me?.is_root_admin){toast('Solo la ADMINISTRACIÓN principal puede crear administradores.','error');return;}
+  if(!a&&forcedRole!==null&&!currentCreatableRoleLevels().includes(Number(forcedRole))){toast('Esa categoría no está habilitada para nuevas altas.','error');return;}
+  if(!a&&forcedRole===null&&currentCreatableRoleLevels().length===0){toast('No hay categorías PANEL habilitadas para crear.','error');return;}
   
   const accountSummary=a?`
     <div class="edit-summary-grid">
@@ -209,7 +230,7 @@ function openAccountModal(a=null){
       </div>
     </div>`:'';
 
-const controlSection=a&&!root?`
+const controlSection=a&&!root&&!adminIdentityLocked?`
     <div class="panel-control-card">
       <h4>Control del panel</h4>
       <p class="muted small">Estas acciones no devuelven créditos ni transfieren clientes. Los clientes activos siguen funcionando hasta su vencimiento.</p>
@@ -226,27 +247,38 @@ const controlSection=a&&!root?`
            </div>`}
     </div>`:'';
 
-  openModal(`<h3>${a?'Editar ficha PANEL':'Nueva ficha PANEL'}</h3>${root?'<div class="protected-note">🔒 ADMINISTRACIÓN principal protegida: podés editar nombre, contacto y notas, pero no deshabilitarla, bajarla de categoría ni cambiar su propietario.</div>':''}${accountSummary}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row"><label>Categoría<select id="aRole" ${(a&&!admin)||root?'disabled':''}>${allowedRoleOptions(a?.role_level||null)}</select></label><label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${a&&admin&&!root?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:''}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${a&&!root?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:''}${controlSection}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
+  const creatingAdmin=!a&&Number(forcedRole)===1;
+  const protectedNote=root
+    ? '<div class="protected-note">🔒 ADMINISTRACIÓN principal protegida: podés editar nombre, contacto y notas, pero no deshabilitarla, bajarla de categoría ni cambiar su propietario.</div>'
+    : adminIdentityLocked?'<div class="protected-note">🔒 Esta cuenta ADMINISTRACIÓN es independiente. Desde este usuario solo se pueden editar sus datos básicos; su categoría, propietario y estado están protegidos.</div>':'';
+  const roleValue=a?.role_level||(forcedRole!==null?Number(forcedRole):null);
+  const roleField=creatingAdmin
+    ? `<label>Categoría<input value="ADMINISTRACIÓN" disabled></label>`
+    : `<label>Categoría<select id="aRole" ${(a&&!admin)||root||adminIdentityLocked?'disabled':''}>${allowedRoleOptions(roleValue)}</select></label>`;
+  const parentField=a&&admin&&!root&&!adminIdentityLocked?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:'';
+  const activeField=a&&!root&&!adminIdentityLocked?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:'';
+  openModal(`<h3>${a?'Editar ficha PANEL':creatingAdmin?'Nuevo administrador independiente':'Nueva ficha PANEL'}</h3>${creatingAdmin?'<div class="protected-note">🔐 Se creará una cuenta ADMINISTRACIÓN con código propio. Sus inicios de sesión y dispositivos quedan separados de la ADMINISTRACIÓN principal.</div>':''}${protectedNote}${accountSummary}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row">${roleField}<label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${parentField}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${activeField}${controlSection}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
 
   $('#accountForm').addEventListener('submit',async e=>{
     e.preventDefault();
     try{
       const payload={name:$('#aName').value,contact:$('#aContact').value,notes:$('#aNotes').value};
-      if(!a)payload.roleLevel=Number($('#aRole').value);
-      else if(admin&&!root)payload.roleLevel=Number($('#aRole').value);
-      if(a&&!root){
+      if(!a)payload.roleLevel=forcedRole!==null?Number(forcedRole):Number($('#aRole').value);
+      else if(admin&&!root&&!adminIdentityLocked)payload.roleLevel=Number($('#aRole').value);
+      if(a&&!root&&!adminIdentityLocked){
         payload.active=$('#aActive').checked;
         if(admin)payload.parentId=$('#aParent').value?Number($('#aParent').value):null;
       }
       const r=await api(a?`/api/admin/accounts/${a.id}`:'/api/admin/accounts',{method:a?'PUT':'POST',body:payload});
       if(!a){
-        openModal(`<h3>Ficha PANEL creada</h3><p>${esc(r.role)}</p><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Código para activar hasta 2 dispositivos del PANEL.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);
+        const isIndependentAdmin=Boolean(r.independentAdmin||Number(payload.roleLevel)===1);
+        openModal(`<h3>${isIndependentAdmin?'Administrador creado':'Ficha PANEL creada'}</h3><p>${esc(r.role)}</p><div class="code-big">${esc(r.activationCode)}</div><p class="muted">${isIndependentAdmin?'Este es su código propio. Puede activar hasta 2 dispositivos y sus sesiones no reemplazan ni cierran las de la ADMINISTRACIÓN principal.':'Código para activar hasta 2 dispositivos del PANEL.'}</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);
       }else closeModal();
       await loadAccounts();
     }catch(err){msg($('#accountMsg'),err.message);}
   });
 
-  if(a&&!root){
+  if(a&&!root&&!adminIdentityLocked){
     $('#editBlockPanel')?.addEventListener('click',async()=>{
       const reason=String($('#editBlockReason')?.value||'').trim();
       if(!reason)return msg($('#accountMsg'),'Escribí el motivo del bloqueo.');

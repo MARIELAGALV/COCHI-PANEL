@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.60';
+const VERSION = '0.9.62';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -575,7 +575,10 @@ function enabledPanelRoleLevels(){
 function isPanelRoleCreationEnabled(level){return enabledPanelRoleLevels().includes(Number(level));}
 function creatablePanelRoleLevelsFor(actor){
   const enabled=enabledPanelRoleLevels();
-  if(Number(actor?.role_level)===1)return enabled;
+  if(Number(actor?.role_level)===1){
+    // Solo la ADMINISTRACIÓN principal puede crear otras cuentas ADMINISTRACIÓN.
+    return isRootAdminAccount(actor)?enabled:enabled.filter(level=>level!==1);
+  }
   return enabled.filter(level=>level>Number(actor?.role_level||99));
 }
 
@@ -958,8 +961,27 @@ function accountPublic(a){
   const nextBlock=a.role_level===1?null:addMonths(a.last_credit_received_at||a.created_at,2);
   return {...a,role_name:roles[a.role_level],active:Boolean(a.active),inactivity_blocked:Boolean(a.inactivity_blocked),manual_blocked:Boolean(a.manual_blocked),block_reason:a.block_reason||'',deleted:Boolean(a.deleted_at),next_inactivity_block_at:nextBlock,is_root_admin:isRootAdminAccount(a),credits_unlimited:Number(a.role_level)===1};
 }
-function canEditAccount(actor,target){return actor.role_level===1 || target.parent_id===actor.id;}
-function canManageDirectPanel(actor,target){return Boolean(actor&&target&&!isRootAdminAccount(target)&&(actor.role_level===1 || Number(target.parent_id)===Number(actor.id)));}
+function canEditAccount(actor,target){
+  if(!actor||!target)return false;
+  // Las cuentas ADMINISTRACIÓN son independientes. Un admin secundario solo puede editar sus propios datos básicos;
+  // únicamente la ADMINISTRACIÓN principal puede editar otra cuenta ADMINISTRACIÓN.
+  if(Number(target.role_level)===1){
+    if(Number(actor.id)===Number(target.id))return true;
+    return isRootAdminAccount(actor);
+  }
+  return Number(actor.role_level)===1 || Number(target.parent_id)===Number(actor.id);
+}
+function canManageDirectPanel(actor,target){
+  if(!actor||!target||isRootAdminAccount(target))return false;
+  if(Number(target.role_level)===1)return isRootAdminAccount(actor)&&Number(target.id)!==Number(actor.id);
+  return Number(actor.role_level)===1 || Number(target.parent_id)===Number(actor.id);
+}
+function canManagePanelDevice(actor,target){
+  if(!actor||!target)return false;
+  if(Number(actor.id)===Number(target.id))return true;
+  if(Number(target.role_level)===1)return isRootAdminAccount(actor);
+  return Number(actor.role_level)===1 || Number(target.parent_id)===Number(actor.id);
+}
 function canEditClient(actor,client){return actor.role_level===1 || client.owner_account_id===actor.id;}
 function accountIsInBranch(actor,targetAccountId){
   if(!actor||!targetAccountId)return false;
@@ -977,7 +999,13 @@ function clientRenewCreditCost(c){return Math.max(1,Math.ceil(clientDeviceLimit(
 function monthStartIso(){const d=new Date();return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)).toISOString();}
 function clientDeviceChangesThisMonth(clientId){return Number(db.prepare('SELECT COUNT(*) n FROM client_device_changes WHERE client_id=? AND created_at>=?').get(clientId,monthStartIso()).n);}
 function demoEverUsedByUid(uid){return Boolean(db.prepare('SELECT 1 FROM demo_device_history WHERE device_uid=? AND reset_by_admin_at IS NULL').get(uid));}
-function canCreateLevel(actor,level){level=Number(level);if(!PANEL_ROLE_LEVELS.includes(level)||!isPanelRoleCreationEnabled(level))return false;if(Number(actor.role_level)===1)return true;return level>Number(actor.role_level); }
+function canCreateLevel(actor,level){
+  level=Number(level);
+  if(!PANEL_ROLE_LEVELS.includes(level)||!isPanelRoleCreationEnabled(level))return false;
+  if(level===1)return isRootAdminAccount(actor);
+  if(Number(actor.role_level)===1)return true;
+  return level>Number(actor.role_level);
+}
 function wouldCycle(accountId,newParentId){
   let cur=newParentId; let guard=0;
   while(cur && guard++<100){if(cur===accountId)return true;const r=accountRaw(cur);cur=r?r.parent_id:null;}
@@ -1177,7 +1205,7 @@ async function safeWebFetch(rawUrl, referer=''){
   if(!/^https?:$/.test(u.protocol)||isPrivateHost(u.hostname))throw new Error('Solo se permiten URLs web públicas HTTP/HTTPS');
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
-    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.61)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
+    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.62)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
     if(referer)headers.Referer=referer;
     const r=await fetch(u,{headers,redirect:'follow',signal:ctl.signal});
     if(!r.ok)throw new Error(`La página respondió HTTP ${r.status}`);
@@ -1235,7 +1263,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
     const follow=items.filter(v=>['IFRAME','SCRIPT','CONFIG'].includes(v.type)).sort((a,b)=>((b.type==='IFRAME'?100:0)+(b.priority||0))-((a.type==='IFRAME'?100:0)+(a.priority||0))).slice(0,18);
     for(const x of follow){if(visited.has(x.url))continue;visited.add(x.url);try{const sub=await safeWebFetch(x.url,page.url);pages.push(sub.url);queue.push({page:sub,depth:depth+1,parent:page.url})}catch{}}
   }
-  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.61: detecta iframes dinámicamente, separa candidatos de reproductor del resto y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
+  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.62: detecta iframes dinámicamente, separa candidatos de reproductor del resto y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -1258,7 +1286,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
   const found=new Map(),bodyJobs=[],observedFrames=new Map();let finalPage=rawUrl;
   const add=(url,type,sourcePage,headers={})=>{if(!url||!publicBrowserUrl(url))return;const kind=type||streamKind(url);if(!kind)return;if(!found.has(url))found.set(url,{url,type:kind,sourcePage:sourcePage||finalPage,headers:selectedBrowserHeaders(headers,sourcePage||finalPage),dynamic:true});};
   try{
-    const page=await browser.newPage();if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.61');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    const page=await browser.newPage();if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.62');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{const url=req.url();if(!publicBrowserUrl(url)){req.abort().catch(()=>{});return}const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers());req.continue().catch(()=>{});});
     page.on('response',resp=>{try{const url=resp.url(),headers=resp.headers(),kind=streamKind(url,headers['content-type']);if(kind)add(url,kind,resp.request().frame()?.url()||finalPage,resp.request().headers());const rt=resp.request().resourceType(),len=Number(headers['content-length']||0);if(['xhr','fetch','script','document'].includes(rt)&&(!len||len<1000000)){bodyJobs.push((async()=>{try{const text=(await resp.text()).slice(0,1000000);const re=/https?:\\?\/\\?\/[^\s'"<>]+(?:\.m3u8|\.mpd|\.mp4)(?:\?[^\s'"<>]*)?/gi;for(const m of text.matchAll(re)){const clean=m[0].replace(/\\\//g,'/');add(clean,streamKind(clean),resp.url(),resp.request().headers())}for(const m of text.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi)){const abs=absoluteCandidate(m[1].replace(/\\\//g,'/'),resp.url());add(abs,streamKind(abs),resp.url(),resp.request().headers())}}catch{}})())}}catch{}});
     const nav=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:18000});finalPage=page.url()||nav?.url()||rawUrl;await new Promise(r=>setTimeout(r,8000));
@@ -1267,7 +1295,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     await Promise.allSettled(bodyJobs.slice(0,120));const candidates=[...found.values()].slice(0,80),playable=[];
     for(const c of candidates.slice(0,18)){try{const pr=await probePlayableUrl(c.url,c.headers);c.probe=pr;if(pr.ok){c.type=pr.type;c.url=pr.finalUrl||c.url;playable.push(c)}}catch{}}
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.61: ejecutó la página o iframe seleccionado con su Referer, registró navegaciones de iframes y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.62: ejecutó la página o iframe seleccionado con su Referer, registró navegaciones de iframes y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -2017,8 +2045,14 @@ async function route(req,res){
     if(p==='/api/admin/accounts'&&m==='GET'){
       let rows=actor.role_level===1?db.prepare('SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY role_level,id').all():db.prepare('SELECT * FROM accounts WHERE parent_id=? AND deleted_at IS NULL ORDER BY role_level,id').all(actor.id);
       rows=rows.filter(x=>x.id!==actor.id || actor.role_level===1).map(accountPublic);
-      for(const x of rows){x.panel_device_count=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(x.id).n);x.parent_name=x.parent_id?(accountRaw(x.parent_id)?.name||null):null;}
-      return sendJson(res,200,{accounts:rows,enabledRoleLevels:enabledPanelRoleLevels(),creatableRoleLevels:creatablePanelRoleLevelsFor(actor)});
+      for(const x of rows){
+        x.panel_device_count=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(x.id).n);
+        x.parent_name=x.parent_id?(accountRaw(x.parent_id)?.name||null):null;
+        x.can_edit=canEditAccount(actor,x);
+        x.can_manage_panel=canManageDirectPanel(actor,x);
+        x.admin_identity_locked=Number(x.role_level)===1&&!isRootAdminAccount(actor);
+      }
+      return sendJson(res,200,{accounts:rows,enabledRoleLevels:enabledPanelRoleLevels(),creatableRoleLevels:creatablePanelRoleLevelsFor(actor),isRootAdmin:isRootAdminAccount(actor)});
     }
     if(p==='/api/admin/role-settings'&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede configurar las categorías habilitadas'});
@@ -2033,28 +2067,35 @@ async function route(req,res){
       if(level===5)return sendJson(res,400,{error:'CLIENTE final no es una ficha PANEL. Se crea únicamente desde la sección Clientes finales'});
       if(!PANEL_ROLE_LEVELS.includes(level))return sendJson(res,400,{error:'Categoría PANEL inválida'});
       if(!isPanelRoleCreationEnabled(level))return sendJson(res,403,{error:`La categoría ${roles[level]} está desactivada por ADMINISTRACIÓN`});
-      if(!canCreateLevel(actor,level))return sendJson(res,403,{error:'Solo podés crear categorías inferiores a la tuya'});
+      if(!canCreateLevel(actor,level))return sendJson(res,403,{error:level===1?'Solo la ADMINISTRACIÓN principal puede crear otros administradores':'Solo podés crear categorías inferiores a la tuya'});
       const name=String(b.name||'').trim();if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});const t=nowIso(),code=generateCode('accounts');
       const r=db.prepare('INSERT INTO accounts(name,role_level,parent_id,contact,notes,credits,active,inactivity_blocked,activation_code,created_at,updated_at) VALUES (?,?,?,?,?,0,1,0,?,?,?)')
         .run(name,level,actor.id,String(b.contact||'').trim(),String(b.notes||'').trim(),code,t,t);
-      return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,role:roles[level]});
+      const newId=Number(r.lastInsertRowid);
+      audit(actor.id,level===1?'admin_account_created':'panel_account_created','account',newId,`${roles[level]} · ${name}`);
+      return sendJson(res,201,{ok:true,id:newId,activationCode:code,role:roles[level],independentAdmin:level===1});
     }
     const am=p.match(/^\/api\/admin\/accounts\/(\d+)$/);
     if(am&&m==='PUT'){
       const id=Number(am[1]),target=accountRaw(id);if(!target)return sendJson(res,404,{error:'Ficha no encontrada'});if(!canEditAccount(actor,target))return sendJson(res,403,{error:'Solo podés editar tus fichas directas'});
       const b=await readJson(req);let role=target.role_level,parent=target.parent_id;
       const rootProtected=isRootAdminAccount(target);
+      const adminIdentityProtected=Number(target.role_level)===1&&!isRootAdminAccount(actor);
       if(rootProtected){
         if(b.roleLevel!==undefined&&Number(b.roleLevel)!==1)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal no puede bajar de categoría'});
         if(b.parentId!==undefined&&b.parentId!==null)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal no puede tener propietario'});
         if(b.active!==undefined&&!b.active)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal no puede bloquearse ni deshabilitarse'});
       }
-      if(actor.role_level===1&&!rootProtected){
+      if(adminIdentityProtected){
+        if(b.roleLevel!==undefined&&Number(b.roleLevel)!==Number(target.role_level))return sendJson(res,409,{error:'Un administrador secundario no puede cambiar su propia categoría ni la de otra ADMINISTRACIÓN'});
+        if(b.parentId!==undefined&&Number(b.parentId||0)!==Number(target.parent_id||0))return sendJson(res,409,{error:'Un administrador secundario no puede cambiar la relación de una cuenta ADMINISTRACIÓN'});
+        if(b.active!==undefined&&Boolean(b.active)!==Boolean(target.active))return sendJson(res,409,{error:'Un administrador secundario no puede deshabilitar una cuenta ADMINISTRACIÓN'});
+      } else if(actor.role_level===1&&!rootProtected){
         if(b.roleLevel!==undefined){const requestedRole=Number(b.roleLevel);if(!PANEL_ROLE_LEVELS.includes(requestedRole))return sendJson(res,400,{error:'Categoría inválida'});if(requestedRole!==Number(target.role_level)&&!isPanelRoleCreationEnabled(requestedRole))return sendJson(res,409,{error:`La categoría ${roles[requestedRole]} está desactivada por ADMINISTRACIÓN`});role=requestedRole;}
         if(b.parentId!==undefined){parent=b.parentId===null?null:Number(b.parentId);if(parent===id||wouldCycle(id,parent))return sendJson(res,400,{error:'Relación de propietario inválida'});}
       } else if(actor.role_level!==1&&(b.roleLevel!==undefined||b.parentId!==undefined))return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar categoría o propietario'});
       const name=b.name!==undefined?String(b.name).trim():target.name;if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});
-      const active=rootProtected?1:(b.active!==undefined?(b.active?1:0):target.active);
+      const active=(rootProtected||adminIdentityProtected)?target.active:(b.active!==undefined?(b.active?1:0):target.active);
       db.prepare('UPDATE accounts SET name=?,role_level=?,parent_id=?,contact=?,notes=?,active=?,updated_at=? WHERE id=?').run(name,role,parent,b.contact!==undefined?String(b.contact).trim():target.contact,b.notes!==undefined?String(b.notes).trim():target.notes,active,nowIso(),id);
       return sendJson(res,200,{ok:true});
     }
@@ -2092,7 +2133,7 @@ async function route(req,res){
 
     const regen=p.match(/^\/api\/admin\/accounts\/(\d+)\/regenerate-code$/);
     if(regen&&m==='POST'){
-      const id=Number(regen[1]),target=accountRaw(id);if(!target)return sendJson(res,404,{error:'Ficha no encontrada'});if(!canEditAccount(actor,target))return sendJson(res,403,{error:'Sin permiso'});const code=generateCode('accounts');db.prepare('UPDATE accounts SET activation_code=?,updated_at=? WHERE id=?').run(code,nowIso(),id);return sendJson(res,200,{ok:true,activationCode:code});
+      const id=Number(regen[1]),target=accountRaw(id);if(!target)return sendJson(res,404,{error:'Ficha no encontrada'});if(!canEditAccount(actor,target))return sendJson(res,403,{error:'Sin permiso'});const code=generateCode('accounts');db.prepare('UPDATE accounts SET activation_code=?,updated_at=? WHERE id=?').run(code,nowIso(),id);audit(actor.id,'panel_activation_code_regenerated','account',id,target.name||'');return sendJson(res,200,{ok:true,activationCode:code});
     }
     const pdev=p.match(/^\/api\/admin\/accounts\/(\d+)\/panel-devices$/);
     if(pdev&&m==='GET'){
@@ -2101,8 +2142,9 @@ async function route(req,res){
     }
     const prelease=p.match(/^\/api\/admin\/panel-devices\/(\d+)\/release$/);
     if(prelease&&m==='POST'){
-      const d=db.prepare('SELECT pd.*,a.parent_id FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.id=?').get(Number(prelease[1]));if(!d)return sendJson(res,404,{error:'Dispositivo no encontrado'});
-      if(!(actor.role_level===1||d.parent_id===actor.id))return sendJson(res,403,{error:'Solo el propietario directo o ADMINISTRACIÓN puede liberar este dispositivo'});
+      const d=db.prepare('SELECT pd.*,a.parent_id,a.role_level FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.id=?').get(Number(prelease[1]));if(!d)return sendJson(res,404,{error:'Dispositivo no encontrado'});
+      const targetAccount=accountRaw(Number(d.account_id));
+      if(!canManagePanelDevice(actor,targetAccount))return sendJson(res,403,{error:'No tenés permiso para liberar dispositivos de otra cuenta ADMINISTRACIÓN'});
       if(Number(d.account_id)===rootAdminId()){
         const activeCount=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(d.account_id).n);
         if(activeCount<=1)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal debe conservar al menos 1 dispositivo activo. Activá el reemplazo antes de liberar este equipo.'});
