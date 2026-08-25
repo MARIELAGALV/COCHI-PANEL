@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.62</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.63</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -234,7 +234,7 @@
       <section id="view-content" class="view admin-only">
         <div class="neon-card panel-card content-manager">
           <div class="card-head"><div><h3>Manager de Contenido</h3><p class="muted">Importá las listas actuales y trabajá con los datos desencriptados. Al guardar, CO-CHI PANEL vuelve a cifrar automáticamente el JSON que consume la app.</p></div></div>
-          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">ACTUALIZAR DESDE FUENTE</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentSaveBtn" class="primary" title="Guarda esta edición en la fuente maestra. Si existe un JSON privado en el PANEL, actualiza solo esa copia privada; si no, usa la fuente GitHub configurada. No publica todavía en la app">GUARDAR EN JSON ORIGINAL</button><button id="contentUseBtn" class="code-btn" title="Guarda esta edición, la encripta y la publica inmediatamente para CO-CHI">ENCRIPTAR Y CARGAR A LA APP</button></div>
+          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">ACTUALIZAR DESDE FUENTE</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentApplyBtn" class="primary" title="Guarda la edición y la publica para CO-CHI en una sola acción">GUARDAR Y PUBLICAR</button></div>
           <div class="content-security-note"><strong>MODO ADMIN DESENCRIPTADO</strong><span>Lo que ves y editás aquí es legible. La URL pública del PANEL entrega el contenido cifrado para CO-CHI.</span></div>
           <div class="content-source-card">
             <div class="content-source-head"><div><h4>Origen del JSON</h4><p class="muted small">Acá podés ver o cambiar la URL/repo desde donde se importa TV1, TV2, Películas o Series.</p></div><span id="contentSourceLabel" class="badge active">TV1</span></div>
@@ -247,7 +247,7 @@
             <div class="muted tiny">Podés usar GitHub, GitHub Releases, Cloudflare, Railway u otra URL HTTPS. El PANEL guardará una URL independiente para cada lista.</div>
           </div>
           <div class="content-info"><span id="contentState" class="muted small">Seleccioná un contenido.</span><span id="contentPublicUrl" class="muted small"></span></div>
-          <div class="content-visual-head"><div><h4>Editor visual</h4><p class="muted small">Categorías plegables, búsqueda y orden del contenido.</p></div><div class="content-visual-actions"><input id="contentSearch" class="content-search" type="search" placeholder="Buscar categoría o contenido…" autocomplete="off"><button id="contentAddCategoryBtn" class="ghost">+ CATEGORÍA</button><button id="contentVisualRefreshBtn" class="ghost">ACTUALIZAR VISTA</button></div></div>
+          <div class="content-visual-head"><div><h4>Editor visual</h4><p class="muted small">Categorías plegables, búsqueda y orden del contenido.</p></div><div class="content-visual-actions"><input id="contentSearch" class="content-search" type="search" placeholder="Buscar categoría o contenido…" autocomplete="off"><button id="contentAddCategoryBtn" class="ghost">+ CATEGORÍA</button></div></div>
           <div id="contentVisual" class="content-visual"><div class="empty muted">Importá o cargá una lista para comenzar.</div></div>
           <details class="content-advanced"><summary>JSON avanzado desencriptado</summary><label>JSON editable<textarea id="contentJson" class="content-json" spellcheck="false" placeholder="El JSON aparecerá desencriptado. Al guardar se cifrará automáticamente."></textarea></label></details>
           <div id="contentMsg" class="msg"></div>

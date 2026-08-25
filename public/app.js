@@ -875,6 +875,26 @@ function playbackMarkersFromExtra(extra){
   return {version:1,seasons:{...(src.seasons||{})}};
 }
 
+async function quickPublishContent(key,json,{syncOriginal=true,successText='ACTUALIZADO'}={}){
+  const r=await api(`/api/admin/content/${key}/quick-update`,{method:'POST',body:{json}});
+  const stats=r.stats?` · ${r.stats.items} contenidos`:'';
+  const text=`${successText} · ${key.toUpperCase()}${stats} · IMPACTO INMEDIATO EN CO-CHI`;
+  msg($('#contentMsg'),text,true);toast(text,'ok');
+  if(syncOriginal){
+    // La app ya quedó actualizada. La fuente original se sincroniza después para no frenar el impacto.
+    api(`/api/admin/content/${key}`,{method:'PUT',body:{json}}).then(rr=>{
+      const remote=rr.remote||{};
+      const where=remote.kind==='private_upload'||rr.originalStorage==='private_panel'?'JSON PRIVADO DEL PANEL':'JSON ORIGINAL';
+      const done=`${where} SINCRONIZADO · ${key.toUpperCase()}`;
+      msg($('#contentMsg'),`${text} · ${done}`,true);toast(done,'ok');
+    }).catch(err=>{
+      const warn=`CO-CHI YA FUE ACTUALIZADO, pero no se pudo sincronizar el JSON original: ${err.message}`;
+      msg($('#contentMsg'),warn);toast(warn,'bad');
+    });
+  }
+  return r;
+}
+
 function editContentItem(groupIndex,itemIndex=null){
   let d;try{d=contentPlain();}catch(e){return alert(e.message);}
   const sourceItems=Array.isArray(d[groupIndex]?.samples)?d[groupIndex].samples:[];
@@ -885,6 +905,7 @@ function editContentItem(groupIndex,itemIndex=null){
   const contentKey=$('#contentKey')?.value||'';
   const isSeries=contentKey==='series';
   const isTv=contentKey==='tv1'||contentKey==='tv2';
+  const isQuickEditable=itemIndex!==null&&(isTv||contentKey==='movies');
   const existingFirst=Array.isArray(cur.temp)&&cur.temp.length?cur.temp[0]:{name:'1',icon:cur.icon||'',uri:cur.uri||''};
   const streamType=String(cur.type||cur.tipo||'auto').toLowerCase();
   const drmScheme=String(cur.drm_scheme||'').toLowerCase();
@@ -899,7 +920,7 @@ function editContentItem(groupIndex,itemIndex=null){
         ${isSeries?`<label>URL principal de la serie (opcional)<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:`<label>URL principal de reproducción<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label>`}
         ${isTv?`<div class="stream-format-box"><h4>FORMATO DE REPRODUCCIÓN</h4><div class="form-row"><label>Tipo de entrada<select id="ciStreamType"><option value="auto" ${streamType==='auto'?'selected':''}>Automático (recomendado)</option><option value="hls" ${streamType==='hls'?'selected':''}>HLS / M3U8</option><option value="dash" ${streamType==='dash'?'selected':''}>DASH / MPD</option><option value="youtube" ${streamType==='youtube'?'selected':''}>YouTube</option><option value="remote_playlist" ${streamType==='remote_playlist'?'selected':''}>Lista remota M3U/M3U8</option></select></label><label>DRM<select id="ciDrmScheme"><option value="" ${!drmScheme?'selected':''}>Sin DRM</option><option value="clearkey" ${drmScheme==='clearkey'?'selected':''}>ClearKey / MultiKey</option></select></label></div><label id="ciKeysWrap">Claves ClearKey / MultiKey<textarea id="ciKeys" rows="4" spellcheck="false" placeholder="KID:KEY&#10;KID2:KEY2">${esc(existingKeys)}</textarea><span class="muted tiny">Una clave por línea. El PANEL la guarda como arreglo <b>keys</b> compatible con CO-CHI.</span></label><label>Headers opcionales<textarea id="ciHeaders" rows="4" spellcheck="false" placeholder="Referer: https://...&#10;Origin: https://...&#10;User-Agent: ...">${esc(existingHeaders)}</textarea></label><label>Fuentes de respaldo / FAILOVER<textarea id="ciBackupUris" rows="4" spellcheck="false" placeholder="https://respaldo-1/...&#10;https://respaldo-2/...">${esc(existingBackups)}</textarea><span class="muted tiny">Una URL por línea. El backend prueba la principal y usa el primer respaldo saludable al entregar TV1/TV2. Conserva siempre la URL principal original.</span></label><p class="muted tiny">Para Pluto u otra lista remota elegí <b>Lista remota M3U/M3U8</b>. Widevine con servidor de licencias no se muestra todavía porque la APK actual no implementa ese flujo; así evitamos guardar una configuración que no podría reproducir.</p></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
-        ${itemIndex!==null?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
+        ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
       </section>
       <section class="content-editor-column content-editor-extra">
         <label>Datos adicionales desencriptados<textarea id="ciExtras" class="content-item-json content-item-json-wide" spellcheck="false">${esc(JSON.stringify(extras,null,2))}</textarea></label>
@@ -924,7 +945,7 @@ function editContentItem(groupIndex,itemIndex=null){
       <div class="reorder-actions"><button id="ciLoadMarkers" type="button" class="ghost">CARGAR TIEMPOS</button><button id="ciSaveMarkers" type="button" class="primary">GUARDAR TIEMPOS</button><button id="ciClearMarkers" type="button" class="danger">BORRAR TIEMPOS</button></div>
       <div id="ciMarkerMsg" class="msg"></div>
     </div></div>`:''}
-    <div class="modal-actions content-editor-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">GUARDAR</button></div><div id="ciMsg" class="msg"></div>
+    <div class="modal-actions content-editor-actions"><button type="button" class="ghost" data-close>Cancelar</button><button id="ciSubmitBtn" class="primary" type="submit">${isQuickEditable?'ACTUALIZAR':(itemIndex===null?'AGREGAR':'GUARDAR')}</button></div><div id="ciMsg" class="msg"></div>
   </form>`);
   $('#modal').classList.add('content-editor-modal');
   $$('[data-close]').forEach(x=>x.onclick=closeModal);
@@ -1005,9 +1026,11 @@ function editContentItem(groupIndex,itemIndex=null){
   const parseKeyLines=text=>{const out=[];for(const line of String(text||'').split(/[\r\n,;]+/)){const p=line.trim();if(!p)continue;const i=p.indexOf(':');if(i<=0||i>=p.length-1)throw new Error('Clave inválida. Usá KID:KEY, una por línea.');const kid=p.slice(0,i).trim(),key=p.slice(i+1).trim();if(!kid||!key)throw new Error('Clave inválida. Usá KID:KEY.');out.push({kid,key});}return out;};
   const refreshStreamFields=()=>{if(!isTv)return;const drm=$('#ciDrmScheme')?.value||'';if($('#ciKeysWrap'))$('#ciKeysWrap').style.display=drm==='clearkey'?'grid':'none';};
   if(isTv){$('#ciDrmScheme')?.addEventListener('change',refreshStreamFields);$('#ciStreamType')?.addEventListener('change',()=>{if($('#ciStreamType').value==='remote_playlist'){if($('#ciDrmScheme'))$('#ciDrmScheme').value='';refreshStreamFields();}});refreshStreamFields();}
-  $('#contentItemForm').onsubmit=e=>{
+  $('#contentItemForm').onsubmit=async e=>{
     e.preventDefault();
+    const submitBtn=$('#ciSubmitBtn');
     try{
+      if(submitBtn){submitBtn.disabled=true;if(isQuickEditable)submitBtn.textContent='ACTUALIZANDO...';}
       const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
       const obj={...extra,name:$('#ciName').value.trim()};
       const icon=$('#ciIcon').value.trim(),uri=$('#ciUri').value.trim();
@@ -1028,8 +1051,14 @@ function editContentItem(groupIndex,itemIndex=null){
         d[groupIndex].samples.splice(itemIndex,1);
         const target=d[targetGroup].samples||(d[targetGroup].samples=[]);pos=Math.min(pos,target.length);target.splice(pos,0,obj);
       }
-      state.contentOpen.add(targetGroup);setContentPlain(d);closeModal();
-    }catch(err){msg($('#ciMsg'),'Datos adicionales inválidos: '+err.message);}
+      state.contentOpen.add(targetGroup);
+      if(isQuickEditable){
+        await quickPublishContent(contentKey,d,{syncOriginal:true,successText:`${obj.name||'CONTENIDO'} ACTUALIZADO`});
+        setContentPlain(d);closeModal();
+      }else{
+        setContentPlain(d);closeModal();
+      }
+    }catch(err){msg($('#ciMsg'),'No se pudo actualizar: '+err.message);if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=isQuickEditable?'ACTUALIZAR':(itemIndex===null?'AGREGAR':'GUARDAR');}}
   };
 }
 async function loadContentSource(){
@@ -1074,7 +1103,6 @@ $('#contentSourceSaveBtn')?.addEventListener('click',saveContentSource);
 $('#contentSourceReloadBtn')?.addEventListener('click',loadContentSource);
 $('#contentKey')?.addEventListener('change',loadContent);
 $('#contentLoadBtn')?.addEventListener('click',loadContent);
-$('#contentVisualRefreshBtn')?.addEventListener('click',renderContentVisual);
 $('#contentSearch')?.addEventListener('input',renderContentVisual);
 $('#contentAddCategoryBtn')?.addEventListener('click',()=>editCategory(null));
 $('#contentFormatBtn')?.addEventListener('click',()=>{
@@ -1098,40 +1126,18 @@ $('#contentImportBtn')?.addEventListener('click',async()=>{
     const text=`ACTUALIZADO Y CONSERVADO · ${key.toUpperCase()} · ${st}${diag}`;msg($('#contentMsg'),text,true);toast(text,'ok');
   }catch(e){msg($('#contentMsg'),e.message);toast(e.message,'bad');}
 });
-$('#contentSaveBtn')?.addEventListener('click',async()=>{
+$('#contentApplyBtn')?.addEventListener('click',async()=>{
+  const btn=$('#contentApplyBtn');
   try{
     const key=$('#contentKey').value,json=contentPlain();
-    const r=await api(`/api/admin/content/${key}`,{method:'PUT',body:{json}});
-    await loadContent(true);
-    const remote=r.remote||{};
-    let text='';
-    if(remote.kind==='private_upload'||r.originalStorage==='private_panel'){
-      const file=remote.fileName?` · ${remote.fileName}`:'';
-      text=`JSON ORIGINAL PRIVADO ACTUALIZADO · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · GUARDADO EN PANEL${file} · respaldo automático · la app todavía no fue modificada`;
-    }else{
-      const where=remote.kind==='release_asset'?`${remote.owner}/${remote.repo} · release ${remote.tag} · ${remote.assetName}`:(remote.filePath?`${remote.owner}/${remote.repo} · ${remote.filePath}`:'GitHub');
-      const verified=remote.verified?' · VERIFICADO EN GITHUB':'';
-      text=`JSON ORIGINAL ACTUALIZADO · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · ${where}${verified} · la app todavía no fue modificada`;
-    }
-    msg($('#contentMsg'),text,true);toast(text,'ok');
+    if(btn){btn.disabled=true;btn.textContent='PUBLICANDO...';}
+    await quickPublishContent(key,json,{syncOriginal:true,successText:'GUARDADO Y PUBLICADO'});
   }catch(e){
     const text=e instanceof SyntaxError?'JSON inválido: '+e.message:e.message;
     msg($('#contentMsg'),text);toast(text,'bad');
-  }
+  }finally{if(btn){btn.disabled=false;btn.textContent='GUARDAR Y PUBLICAR';}}
 });
-$('#contentUseBtn')?.addEventListener('click',async()=>{
-  try{
-    const key=$('#contentKey').value,json=contentPlain();
-    // v0.9.10: esta acción publica la edición actual para la app, sin modificar el JSON original de GitHub.
-    const r=await api(`/api/admin/content/${key}/publish`,{method:'POST',body:{json}});
-    await loadContent(true);
-    const text=`ENCRIPTADO Y CARGADO A LA APP · ${key.toUpperCase()}${r.stats?` · ${r.stats.items} contenidos`:''} · JSON original sin cambios`;
-    msg($('#contentMsg'),text,true);toast(text,'ok');
-  }catch(e){
-    const text=e instanceof SyntaxError?'JSON inválido: '+e.message:e.message;
-    msg($('#contentMsg'),text);toast(text,'bad');
-  }
-});
+
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}
