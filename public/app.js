@@ -693,6 +693,10 @@ function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'
 function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
 function contentItemMeta(x){const bits=[];if(x?.uri)bits.push(x.uri);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
 function contentItemHidden(x){return x?._cochiHidden===true;}
+function contentCategoryHidden(x){return x?._cochiHidden===true;}
+function contentAutoHideDate(x){const ms=Date.parse(String(x?._cochiAutoHideAt||''));return Number.isFinite(ms)?new Date(ms):null;}
+function contentAutoHideLabel(x){const d=contentAutoHideDate(x);if(!d)return '';return `Se oculta ${d.toLocaleDateString([], {day:'2-digit',month:'2-digit'})} ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;}
+function localDateTimeValue(date){const d=date instanceof Date?date:new Date(date);if(!Number.isFinite(d.getTime()))return '';const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function moveArrayItem(arr,from,to){
   if(!Array.isArray(arr)||from<0||from>=arr.length)return;
   to=Math.max(0,Math.min(arr.length-1,to));if(from===to)return;
@@ -716,19 +720,20 @@ function renderContentVisual(){
     if(q&&!catMatch&&!matchedItems.length)return '';
     const isOpen=q?true:state.contentOpen.has(gi);
     const shown=catMatch?items.map((x,si)=>({x,si})):matchedItems;
-    return `<div class="content-category ${isOpen?'open':''}">
+    const categoryHidden=isTvGrid&&contentCategoryHidden(g),categoryTimer=isTvGrid?contentAutoHideLabel(g):'';
+    return `<div class="content-category ${isOpen?'open':''} ${categoryHidden?'content-category-hidden':''}">
       <div class="content-category-head">
         <button class="category-toggle" data-category-toggle="${gi}" aria-expanded="${isOpen?'true':'false'}">
           <span class="category-chevron">${isOpen?'▾':'▸'}</span>
-          <span><strong>${esc(g.name||`Categoría ${gi+1}`)}</strong><span class="muted small">${items.length} contenidos${isTvGrid&&items.some(contentItemHidden)?` · ${items.filter(contentItemHidden).length} oculto${items.filter(contentItemHidden).length===1?'':'s'}`:''} · posición ${gi+1}/${data.length}</span></span>
+          <span><strong>${esc(g.name||`Categoría ${gi+1}`)}${categoryHidden?' <span class="hidden-channel-badge">OCULTA</span>':''}${categoryTimer?` <span class="scheduled-hide-badge">⏱ ${esc(categoryTimer)}</span>`:''}</strong><span class="muted small">${items.length} contenidos${isTvGrid&&items.some(contentItemHidden)?` · ${items.filter(contentItemHidden).length} canal${items.filter(contentItemHidden).length===1?'':'es'} oculto${items.filter(contentItemHidden).length===1?'':'s'}`:''}${categoryHidden?' · categoría fuera de CO-CHI':''} · posición ${gi+1}/${data.length}</span></span>
         </button>
-        <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button><button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
+        <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-category="${gi}">⏱</button>${categoryHidden?`<button class="primary mini" data-category-show="${gi}">MOSTRAR</button>`:''}`:''}<button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
       </div>
-      <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>`<div class="content-item ${contentItemHidden(x)?'content-item-hidden':''}">
+      <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>{const timer=isTvGrid?contentAutoHideLabel(x):'';return `<div class="content-item ${contentItemHidden(x)?'content-item-hidden':''}">
         ${x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
-        <div class="content-item-main"><strong>${esc(contentItemName(x))}${contentItemHidden(x)?' <span class="hidden-channel-badge">OCULTO</span>':''}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}${contentItemHidden(x)?' · no aparece en CO-CHI':''}</span></div>
-        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button>${isTvGrid?`<button class="${contentItemHidden(x)?'primary':'ghost'} mini" data-content-visibility="${gi}:${si}">${contentItemHidden(x)?'MOSTRAR':'OCULTAR'}</button>`:''}<button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
-      </div>`).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
+        <div class="content-item-main"><strong>${esc(contentItemName(x))}${contentItemHidden(x)?' <span class="hidden-channel-badge">OCULTO</span>':''}${timer?` <span class="scheduled-hide-badge">⏱ ${esc(timer)}</span>`:''}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}${contentItemHidden(x)?' · no aparece en CO-CHI':''}</span></div>
+        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-item="${gi}:${si}">⏱</button><button class="${contentItemHidden(x)?'primary':'ghost'} mini" data-content-visibility="${gi}:${si}">${contentItemHidden(x)?'MOSTRAR':'OCULTAR'}</button>`:''}<button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button><button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
+      </div>`}).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
     </div>`;
   }).join('');
   box.innerHTML=visible||'<div class="empty muted">No hay resultados para esa búsqueda.</div>';
@@ -766,6 +771,14 @@ function renderContentVisual(){
       msg($('#contentMsg'),'No se pudo cambiar la visibilidad: '+err.message);toast(err.message,'bad');b.disabled=false;b.textContent=oldText;
     }
   });
+  $$('[data-auto-hide-item]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.autoHideItem.split(':').map(Number);openAutoHideScheduler('item',g,i);});
+  $$('[data-auto-hide-category]').forEach(b=>b.onclick=()=>openAutoHideScheduler('category',Number(b.dataset.autoHideCategory),null));
+  $$('[data-category-show]').forEach(b=>b.onclick=async()=>{
+    const g=Number(b.dataset.categoryShow),d=contentPlain(),group=d[g];if(!group)return;
+    const key=$('#contentKey')?.value||'';b.disabled=true;b.textContent='MOSTRANDO...';
+    try{delete group._cochiHidden;delete group._cochiAutoHideAt;await quickPublishContent(key,d,{syncOriginal:true,successText:`${group.name||'CATEGORÍA'} MOSTRADA`});state.contentOpen.add(g);setContentPlain(d);}
+    catch(err){msg($('#contentMsg'),'No se pudo mostrar la categoría: '+err.message);toast(err.message,'bad');b.disabled=false;b.textContent='MOSTRAR';}
+  });
   $$('[data-content-delete]').forEach(b=>b.onclick=()=>{
     const [g,i]=b.dataset.contentDelete.split(':').map(Number),d=contentPlain(),name=contentItemName(d[g].samples[i]);
     if(confirm(`¿Eliminar ${name}?`)){d[g].samples.splice(i,1);setContentPlain(d);}
@@ -776,6 +789,19 @@ function renderContentVisual(){
     if(confirm(`¿Eliminar la categoría ${d[i]?.name||''} y todos sus contenidos?`)){d.splice(i,1);state.contentOpen=new Set();setContentPlain(d);}
   });
 }
+function openAutoHideScheduler(kind,groupIndex,itemIndex=null){
+  let d;try{d=contentPlain();}catch(e){return alert(e.message);}
+  const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
+  const target=kind==='category'?d[groupIndex]:d[groupIndex]?.samples?.[itemIndex];if(!target)return;
+  const name=kind==='category'?(target.name||`Categoría ${groupIndex+1}`):contentItemName(target);
+  const current=contentAutoHideDate(target),defaultEnd=current||new Date(Date.now()+2*60*60*1000);
+  openModal(`<h3>Ocultamiento automático</h3><p class="muted">${kind==='category'?'Categoría':'Canal'}: <b>${esc(name)}</b></p>${current?`<div class="schedule-current">⏱ Actualmente: <b>${esc(contentAutoHideLabel(target))}</b></div>`:''}<form id="autoHideForm"><label>Modo<select id="autoHideMode"><option value="duration">Duración del evento</option><option value="exact">Fecha y hora de finalización</option></select></label><div id="autoHideDurationFields" class="two"><label>Horas<input id="autoHideHours" type="number" min="0" max="168" step="1" value="2"></label><label>Minutos<input id="autoHideMinutes" type="number" min="0" max="59" step="1" value="0"></label></div><div id="autoHideExactFields" style="display:none"><label>Se ocultará en<input id="autoHideExact" type="datetime-local" value="${esc(localDateTimeValue(defaultEnd))}"></label></div><p class="muted tiny">El servidor hará el ocultamiento aunque cierres el panel. Al finalizar, no se borra nada: queda como OCULTO y se puede volver a MOSTRAR.</p><div id="autoHideMsg" class="msg"></div><div class="modal-actions">${current?'<button type="button" id="cancelAutoHideBtn" class="danger">CANCELAR PROGRAMACIÓN</button>':''}<button type="button" class="ghost" data-close>VOLVER</button><button type="submit" class="primary">PROGRAMAR</button></div></form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);
+  const refresh=()=>{const exact=$('#autoHideMode').value==='exact';$('#autoHideDurationFields').style.display=exact?'none':'grid';$('#autoHideExactFields').style.display=exact?'block':'none';};$('#autoHideMode').addEventListener('change',refresh);refresh();
+  if($('#cancelAutoHideBtn'))$('#cancelAutoHideBtn').onclick=async()=>{const btn=$('#cancelAutoHideBtn');btn.disabled=true;try{delete target._cochiAutoHideAt;await quickPublishContent(key,d,{syncOriginal:true,successText:`PROGRAMACIÓN CANCELADA · ${name}`});setContentPlain(d);closeModal();}catch(err){msg($('#autoHideMsg'),err.message);btn.disabled=false;}};
+  $('#autoHideForm').onsubmit=async e=>{e.preventDefault();try{let end;if($('#autoHideMode').value==='duration'){const hours=Math.max(0,Math.min(168,Number($('#autoHideHours').value)||0)),minutes=Math.max(0,Math.min(59,Number($('#autoHideMinutes').value)||0)),totalMinutes=Math.round(hours*60+minutes);if(totalMinutes<1)throw new Error('Indicá una duración mínima de 1 minuto.');end=new Date(Date.now()+totalMinutes*60*1000);}else{end=new Date($('#autoHideExact').value);if(!Number.isFinite(end.getTime()))throw new Error('Elegí una fecha y hora válidas.');if(end.getTime()<=Date.now()+15000)throw new Error('La finalización debe estar en el futuro.');}target._cochiAutoHideAt=end.toISOString();delete target._cochiHidden;const submit=e.submitter;if(submit)submit.disabled=true;await quickPublishContent(key,d,{syncOriginal:true,successText:`${name} PROGRAMADO`});state.contentOpen.add(groupIndex);setContentPlain(d);closeModal();}catch(err){msg($('#autoHideMsg'),err.message);const submit=$('#autoHideForm button[type="submit"]');if(submit)submit.disabled=false;}};
+}
+
 function editCategory(index=null){
   let d;try{d=contentPlain();}catch(e){return alert(e.message);}
   const cur=index===null?{name:'',samples:[]}:d[index];
@@ -928,12 +954,12 @@ function editContentItem(groupIndex,itemIndex=null){
   const existingKeys=Array.isArray(cur.keys)?cur.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):(drmScheme==='clearkey'?String(cur.drm_license_url||''):'');
   const existingHeaders=cur.headers&&typeof cur.headers==='object'?Object.entries(cur.headers).map(([k,v])=>`${k}: ${v}`).join('\n'):'';
   const existingBackups=Array.isArray(cur.backupUris)?cur.backupUris.join('\n'):'';
-  openModal(`<div class="content-editor-head"><div><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: aprovechá el ancho de la pantalla para revisar los datos sin bajar tanto.</p></div><button type="button" class="ghost compact-close" data-close>✕</button></div><form id="contentItemForm" class="content-editor-form">
+  openModal(`<div class="content-editor-head"><div><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: la URL principal ocupa todo el ancho. Los datos adicionales quedan abajo para facilitar la revisión.</p></div><button type="button" class="ghost compact-close" data-close>✕</button></div><form id="contentItemForm" class="content-editor-form">
     <div class="content-editor-grid">
       <section class="content-editor-column">
         <label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label>
         <label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>
-        ${isSeries?`<label>URL principal de la serie (opcional)<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:`<label>URL principal de reproducción<input id="ciUri" value="${esc(cur.uri||'')}" placeholder="https://..."></label>`}
+        ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`}
         ${isTv?`<div class="stream-format-box"><h4>FORMATO DE REPRODUCCIÓN</h4><div class="form-row"><label>Tipo de entrada<select id="ciStreamType"><option value="auto" ${streamType==='auto'?'selected':''}>Automático (recomendado)</option><option value="hls" ${streamType==='hls'?'selected':''}>HLS / M3U8</option><option value="dash" ${streamType==='dash'?'selected':''}>DASH / MPD</option><option value="youtube" ${streamType==='youtube'?'selected':''}>YouTube</option><option value="remote_playlist" ${streamType==='remote_playlist'?'selected':''}>Lista remota M3U/M3U8</option></select></label><label>DRM<select id="ciDrmScheme"><option value="" ${!drmScheme?'selected':''}>Sin DRM</option><option value="clearkey" ${drmScheme==='clearkey'?'selected':''}>ClearKey / MultiKey</option></select></label></div><label id="ciKeysWrap">Claves ClearKey / MultiKey<textarea id="ciKeys" rows="4" spellcheck="false" placeholder="KID:KEY&#10;KID2:KEY2">${esc(existingKeys)}</textarea><span class="muted tiny">Una clave por línea. El PANEL la guarda como arreglo <b>keys</b> compatible con CO-CHI.</span></label><label>Headers opcionales<textarea id="ciHeaders" rows="4" spellcheck="false" placeholder="Referer: https://...&#10;Origin: https://...&#10;User-Agent: ...">${esc(existingHeaders)}</textarea></label><label>Fuentes de respaldo / FAILOVER<textarea id="ciBackupUris" rows="4" spellcheck="false" placeholder="https://respaldo-1/...&#10;https://respaldo-2/...">${esc(existingBackups)}</textarea><span class="muted tiny">Una URL por línea. El backend prueba la principal y usa el primer respaldo saludable al entregar TV1/TV2. Conserva siempre la URL principal original.</span></label><p class="muted tiny">Para Pluto u otra lista remota elegí <b>Lista remota M3U/M3U8</b>. Widevine con servidor de licencias no se muestra todavía porque la APK actual no implementa ese flujo; así evitamos guardar una configuración que no podría reproducir.</p></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
         ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}

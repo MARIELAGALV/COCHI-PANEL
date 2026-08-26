@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.64';
+const VERSION = '0.9.66';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -405,6 +405,10 @@ function encryptManagedContent(input){
   if(!Array.isArray(input))throw new Error('La lista debe ser un arreglo de categorías');
   return input.map((group,gi)=>{
     const out={name:String(group?.name??'')};
+    // v0.9.66: estos dos metadatos existen solo en la copia administrable.
+    // publishedContentView los elimina antes de generar el catálogo entregado a CO-CHI.
+    if(group?._cochiHidden===true)out._cochiHidden=true;
+    if(group?._cochiAutoHideAt!==undefined&&String(group._cochiAutoHideAt).trim()!=='')out._cochiAutoHideAt=String(group._cochiAutoHideAt).trim();
     if(gi===0&&group?.jwt!==undefined&&String(group.jwt).trim()!=='')out.jwt=encryptContentValue(String(group.jwt).trim());
     const samples=Array.isArray(group?.samples)?group.samples:[];
     out.samples=samples.map(sample=>{
@@ -1205,7 +1209,7 @@ async function safeWebFetch(rawUrl, referer=''){
   if(!/^https?:$/.test(u.protocol)||isPrivateHost(u.hostname))throw new Error('Solo se permiten URLs web públicas HTTP/HTTPS');
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{
-    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.64)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
+    const headers={'User-Agent':'Mozilla/5.0 (compatible; CO-CHI-StreamResolver/0.9.66)','Accept':'text/html,application/xhtml+xml,application/vnd.apple.mpegurl,application/dash+xml,*/*;q=0.8'};
     if(referer)headers.Referer=referer;
     const r=await fetch(u,{headers,redirect:'follow',signal:ctl.signal});
     if(!r.ok)throw new Error(`La página respondió HTTP ${r.status}`);
@@ -1263,7 +1267,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
     const follow=items.filter(v=>['IFRAME','SCRIPT','CONFIG'].includes(v.type)).sort((a,b)=>((b.type==='IFRAME'?100:0)+(b.priority||0))-((a.type==='IFRAME'?100:0)+(a.priority||0))).slice(0,18);
     for(const x of follow){if(visited.has(x.url))continue;visited.add(x.url);try{const sub=await safeWebFetch(x.url,page.url);pages.push(sub.url);queue.push({page:sub,depth:depth+1,parent:page.url})}catch{}}
   }
-  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.64: detecta iframes dinámicamente, separa candidatos de reproductor del resto y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
+  const candidates=[...all.values()],playable=candidates.filter(x=>['HLS','DASH','MP4'].includes(x.type)),iframes=candidates.filter(x=>x.type==='IFRAME').sort((a,b)=>(b.priority||0)-(a.priority||0));return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector experimental v0.9.66: detecta iframes dinámicamente, separa candidatos de reproductor del resto y sigue iframes/scripts/configuraciones públicas hasta 6 niveles. No evita DRM, autenticación ni controles de acceso.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -1286,7 +1290,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
   const found=new Map(),bodyJobs=[],observedFrames=new Map();let finalPage=rawUrl;
   const add=(url,type,sourcePage,headers={})=>{if(!url||!publicBrowserUrl(url))return;const kind=type||streamKind(url);if(!kind)return;if(!found.has(url))found.set(url,{url,type:kind,sourcePage:sourcePage||finalPage,headers:selectedBrowserHeaders(headers,sourcePage||finalPage),dynamic:true});};
   try{
-    const page=await browser.newPage();if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.64');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    const page=await browser.newPage();if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/0.9.66');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{const url=req.url();if(!publicBrowserUrl(url)){req.abort().catch(()=>{});return}const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers());req.continue().catch(()=>{});});
     page.on('response',resp=>{try{const url=resp.url(),headers=resp.headers(),kind=streamKind(url,headers['content-type']);if(kind)add(url,kind,resp.request().frame()?.url()||finalPage,resp.request().headers());const rt=resp.request().resourceType(),len=Number(headers['content-length']||0);if(['xhr','fetch','script','document'].includes(rt)&&(!len||len<1000000)){bodyJobs.push((async()=>{try{const text=(await resp.text()).slice(0,1000000);const re=/https?:\\?\/\\?\/[^\s'"<>]+(?:\.m3u8|\.mpd|\.mp4)(?:\?[^\s'"<>]*)?/gi;for(const m of text.matchAll(re)){const clean=m[0].replace(/\\\//g,'/');add(clean,streamKind(clean),resp.url(),resp.request().headers())}for(const m of text.matchAll(/['"]([^'"]+\.(?:m3u8|mpd|mp4)(?:\?[^'"]*)?)['"]/gi)){const abs=absoluteCandidate(m[1].replace(/\\\//g,'/'),resp.url());add(abs,streamKind(abs),resp.url(),resp.request().headers())}}catch{}})())}}catch{}});
     const nav=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:18000});finalPage=page.url()||nav?.url()||rawUrl;await new Promise(r=>setTimeout(r,8000));
@@ -1295,7 +1299,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     await Promise.allSettled(bodyJobs.slice(0,120));const candidates=[...found.values()].slice(0,80),playable=[];
     for(const c of candidates.slice(0,18)){try{const pr=await probePlayableUrl(c.url,c.headers);c.probe=pr;if(pr.ok){c.type=pr.type;c.url=pr.finalUrl||c.url;playable.push(c)}}catch{}}
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.64: ejecutó la página o iframe seleccionado con su Referer, registró navegaciones de iframes y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,note:'Resolver dinámico v0.9.66: ejecutó la página o iframe seleccionado con su Referer, registró navegaciones de iframes y observó solicitudes públicas del reproductor. No inicia sesión ni intenta evitar DRM o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -1316,18 +1320,60 @@ function mergeImportedWithManaged(imported,managed){
 }
 function loadManagedEditable(key){const r=db.prepare('SELECT * FROM managed_content WHERE source_key=?').get(key);if(!r?.json_text)return [];return decryptManagedContent(JSON.parse(r.json_text));}
 function encodeEditableContent(json){const stats=contentStats(json),encrypted=encryptManagedContent(json),text=JSON.stringify(encrypted);if(Buffer.byteLength(text,'utf8')>25*1024*1024)throw new Error('JSON cifrado demasiado grande');return {stats,text};}
-// v0.9.64 — los canales ocultos se conservan en el Manager/original, pero no se publican a la grilla de CO-CHI.
+// v0.9.66 — visibilidad manual + ocultamiento automático de canales/categorías TV.
+// Los metadatos de administración se conservan en el Manager/original, pero nunca se entregan a CO-CHI.
+function validAutoHideAt(value){const ms=Date.parse(String(value||''));return Number.isFinite(ms)?ms:null;}
+function contentObjectScheduled(obj){return validAutoHideAt(obj?._cochiAutoHideAt)!==null;}
+function applyExpiredAutoHide(json,nowMs=Date.now()){
+  if(!Array.isArray(json))return {changed:false,channels:0,categories:0};
+  let changed=false,channels=0,categories=0;
+  for(const group of json){
+    if(!group||typeof group!=='object')continue;
+    const groupAt=validAutoHideAt(group._cochiAutoHideAt);
+    if(groupAt!==null&&groupAt<=nowMs){group._cochiHidden=true;delete group._cochiAutoHideAt;changed=true;categories++;}
+    for(const item of (Array.isArray(group.samples)?group.samples:[])){
+      if(!item||typeof item!=='object')continue;
+      const itemAt=validAutoHideAt(item._cochiAutoHideAt);
+      if(itemAt!==null&&itemAt<=nowMs){item._cochiHidden=true;delete item._cochiAutoHideAt;changed=true;channels++;}
+    }
+  }
+  return {changed,channels,categories};
+}
 function publishedContentView(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
-  return json.map(group=>{
-    const out=cloneJson(group||{});
+  const nowMs=Date.now();
+  return json.filter(group=>{
+    if(!group||typeof group!=='object')return true;
+    if(group._cochiHidden===true)return false;
+    const at=validAutoHideAt(group._cochiAutoHideAt);return at===null||at>nowMs;
+  }).map(group=>{
+    const out=cloneJson(group||{});delete out._cochiHidden;delete out._cochiAutoHideAt;
     const samples=Array.isArray(group?.samples)?group.samples:[];
-    out.samples=samples.filter(item=>item?._cochiHidden!==true).map(item=>{const x=cloneJson(item||{});delete x._cochiHidden;return x;});
+    out.samples=samples.filter(item=>{
+      if(item?._cochiHidden===true)return false;
+      const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
+    }).map(item=>{const x=cloneJson(item||{});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
     return out;
   });
 }
-function hiddenContentCount(key,json){if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;let n=0;for(const g of json)for(const x of (Array.isArray(g?.samples)?g.samples:[]))if(x?._cochiHidden===true)n++;return n;}
-function encodePublishedContent(key,json){const view=publishedContentView(key,json),encoded=encodeEditableContent(view);return {...encoded,hidden:hiddenContentCount(key,json)};}
+function hiddenContentCount(key,json){
+  if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;
+  let n=0;for(const g of json){const samples=Array.isArray(g?.samples)?g.samples:[];if(g?._cochiHidden===true){n+=samples.length;continue;}for(const x of samples)if(x?._cochiHidden===true)n++;}return n;
+}
+function hiddenCategoryCount(key,json){if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;return json.filter(g=>g?._cochiHidden===true).length;}
+function scheduledContentCount(key,json){if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return {channels:0,categories:0};let channels=0,categories=0;for(const g of json){if(contentObjectScheduled(g))categories++;for(const x of (Array.isArray(g?.samples)?g.samples:[]))if(contentObjectScheduled(x))channels++;}return {channels,categories};}
+function encodePublishedContent(key,json){const view=publishedContentView(key,json),encoded=encodeEditableContent(view),scheduled=scheduledContentCount(key,json);return {...encoded,hidden:hiddenContentCount(key,json),hiddenCategories:hiddenCategoryCount(key,json),scheduledChannels:scheduled.channels,scheduledCategories:scheduled.categories};}
+function processAutoHideTimers(){
+  for(const key of ['tv1','tv2']){
+    let json;try{json=loadManagedEditable(key);}catch{continue}
+    const result=applyExpiredAutoHide(json);if(!result.changed)continue;
+    try{
+      const managed=encodeEditableContent(json),published=encodePublishedContent(key,json),t=nowIso();
+      db.exec('BEGIN');db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(managed.text,t,key);db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);db.exec('COMMIT');
+      console.log(`[CO-CHI] Ocultamiento automático ${key.toUpperCase()}: ${result.channels} canal(es), ${result.categories} categoría(s)`);
+    }catch(e){try{db.exec('ROLLBACK')}catch{}console.error('[CO-CHI] No se pudo aplicar ocultamiento automático',key,e.message);}
+  }
+}
 function saveManagedEditable(key,json,actorId,action='managed_content_saved_encrypted'){const {stats,text}=encodeEditableContent(json);db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(text,nowIso(),key);audit(actorId,action,'content',null,key);return stats;}
 function publishEditable(key,json,actorId,action='content_published_to_app'){const managed=encodeEditableContent(json),published=encodePublishedContent(key,json),t=nowIso();db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(managed.text,t,key);db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key}; hidden=${published.hidden}`);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e}return {...managed.stats,publishedItems:published.stats.items,hiddenItems:published.hidden};}
 function publishOnlyEditable(key,json,actorId,action='content_published_to_app_only'){const published=encodePublishedContent(key,json),t=nowIso();db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key}; hidden=${published.hidden}`);return {...published.stats,hiddenItems:published.hidden};}
@@ -1848,6 +1894,7 @@ async function route(req,res){
     let d=clientContentDevice(req,u);if(!d)return sendJson(res,401,{error:'Sesión de CO-CHI requerida'});
     d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
     const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get(publicContent[1]);if(!src||!src.enabled)return sendJson(res,404,{error:'Fuente deshabilitada'});
+    if(['tv1','tv2'].includes(publicContent[1]))processAutoHideTimers();
     const r=db.prepare('SELECT json_text,updated_at FROM published_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});
     try{
       const sec=playbackSecurityState();
@@ -2609,6 +2656,11 @@ async function route(req,res){
 
 cleanupExpiredClients();
 const cleanupTimer=setInterval(cleanupExpiredClients,60*60*1000);cleanupTimer.unref?.();
+
+// v0.9.66: el servidor controla las programaciones aunque el navegador del panel esté cerrado.
+// También se verifica al pedir TV1/TV2, así el vencimiento no depende del intervalo.
+processAutoHideTimers();
+const autoHideTimer=setInterval(processAutoHideTimers,10*1000);autoHideTimer.unref?.();
 
 const server=http.createServer((req,res)=>route(req,res).catch(err=>{console.error(err);if(!res.headersSent)sendJson(res,500,{error:'Error interno',detail:process.env.DEBUG?' '+err.message:undefined});else res.end();}));
 server.listen(PORT,HOST,()=>{console.log(`\nCO-CHI v${VERSION} · ${IS_PRODUCTION?'ONLINE':'LOCAL'}\nEscuchando en ${HOST}:${PORT}\nDatos: ${DB_PATH}\n`);});

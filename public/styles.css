@@ -371,9 +371,9 @@ body{min-height:100dvh}
 .content-editor-modal{width:min(1180px,96vw);max-height:92vh;padding:20px 22px}
 .content-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;position:sticky;top:-20px;z-index:4;margin:-2px -2px 14px;padding:6px 2px 12px;background:linear-gradient(180deg,rgba(5,24,42,.99) 70%,rgba(5,24,42,.90),transparent);backdrop-filter:blur(8px)}
 .content-editor-head h3{margin:0 0 3px}.compact-close{padding:8px 12px;min-width:42px}
-.content-editor-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,.9fr);gap:18px;align-items:start}
+.content-editor-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
 .content-editor-column{display:grid;gap:11px;min-width:0}.content-editor-column label{margin:0}
-.content-editor-extra{position:sticky;top:62px}.content-item-json-wide{min-height:255px;max-height:42vh}
+.content-editor-extra{position:static;margin-top:2px;padding-top:14px;border-top:1px solid rgba(54,208,255,.14)}.content-item-json-wide{min-height:180px;max-height:34vh}.content-main-url{width:100%;min-height:68px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all}
 .content-editor-series-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
 .content-editor-series-grid .series-bulk-box{margin:0;height:100%}
 .content-editor-actions{position:sticky;bottom:-20px;z-index:4;margin:18px -2px -2px;padding:14px 2px 4px;background:linear-gradient(0deg,rgba(5,24,42,.99) 72%,rgba(5,24,42,.90),transparent)}
@@ -401,3 +401,10 @@ body{min-height:100dvh}
 .content-item-hidden{opacity:.66;border-color:rgba(255,190,72,.22)!important;background:rgba(83,58,16,.12)!important}
 .content-item-hidden img{filter:grayscale(.78)}
 .hidden-channel-badge{display:inline-flex;vertical-align:middle;margin-left:6px;padding:2px 6px;border-radius:999px;border:1px solid rgba(255,190,72,.45);background:rgba(255,177,42,.10);color:#ffd787;font-size:8px;font-weight:900;letter-spacing:.08em}
+
+/* v0.9.66 — programación de ocultamiento automático */
+.content-category-hidden{opacity:.7;border-color:rgba(255,190,72,.28)!important;background:rgba(83,58,16,.10)!important}
+.scheduled-hide-badge{display:inline-flex;vertical-align:middle;margin-left:6px;padding:2px 6px;border-radius:999px;border:1px solid rgba(54,208,255,.35);background:rgba(54,208,255,.08);color:#aeeeff;font-size:8px;font-weight:850;letter-spacing:.02em}
+.timer-btn{min-width:34px!important}.schedule-current{padding:9px 11px;margin:8px 0 12px;border:1px solid rgba(54,208,255,.22);border-radius:10px;background:rgba(54,208,255,.06);font-size:12px}
+
+/* v0.9.66 — editor: URL principal a ancho completo y datos adicionales debajo */
