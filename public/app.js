@@ -563,10 +563,53 @@ async function openClientCodes(c){
   }catch(err){alert(err.message);}
 }
 
-async function loadDevices(){const d=await api('/api/admin/client-devices');state.devices=d.devices;$('#devicesBody').innerHTML=state.devices.length?state.devices.map(x=>{const eff=x.effective_status||x.status.toUpperCase();const cls=eff==='ACTIVO'||eff==='DEMO ACTIVO'?'active':eff==='BLOQUEADO'||eff==='DEMO VENCIDO'?'blocked':'pending';const demo=x.demo?.active?`<div class="muted small success-text" ${liveDemoAttrs(x.demo.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(x.demo.remainingSeconds)}</div>`:x.demo?.used?'<div class="muted small">Demo usado</div>':'';return `<tr data-device="${x.id}"><td><code>${esc(x.activation_code)}</code></td><td><b>${esc(x.device_name||x.device_uid)}</b><div class="muted small">${esc(x.device_uid)}</div></td><td>${esc(x.client_name||'Pendiente')}</td><td>${esc(x.owner_name||'—')}</td><td><span class="badge ${cls}">${esc(eff)}</span>${demo}</td><td>${esc(fmt(x.last_seen_at))}</td><td><div class="actions">${x.status==='active'?'<button class="danger-btn" data-action="device-block">Bloquear</button>':''}${x.status==='blocked'?'<button class="ghost" data-action="device-reactivate">Reactivar</button>':''}</div></td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">Sin dispositivos asociados.</td></tr>`;}
+async function loadDeviceCleanup(){
+  if(!state.me?.is_root_admin)return;
+  const r=await api('/api/admin/device-cleanup');
+  if($('#cleanupPendingCount'))$('#cleanupPendingCount').textContent=String(r.pendingUnassigned||0);
+  if($('#cleanupReleasedCount'))$('#cleanupReleasedCount').textContent=String(r.releasedPanel||0);
+  if($('#cleanupStaleCount'))$('#cleanupStaleCount').textContent=String(r.stalePending||0);
+  if($('#cleanupDays'))$('#cleanupDays').textContent=String(r.automaticAfterDays||7);
+  if($('#deviceCleanupState'))$('#deviceCleanupState').textContent=`Inactivos para limpieza manual: ${Number(r.totalInactive||0)} · La limpieza automática solo elimina PENDIENTES sin actividad.`;
+}
+async function loadDevices(){
+  const d=await api('/api/admin/client-devices');state.devices=d.devices;
+  $('#devicesBody').innerHTML=state.devices.length?state.devices.map(x=>{const eff=x.effective_status||x.status.toUpperCase();const cls=eff==='ACTIVO'||eff==='DEMO ACTIVO'?'active':eff==='BLOQUEADO'||eff==='DEMO VENCIDO'?'blocked':'pending';const demo=x.demo?.active?`<div class="muted small success-text" ${liveDemoAttrs(x.demo.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(x.demo.remainingSeconds)}</div>`:x.demo?.used?'<div class="muted small">Demo usado</div>':'';return `<tr data-device="${x.id}"><td><code>${esc(x.activation_code)}</code></td><td><b>${esc(x.device_name||x.device_uid)}</b><div class="muted small">${esc(x.device_uid)}</div></td><td>${esc(x.client_name||'Pendiente')}</td><td>${esc(x.owner_name||'—')}</td><td><span class="badge ${cls}">${esc(eff)}</span>${demo}</td><td>${esc(fmt(x.last_seen_at))}</td><td><div class="actions">${x.status==='active'?'<button class="danger-btn" data-action="device-block">Bloquear</button>':''}${x.status==='blocked'?'<button class="ghost" data-action="device-reactivate">Reactivar</button>':''}</div></td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">Sin dispositivos asociados.</td></tr>`;
+  if(state.me?.is_root_admin)await loadDeviceCleanup();
+}
 $('#manualClientDeviceBtn').addEventListener('click',async()=>{try{const r=await api('/api/admin/client-devices/manual',{method:'POST',body:{deviceName:'Dispositivo de prueba'}});openModal(`<h3>Dispositivo de prueba creado</h3><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Usá “Activar por código” para asociarlo a un cliente.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);}catch(e){alert(e.message);}});
 $('#assignByCodeBtn').addEventListener('click',()=>{if(!state.clients.length){alert('Primero creá un cliente.');return;}openModal(`<h3>Activar dispositivo por código</h3><form id="assignForm"><label>Código CO-CHI<input id="assignCode" placeholder="ABCD-1234" required></label><label>Cliente<select id="assignClient">${state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.device_count}/${c.device_limit||2})</option>`).join('')}</select></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">ACTIVAR</button></div><div id="assignMsg" class="msg"></div></form>`);$('#assignForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#assignCode').value,clientId:Number($('#assignClient').value)}});closeModal();await loadDevices();await loadClients(false);}catch(err){msg($('#assignMsg'),err.message);}});});
 $('#devicesBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.closest('tr').dataset.device);try{if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; solo se libera un lugar de los 2 dispositivos.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});await loadDevices();}catch(err){alert(err.message);}});
+
+async function runDeviceCleanup(kind){
+  if(!state.me?.is_root_admin)return;
+  try{
+    const st=await api('/api/admin/device-cleanup');
+    const pending=Number(st.pendingUnassigned||0),released=Number(st.releasedPanel||0);
+    let count=0,label='';
+    if(kind==='pending'){count=pending;label='PENDIENTES sin cliente';}
+    if(kind==='released'){count=released;label='LIBERADOS del PANEL';}
+    if(kind==='all'){count=pending+released;label='INACTIVOS (PENDIENTES + LIBERADOS)';}
+    if(count<1){alert(`No hay registros ${label} para eliminar.`);await loadDeviceCleanup();return;}
+    const warning=`Se eliminarán ${count} registro(s) ${label}.
+
+PENDIENTES: ${pending}
+LIBERADOS: ${released}
+
+NO se eliminarán dispositivos ACTIVOS, BLOQUEADOS, clientes, créditos ni cuentas ADMINISTRACIÓN.`;
+    if(!confirm(`${warning}
+
+¿Querés continuar?`))return;
+    if(kind==='all'&&!confirm('CONFIRMACIÓN FINAL: esta limpieza elimina todo el historial inactivo indicado arriba. Los ACTIVOS quedan protegidos. ¿Continuar?'))return;
+    const r=await api(`/api/admin/device-cleanup/${kind}`,{method:'POST'});
+    const text=`Limpieza finalizada · ${Number(r.deletedPending||0)} PENDIENTES · ${Number(r.deletedReleased||0)} LIBERADOS eliminados.`;
+    alert(text);toast(text,'ok');
+    await loadDevices();
+  }catch(err){alert(err.message);}
+}
+$('#cleanupPendingBtn')?.addEventListener('click',()=>runDeviceCleanup('pending'));
+$('#cleanupReleasedBtn')?.addEventListener('click',()=>runDeviceCleanup('released'));
+$('#cleanupAllBtn')?.addEventListener('click',()=>runDeviceCleanup('all'));
 
 async function openCreditChooser(){
   try{

@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.66';
+const VERSION = '0.9.67';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -16,6 +16,7 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const DB_PATH = path.join(DATA_DIR, 'cochi-panel.db');
 const PANEL_DEVICE_LIMIT = 2;
 const CLIENT_DEVICE_LIMIT = 2;
+const DEVICE_CLEANUP_PENDING_DAYS = Math.max(1, Number(process.env.COCHI_PENDING_CLEANUP_DAYS || 7));
 const CLIENT_CREDIT_COST = 1;
 const CLIENT_DAYS = 30;
 const RENEW_WINDOW_DAYS = 10;
@@ -914,6 +915,56 @@ function cleanupExpiredClients(){
   const rows=db.prepare('SELECT id,name FROM clients WHERE expires_at IS NOT NULL AND expires_at<?').all(cutoff);
   for(const c of rows){try{deleteClientRecord(c.id,{reason:'Vencido hace más de 15 días',automatic:true});console.log(`[limpieza] Cliente eliminado: ${c.name} (#${c.id})`);}catch(e){console.error('[limpieza] No se pudo eliminar cliente',c.id,e.message);}}
   return rows.length;
+}
+
+// v0.9.67 — limpieza segura de registros de dispositivos sin uso.
+// PENDIENTE = dispositivo CO-CHI todavía no vinculado a ningún cliente.
+// LIBERADO = dispositivo viejo del PANEL con active=0.
+// Nunca se eliminan dispositivos activos, bloqueados, vinculados a clientes ni cuentas PANEL.
+function deviceCleanupCutoffIso(days=DEVICE_CLEANUP_PENDING_DAYS){
+  return new Date(Date.now()-Math.max(1,Number(days||DEVICE_CLEANUP_PENDING_DAYS))*86400000).toISOString();
+}
+function deviceCleanupStats(){
+  const pendingUnassigned=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE status='pending' AND client_id IS NULL").get().n);
+  const cutoff=deviceCleanupCutoffIso();
+  const stalePending=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE status='pending' AND client_id IS NULL AND COALESCE(last_seen_at,updated_at,created_at)<?").get(cutoff).n);
+  const releasedPanel=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE active=0').get().n);
+  return {pendingUnassigned,stalePending,releasedPanel,totalInactive:pendingUnassigned+releasedPanel,automaticAfterDays:DEVICE_CLEANUP_PENDING_DAYS,cutoff};
+}
+function deletePendingUnassignedDevices({olderThanDays=null}={}){
+  const args=[];
+  let where="status='pending' AND client_id IS NULL";
+  if(olderThanDays!==null){where+=" AND COALESCE(last_seen_at,updated_at,created_at)<?";args.push(deviceCleanupCutoffIso(olderThanDays));}
+  const rows=db.prepare(`SELECT id,device_uid FROM client_devices WHERE ${where}`).all(...args);
+  if(!rows.length)return 0;
+  db.exec('BEGIN');
+  try{
+    const delSessions=db.prepare('DELETE FROM client_sessions WHERE device_id=?');
+    const delDemos=db.prepare('DELETE FROM device_demos WHERE device_id=?');
+    const delDevice=db.prepare('DELETE FROM client_devices WHERE id=?');
+    for(const d of rows){delSessions.run(d.id);delDemos.run(d.id);delDevice.run(d.id);}
+    db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+  return rows.length;
+}
+function deleteReleasedPanelDevices(){
+  const rows=db.prepare('SELECT id FROM panel_devices WHERE active=0').all();
+  if(!rows.length)return 0;
+  db.exec('BEGIN');
+  try{
+    const delSessions=db.prepare('DELETE FROM panel_sessions WHERE panel_device_id=?');
+    const delDevice=db.prepare('DELETE FROM panel_devices WHERE id=? AND active=0');
+    for(const d of rows){delSessions.run(d.id);delDevice.run(d.id);}
+    db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+  return rows.length;
+}
+function cleanupOldPendingDevices(){
+  try{
+    const deleted=deletePendingUnassignedDevices({olderThanDays:DEVICE_CLEANUP_PENDING_DAYS});
+    if(deleted)console.log(`[limpieza] ${deleted} dispositivo(s) PENDIENTE sin uso eliminado(s) automáticamente (+${DEVICE_CLEANUP_PENDING_DAYS} días)`);
+    return deleted;
+  }catch(e){console.error('[limpieza] No se pudieron limpiar dispositivos pendientes antiguos:',e.message);return 0;}
 }
 function validPin(pin){return /^\d{4,8}$/.test(String(pin||''));}
 function hashPin(pin){const salt=crypto.randomBytes(16).toString('hex');const hash=crypto.scryptSync(String(pin),salt,32).toString('hex');return `scrypt$${salt}$${hash}`;}
@@ -2374,6 +2425,31 @@ async function route(req,res){
     if(react&&m==='POST'){
       const d=db.prepare('SELECT cd.*,c.owner_account_id,c.id client_id FROM client_devices cd JOIN clients c ON c.id=cd.client_id WHERE cd.id=?').get(Number(react[1]));if(!d)return sendJson(res,404,{error:'Dispositivo no encontrado'});if(!canManageClientDevice(actor,{owner_account_id:d.owner_account_id}))return sendJson(res,403,{error:'Solo podés reactivar dispositivos de clientes de tu propia rama'});const c=clientRow(d.client_id);const temp={...d,status:'pending'},st=deviceAccessState(temp,c);if(!st.ok)return sendJson(res,409,{error:'Cliente sin servicio ni demo activo'});const n=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status='active' AND id<>?").get(c.id,d.id).n);if(n>=clientDeviceLimit(c))return sendJson(res,409,{error:`Ya hay ${clientDeviceLimit(c)} dispositivos activos`});const changedAt=nowIso();db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE id=?").run(changedAt,d.id);audit(actor.id,'client_device_reactivated','client_device',d.id,'reactivación inmediata; sesión existente conservada si seguía vigente');return sendJson(res,200,{ok:true,accessMode:st.mode,stateChangedAt:changedAt,sessionsPreserved:true});
     }
+    if(p==='/api/admin/device-cleanup'&&m==='GET'){
+      if(!isRootAdminAccount(actor))return sendJson(res,403,{error:'Solo la ADMINISTRACIÓN principal puede limpiar dispositivos'});
+      return sendJson(res,200,{ok:true,...deviceCleanupStats()});
+    }
+    if(p==='/api/admin/device-cleanup/pending'&&m==='POST'){
+      if(!isRootAdminAccount(actor))return sendJson(res,403,{error:'Solo la ADMINISTRACIÓN principal puede limpiar dispositivos'});
+      const before=deviceCleanupStats(),deletedPending=deletePendingUnassignedDevices();
+      audit(actor.id,'device_cleanup_pending','devices',null,`eliminados=${deletedPending}; solo pending sin cliente`);
+      return sendJson(res,200,{ok:true,deletedPending,deletedReleased:0,before,after:deviceCleanupStats()});
+    }
+    if(p==='/api/admin/device-cleanup/released'&&m==='POST'){
+      if(!isRootAdminAccount(actor))return sendJson(res,403,{error:'Solo la ADMINISTRACIÓN principal puede limpiar dispositivos'});
+      const before=deviceCleanupStats(),deletedReleased=deleteReleasedPanelDevices();
+      audit(actor.id,'device_cleanup_released','devices',null,`eliminados=${deletedReleased}; solo panel_devices active=0`);
+      return sendJson(res,200,{ok:true,deletedPending:0,deletedReleased,before,after:deviceCleanupStats()});
+    }
+    if(p==='/api/admin/device-cleanup/all'&&m==='POST'){
+      if(!isRootAdminAccount(actor))return sendJson(res,403,{error:'Solo la ADMINISTRACIÓN principal puede limpiar dispositivos'});
+      const before=deviceCleanupStats();
+      const deletedPending=deletePendingUnassignedDevices();
+      const deletedReleased=deleteReleasedPanelDevices();
+      audit(actor.id,'device_cleanup_all_inactive','devices',null,`pending=${deletedPending}; liberados=${deletedReleased}; activos preservados`);
+      return sendJson(res,200,{ok:true,deletedPending,deletedReleased,before,after:deviceCleanupStats()});
+    }
+
     if(p==='/api/admin/client-devices'&&m==='GET'){
       let rows;if(actor.role_level===1)rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd LEFT JOIN clients c ON c.id=cd.client_id LEFT JOIN accounts a ON a.id=c.owner_account_id ORDER BY CASE cd.status WHEN 'pending' THEN 0 ELSE 1 END,cd.id DESC`).all();else rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd JOIN clients c ON c.id=cd.client_id JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY cd.id DESC`).all(actor.id);rows=rows.map(x=>{const r=refreshDeviceState(x),c=r.client_id?clientRow(r.client_id):null,access=deviceAccessState(r,c),di=demoInfo(r.id);return {...r,demo:di,access_mode:access.ok?access.mode:null,effective_status:r.status==='blocked'?'BLOQUEADO':access.ok?(access.mode==='demo'?'DEMO ACTIVO':'ACTIVO'):(di.used?'DEMO VENCIDO':'PENDIENTE')};});return sendJson(res,200,{devices:rows});
     }
@@ -2656,6 +2732,11 @@ async function route(req,res){
 
 cleanupExpiredClients();
 const cleanupTimer=setInterval(cleanupExpiredClients,60*60*1000);cleanupTimer.unref?.();
+
+// v0.9.67: limpieza automática únicamente de PENDIENTES sin cliente y sin actividad reciente.
+// Se ejecuta al iniciar y luego cada 6 horas; los dispositivos ACTIVOS/LIBERADOS no se tocan aquí.
+cleanupOldPendingDevices();
+const pendingDeviceCleanupTimer=setInterval(cleanupOldPendingDevices,6*60*60*1000);pendingDeviceCleanupTimer.unref?.();
 
 // v0.9.66: el servidor controla las programaciones aunque el navegador del panel esté cerrado.
 // También se verifica al pedir TV1/TV2, así el vencimiento no depende del intervalo.
