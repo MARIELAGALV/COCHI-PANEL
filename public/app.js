@@ -454,7 +454,7 @@ function openClientModal(c=null){
   openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
     <form id="clientForm">
       <label>Nombre<input id="cName" required value="${esc(c?.name||'')}"></label>
-      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:''}
+      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label><label>Dispositivos permitidos <span class="muted small">(solo ADMINISTRACIÓN)</span><input id="cDeviceLimit" type="number" min="1" max="99" step="1" value="${esc(String(c?.device_limit||2))}" required><span class="muted small">La APK leerá este límite desde el backend. Los vendedores no pueden modificarlo.</span></label>`:''}
       <label>Notas<textarea id="cNotes" rows="3">${esc(c?.notes||'')}</textarea></label>
       ${c?`<label class="switch-row"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Cliente habilitado</label>`:
       `<div class="client-code-box muted"><b>Códigos CO-CHI</b><span>Primero guardá el cliente. Luego podrás vincular sus dispositivos.</span></div>`}
@@ -465,7 +465,8 @@ function openClientModal(c=null){
   $('#clientCodesBtn')?.addEventListener('click',()=>openClientCodes(c));
   $('#clientRenewBtn')?.addEventListener('click',async()=>{
     if(renewDisabled)return;
-    const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar 1 crédito para activar/renovar a ${c.name}?`;
+    const renewCost=Number(c.renew_credit_cost||Math.max(1,Math.ceil(Number(c.device_limit||2)/2)));
+    const q=state.me?.role_level===1?`¿Activar/renovar a ${c.name} por 30 días?`:`¿Usar ${renewCost} crédito${renewCost===1?'':'s'} para activar/renovar a ${c.name}?`;
     if(!confirm(q))return;
     try{
       const r=await api(`/api/admin/clients/${c.id}/renew`,{method:'POST'});
@@ -484,7 +485,7 @@ function openClientModal(c=null){
     e.preventDefault();
     try{
       const body={name:$('#cName').value,notes:$('#cNotes').value};
-      if(admin)body.ownerAccountId=Number($('#cOwner').value);
+      if(admin){body.ownerAccountId=Number($('#cOwner').value);body.deviceLimit=Number($('#cDeviceLimit').value);}
       if(c)body.active=$('#cActive').checked;
       const r=await api(c?`/api/admin/clients/${c.id}`:'/api/admin/clients',{method:c?'PUT':'POST',body});
       closeModal();
@@ -532,7 +533,7 @@ async function openClientCodes(c){
         <div class="compact-rule"><b>Reemplazos</b><span>${changes}/2 usados este mes · ${changesRemaining} disponible${changesRemaining===1?'':'s'}.</span></div>
         <div class="compact-rule"><b>Vencimiento único</b><span>${c.expires_at?esc(fmt(c.expires_at)):'Sin servicio activo'}. Los adicionales vencen el mismo día.</span></div>
       </div>
-      <div class="rule-card profile-expand-card"><div><b>Ampliar este perfil</b><span>Sumá 2 dispositivos por 1 crédito. El crédito se descuenta al vendedor propietario.</span></div><button type="button" class="primary" id="buyExtraDevicesBtn">+2 DISPOSITIVOS · 1 CRÉDITO</button></div>
+      <div class="rule-card profile-expand-card"><div><b>Capacidad administrada</b><span>${admin?'La cantidad de dispositivos la define ADMINISTRACIÓN desde Editar cliente.':'La cantidad de dispositivos la define ADMINISTRACIÓN. No puede modificarse desde este panel.'}</span></div>${admin?'<button type="button" class="ghost" id="editDeviceLimitBtn">CAMBIAR LÍMITE</button>':''}</div>
       <div class="client-devices-list">
         ${linked.length?linked.map((x,i)=>`<div class="rule-card device-demo-card">
           <div class="device-main-info"><div class="device-title-row"><b>${esc(x.device_name||'Dispositivo '+(i+1))}</b><span class="badge ${x.status==='active'?'active':x.status==='blocked'?'blocked':'pending'}">${esc((x.status||'pending').toUpperCase())}</span></div><code class="device-code">${esc(x.activation_code)}</code><span class="device-uid">${esc(x.device_uid)}</span>${x.last_seen_at?`<span class="device-last">Última actividad: ${esc(fmt(x.last_seen_at))}</span>`:''}</div>
@@ -552,9 +553,8 @@ async function openClientCodes(c){
         await loadClients(false);setTimeout(()=>openClientCodes(state.clients.find(x=>x.id===c.id)||c),250);
       }catch(err){msg($('#clientCodeMsg'),err.message);}
     });
-    $('#buyExtraDevicesBtn')?.addEventListener('click',async()=>{
-      if(!confirm(`¿Agregar 2 dispositivos a ${c.name}? Se descontará 1 crédito al vendedor y ambos respetarán el vencimiento actual del perfil.`))return;
-      try{const r=await api(`/api/admin/clients/${c.id}/extra-devices`,{method:'POST'});alert(`Capacidad ampliada a ${r.newLimit} dispositivos. Vencimiento compartido: ${r.expiresAt?fmt(r.expiresAt):'sin activar'}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
+    $('#editDeviceLimitBtn')?.addEventListener('click',async()=>{
+      closeModal();await loadClients(false);const fresh=state.clients.find(x=>x.id===c.id)||c;setTimeout(()=>openClientModal(fresh),80);
     });
     $$('.device-delete-btn').forEach(btn=>btn.addEventListener('click',async()=>{
       if(!confirm(`¿Desvincular este dispositivo para reemplazarlo? Este cambio cuenta dentro del límite mensual (máximo 2). No devuelve créditos ni reinicia demos. Después podrás vincular el nuevo equipo.`))return;
@@ -579,7 +579,7 @@ async function loadDevices(){
 }
 $('#manualClientDeviceBtn').addEventListener('click',async()=>{try{const r=await api('/api/admin/client-devices/manual',{method:'POST',body:{deviceName:'Dispositivo de prueba'}});openModal(`<h3>Dispositivo de prueba creado</h3><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Usá “Activar por código” para asociarlo a un cliente.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);}catch(e){alert(e.message);}});
 $('#assignByCodeBtn').addEventListener('click',()=>{if(!state.clients.length){alert('Primero creá un cliente.');return;}openModal(`<h3>Activar dispositivo por código</h3><form id="assignForm"><label>Código CO-CHI<input id="assignCode" placeholder="ABCD-1234" required></label><label>Cliente<select id="assignClient">${state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.device_count}/${c.device_limit||2})</option>`).join('')}</select></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">ACTIVAR</button></div><div id="assignMsg" class="msg"></div></form>`);$('#assignForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#assignCode').value,clientId:Number($('#assignClient').value)}});closeModal();await loadDevices();await loadClients(false);}catch(err){msg($('#assignMsg'),err.message);}});});
-$('#devicesBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.closest('tr').dataset.device);try{if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; solo se libera un lugar de los 2 dispositivos.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});await loadDevices();}catch(err){alert(err.message);}});
+$('#devicesBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.closest('tr').dataset.device);try{if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; se libera un lugar dentro del límite de dispositivos definido por ADMINISTRACIÓN.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});await loadDevices();}catch(err){alert(err.message);}});
 
 async function runDeviceCleanup(kind){
   if(!state.me?.is_root_admin)return;
