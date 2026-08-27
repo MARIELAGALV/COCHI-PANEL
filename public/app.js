@@ -113,7 +113,7 @@ async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account
 async function refreshCurrent(){
   try{
     await refreshMe();const v=document.body.dataset.view||'dashboard';
-    if(v==='dashboard')await loadDashboard();
+    if(v==='dashboard'){await loadDashboard();if(state.me.role_level===1)await loadGlobalCommercialSettings();}
     if(v==='accounts')await loadAccounts();
     if(v==='clients'){if(state.me.role_level===1)await loadAccounts();await loadClients();}
     if(v==='devices')await Promise.all([loadClients(false),loadDevices()]);
@@ -139,6 +139,20 @@ async function loadDashboard(){
   $('#dashboardCards').innerHTML=cards.map(([key,l,v,s])=>`<div class="metric metric-${key}${key==='credits'||key==='accounts'?' metric-compact':''}"><div class="label">${esc(l)}</div><div class="value">${esc(v)}</div><div class="muted small">${esc(s)}</div></div>`).join('');
   if(d.activePromotion){$('#promoBanner').classList.remove('hidden');$('#promoBanner').innerHTML=`🎁 <b>${esc(d.activePromotion.name)}</b> — +${d.activePromotion.percent}% en cargas recibidas hasta ${esc(fmt(d.activePromotion.endsAt))}. El bonus lo paga el sistema.`;}else $('#promoBanner').classList.add('hidden');
 }
+
+async function loadGlobalCommercialSettings(){
+  const [policy,src]=await Promise.all([api('/api/admin/device-policy'),api('/api/admin/sources')]);
+  state.devicePolicy=policy;state.sources=src.sources||[];
+  const input=$('#globalDeviceBlockSize');if(input)input.value=String(policy.blockSize||2);
+  if($('#globalDeviceBlockState'))$('#globalDeviceBlockState').textContent=`Regla activa: 1 crédito = ${policy.blockSize} dispositivo${Number(policy.blockSize)===1?'':'s'} por bloque.`;
+  if($('#globalSourceVisibility'))$('#globalSourceVisibility').innerHTML=state.sources.map(x=>`<label class="switch-row"><input type="checkbox" class="global-source-visible" value="${esc(x.source_key)}" ${x.enabled?'checked':''}> ${esc(x.label)} <span class="muted small">${x.enabled?'VISIBLE':'OCULTA'}</span></label>`).join('');
+}
+$('#saveGlobalDeviceBlockBtn')?.addEventListener('click',async()=>{
+  try{const n=Number($('#globalDeviceBlockSize').value);if(!confirm(`¿Cambiar el bloque global a ${n} dispositivo${n===1?'':'s'}?\n\nLa nueva base se aplicará a todos los clientes. Las ampliaciones anteriores se conservan y las próximas sumarán +${n}.`))return;const r=await api('/api/admin/device-policy',{method:'PUT',body:{blockSize:n}});msg($('#globalDeviceBlockState'),`Bloque global actualizado a ${r.blockSize}. Clientes actualizados: ${r.clientsUpdated}.`,true);await loadClients(false).catch(()=>{});await loadGlobalCommercialSettings();}catch(e){msg($('#globalDeviceBlockState'),e.message);}
+});
+$('#saveGlobalVisibilityBtn')?.addEventListener('click',async()=>{
+  try{const visible=new Set($$('.global-source-visible:checked').map(x=>x.value));const sources=(state.sources||[]).map(x=>({key:x.source_key,url:x.url||'',enabled:visible.has(x.source_key)}));const hidden=(state.sources||[]).filter(x=>!visible.has(x.source_key)).map(x=>x.label);if(!confirm(`¿Guardar la visibilidad global?\n\nOcultas: ${hidden.length?hidden.join(', '):'ninguna'}\nEste cambio se entrega a todas las apps desde el backend.`))return;await api('/api/admin/sources',{method:'PUT',body:{sources}});msg($('#globalVisibilityState'),'Visibilidad global actualizada.',true);await loadGlobalCommercialSettings();}catch(e){msg($('#globalVisibilityState'),e.message);}
+});
 
 function renderAccounts(){
   const q=($('#accountSearch')?.value||'').trim().toLowerCase();
@@ -454,7 +468,7 @@ function openClientModal(c=null){
   openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
     <form id="clientForm">
       <label>Nombre<input id="cName" required value="${esc(c?.name||'')}"></label>
-      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label><label>Dispositivos permitidos <span class="muted small">(solo ADMINISTRACIÓN)</span><input id="cDeviceLimit" type="number" min="1" max="99" step="1" value="${esc(String(c?.device_limit||2))}" required><span class="muted small">La APK leerá este límite desde el backend. Los vendedores no pueden modificarlo.</span></label>`:''}
+      ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label><div class="client-code-box muted"><b>Capacidad global</b><span>Base y ampliaciones se administran con la regla global de dispositivos. No se modifica manualmente por cliente.</span></div>`:''}
       <label>Notas<textarea id="cNotes" rows="3">${esc(c?.notes||'')}</textarea></label>
       ${c?`<label class="switch-row"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Cliente habilitado</label>`:
       `<div class="client-code-box muted"><b>Códigos CO-CHI</b><span>Primero guardá el cliente. Luego podrás vincular sus dispositivos.</span></div>`}
@@ -485,7 +499,7 @@ function openClientModal(c=null){
     e.preventDefault();
     try{
       const body={name:$('#cName').value,notes:$('#cNotes').value};
-      if(admin){body.ownerAccountId=Number($('#cOwner').value);body.deviceLimit=Number($('#cDeviceLimit').value);}
+      if(admin){body.ownerAccountId=Number($('#cOwner').value);}
       if(c)body.active=$('#cActive').checked;
       const r=await api(c?`/api/admin/clients/${c.id}`:'/api/admin/clients',{method:c?'PUT':'POST',body});
       closeModal();
@@ -515,7 +529,7 @@ async function openClientCodes(c){
     const linked=d.devices||[];
     const limit=Number(d.deviceLimit||d.clientStatus?.device_limit||c.device_limit||2);
     const slots=Math.max(0,limit-linked.filter(x=>x.status==='active'||x.status==='pending').length);
-    const changes=Number(d.changesThisMonth||0),changesRemaining=Number(d.changesRemaining??Math.max(0,2-changes));
+    const changes=Number(d.changesThisMonth||0),changesRemaining=Number(d.changesRemaining??Math.max(0,2-changes)),blockSize=Number(d.deviceBlockSize||2),extraBlocks=Number(d.extraDeviceBlocks||0);
     openModal(`
       <h3>Códigos y dispositivos — ${esc(c.name)}</h3>
       <p class="muted">Vinculá códigos de activación CO-CHI y administrá los dispositivos de este cliente. ADMINISTRACIÓN define si los demos están habilitados y si duran 10 minutos o 1 hora. Al vincular un código a un cliente sin servicio, el demo se aplica automáticamente si está habilitado.</p>
@@ -533,7 +547,7 @@ async function openClientCodes(c){
         <div class="compact-rule"><b>Reemplazos</b><span>${changes}/2 usados este mes · ${changesRemaining} disponible${changesRemaining===1?'':'s'}.</span></div>
         <div class="compact-rule"><b>Vencimiento único</b><span>${c.expires_at?esc(fmt(c.expires_at)):'Sin servicio activo'}. Los adicionales vencen el mismo día.</span></div>
       </div>
-      <div class="rule-card profile-expand-card"><div><b>Capacidad administrada</b><span>${admin?'La cantidad de dispositivos la define ADMINISTRACIÓN desde Editar cliente.':'La cantidad de dispositivos la define ADMINISTRACIÓN. No puede modificarse desde este panel.'}</span></div>${admin?'<button type="button" class="ghost" id="editDeviceLimitBtn">CAMBIAR LÍMITE</button>':''}</div>
+      <div class="rule-card profile-expand-card"><div><b>Ampliar capacidad</b><span>Bloque vigente: +${blockSize} dispositivos · ${extraBlocks} ampliación${extraBlocks===1?'':'es'} contratada${extraBlocks===1?'':'s'}. Cada ampliación comparte el vencimiento del cliente y suma 1 crédito al costo de renovación.</span></div><button type="button" class="primary" id="addDeviceBlockBtn">+ ${blockSize} DISPOSITIVOS · 1 CRÉDITO</button></div>
       <div class="client-devices-list">
         ${linked.length?linked.map((x,i)=>`<div class="rule-card device-demo-card">
           <div class="device-main-info"><div class="device-title-row"><b>${esc(x.device_name||'Dispositivo '+(i+1))}</b><span class="badge ${x.status==='active'?'active':x.status==='blocked'?'blocked':'pending'}">${esc((x.status||'pending').toUpperCase())}</span></div><code class="device-code">${esc(x.activation_code)}</code><span class="device-uid">${esc(x.device_uid)}</span>${x.last_seen_at?`<span class="device-last">Última actividad: ${esc(fmt(x.last_seen_at))}</span>`:''}</div>
@@ -553,8 +567,10 @@ async function openClientCodes(c){
         await loadClients(false);setTimeout(()=>openClientCodes(state.clients.find(x=>x.id===c.id)||c),250);
       }catch(err){msg($('#clientCodeMsg'),err.message);}
     });
-    $('#editDeviceLimitBtn')?.addEventListener('click',async()=>{
-      closeModal();await loadClients(false);const fresh=state.clients.find(x=>x.id===c.id)||c;setTimeout(()=>openClientModal(fresh),80);
+    $('#addDeviceBlockBtn')?.addEventListener('click',async()=>{
+      const costText=state.me?.role_level===1?'ADMINISTRACIÓN no descuenta saldo.':'Se descontará 1 crédito de la ficha propietaria.';
+      if(!confirm(`¿Agregar +${blockSize} dispositivos a ${c.name}?\n\n${costText}\nLos nuevos dispositivos tendrán el mismo vencimiento del cliente.`))return;
+      try{const r=await api(`/api/admin/clients/${c.id}/extra-devices`,{method:'POST'});alert(`Capacidad ampliada: ${r.oldLimit} → ${r.newLimit} dispositivos. Bloque agregado: +${r.blockSize}. Crédito consumido: ${r.creditsSpent}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     });
     $$('.device-delete-btn').forEach(btn=>btn.addEventListener('click',async()=>{
       if(!confirm(`¿Desvincular este dispositivo para reemplazarlo? Este cambio cuenta dentro del límite mensual (máximo 2). No devuelve créditos ni reinicia demos. Después podrás vincular el nuevo equipo.`))return;

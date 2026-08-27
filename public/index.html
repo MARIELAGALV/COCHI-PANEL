@@ -84,12 +84,19 @@
         <div class="neon-card panel-card">
           <div class="card-head"><div><h3>Reglas activas</h3><p class="muted">Base comercial de CO-CHI PANEL.</p></div></div>
           <div class="rule-grid rule-grid-compact">
-            <div class="rule-card"><b>Servicio del cliente</b><span>La cantidad de dispositivos del cliente la define exclusivamente ADMINISTRACIÓN. La activación/renovación conserva la regla vigente de 1 crédito por cada bloque de hasta 2 dispositivos.</span></div>
-            <div class="rule-card"><b>Dispositivos adicionales</b><span>ADMINISTRACIÓN puede definir de 1 a 99 dispositivos por cliente. Distribuidores, revendedores y vendedores no pueden cambiar ese límite.</span></div>
+            <div class="rule-card"><b>Servicio del cliente</b><span>El bloque base de dispositivos se define globalmente por ADMINISTRACIÓN. Cada bloque comercial consume 1 crédito al activar o renovar.</span></div>
+            <div class="rule-card"><b>Dispositivos adicionales</b><span>Cada ampliación consume 1 crédito y agrega al mismo cliente un bloque completo del tamaño global vigente. Si el bloque global cambia, las ampliaciones nuevas usan el nuevo tamaño.</span></div>
             <div class="rule-card"><b>Cambios de dispositivo</b><span>Máximo 2 eliminaciones/reemplazos por cliente cada mes. Cambiar o eliminar códigos no reinicia el derecho a demo.</span></div>
             <div class="rule-card"><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los días restantes se conservan y se suman 30 días.</span></div>
             <div class="rule-card"><b>Paneles y cargas</b><span>Cada ficha PANEL admite hasta 2 dispositivos. La carga mínima es de 10 créditos.</span></div>
             <div class="rule-card"><b>Demos</b><span>Los demos usan la duración definida globalmente por ADMINISTRACIÓN.</span></div>
+          </div>
+        </div>
+        <div class="neon-card panel-card control-card admin-only" id="globalCommercialSettingsCard">
+          <div class="card-head"><div><h3>Configuración global comercial</h3><p class="muted">Solo ADMINISTRACIÓN. Estos cambios impactan globalmente en CO-CHI.</p></div></div>
+          <div class="rule-grid">
+            <div class="rule-card"><b>Bloque global de dispositivos</b><span>Define la capacidad base de todos los clientes y el tamaño de cada nueva ampliación.</span><div class="form-row mt10"><input id="globalDeviceBlockSize" type="number" min="1" max="99" step="1" value="2"><button id="saveGlobalDeviceBlockBtn" class="primary" type="button">GUARDAR BLOQUE GLOBAL</button></div><span id="globalDeviceBlockState" class="muted small"></span></div>
+            <div class="rule-card"><b>Categorías visibles en la app</b><span>Ocultá o volvé a mostrar secciones completas globalmente.</span><div id="globalSourceVisibility" class="mt10"></div><button id="saveGlobalVisibilityBtn" class="primary mt10" type="button">GUARDAR VISIBILIDAD</button><span id="globalVisibilityState" class="muted small"></span></div>
           </div>
         </div>
       </section>

@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.68';
+const VERSION = '0.9.69';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -335,6 +335,8 @@ ensureColumn('clients','adult_pin_hash','TEXT');
 ensureColumn('clients','adult_locked','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','adult_fail_count','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','device_limit','INTEGER NOT NULL DEFAULT 2');
+ensureColumn('clients','extra_device_blocks','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('clients','extra_device_allowance','INTEGER NOT NULL DEFAULT 0');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS client_device_changes (
@@ -530,7 +532,7 @@ for (const key of ['tv1','tv2','movies','series']) {
   if(r?.url && looksLikeOwnContentEndpoint(r.url,key)) db.prepare('UPDATE sources SET url=?,updated_at=? WHERE source_key=?').run('',nowIso(),key);
 }
 
-for (const [key,value] of [['demos_enabled','0'],['demo_duration_minutes','10'],['demo_blocked_categories','[]'],['adult_lock_enabled','0'],['adult_max_attempts',String(DEFAULT_ADULT_MAX_ATTEMPTS)],['adult_pin_hash',''],['playback_security_enabled','0'],['playback_generation','1']]) {
+for (const [key,value] of [['demos_enabled','0'],['demo_duration_minutes','10'],['demo_blocked_categories','[]'],['adult_lock_enabled','0'],['adult_max_attempts',String(DEFAULT_ADULT_MAX_ATTEMPTS)],['adult_pin_hash',''],['playback_security_enabled','0'],['playback_generation','1'],['client_device_block_size',String(CLIENT_DEVICE_LIMIT)]]) {
   db.prepare('INSERT OR IGNORE INTO settings(setting_key,setting_value,updated_at) VALUES (?,?,?)').run(key,value,nowIso());
 }
 
@@ -570,6 +572,14 @@ function addMinutes(value,minutes){const d=new Date(value);d.setUTCMinutes(d.get
 function getSetting(key,fallback=''){const r=db.prepare('SELECT setting_value FROM settings WHERE setting_key=?').get(key);return r?r.setting_value:fallback;}
 function setSetting(key,value){db.prepare(`INSERT INTO settings(setting_key,setting_value,updated_at) VALUES (?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at`).run(key,String(value),nowIso());}
 function boolSetting(key,fallback=false){return getSetting(key,fallback?'1':'0')==='1';}
+// v0.9.69 — migración de límites por cliente a base global + ampliaciones acumuladas.
+if(getSetting('client_device_policy_migrated_v0969','0')!=='1'){
+  const base=Number(getSetting('client_device_block_size',String(CLIENT_DEVICE_LIMIT)))||CLIENT_DEVICE_LIMIT;
+  const rows=db.prepare('SELECT id,device_limit FROM clients').all();
+  const q=db.prepare('UPDATE clients SET extra_device_allowance=?,extra_device_blocks=? WHERE id=?');
+  for(const c of rows){const limit=Math.max(base,Number(c.device_limit||base)),extra=Math.max(0,limit-base),blocks=extra>0?Math.ceil(extra/base):0;q.run(extra,blocks,c.id);}
+  setSetting('client_device_policy_migrated_v0969','1');
+}
 
 const PANEL_ROLE_LEVELS=[1,2,3,4];
 function enabledPanelRoleLevels(){
@@ -1051,18 +1061,23 @@ function accountIsInBranch(actor,targetAccountId){
   return false;
 }
 function canManageClientDevice(actor,client){return Boolean(actor&&client&&(Number(actor.role_level)===1||accountIsInBranch(actor,client.owner_account_id)));}
+function globalClientDeviceBlockSize(){
+  const n=Number(getSetting('client_device_block_size',String(CLIENT_DEVICE_LIMIT)));
+  return Number.isInteger(n)&&n>=CLIENT_DEVICE_LIMIT_MIN&&n<=CLIENT_DEVICE_LIMIT_MAX?n:CLIENT_DEVICE_LIMIT;
+}
 function clientDeviceLimit(c){
   const raw=Number(c?.device_limit);
-  const value=Number.isInteger(raw)?raw:CLIENT_DEVICE_LIMIT;
+  const value=Number.isInteger(raw)?raw:globalClientDeviceBlockSize();
   return Math.max(CLIENT_DEVICE_LIMIT_MIN,value);
 }
 function validateClientDeviceLimit(v){
   const n=Number(v);
   return Number.isInteger(n)&&n>=CLIENT_DEVICE_LIMIT_MIN&&n<=CLIENT_DEVICE_LIMIT_MAX?n:null;
 }
-// v0.9.68: ADMINISTRACIÓN define el límite. Se conserva la regla comercial vigente:
-// cada bloque de hasta 2 dispositivos consume 1 crédito al activar/renovar.
-function clientRenewCreditCost(c){return Math.max(CLIENT_CREDIT_COST,Math.ceil(clientDeviceLimit(c)/2));}
+function clientExtraDeviceBlocks(c){const n=Number(c?.extra_device_blocks||0);return Number.isInteger(n)&&n>0?n:0;}
+function clientExtraDeviceAllowance(c){const n=Number(c?.extra_device_allowance||0);return Number.isInteger(n)&&n>0?n:0;}
+// v0.9.69: 1 crédito = 1 bloque global. La base global y cada ampliación cuentan como un bloque comercial.
+function clientRenewCreditCost(c){return Math.max(CLIENT_CREDIT_COST,1+clientExtraDeviceBlocks(c));}
 function clientDeviceCapacity(c,d){
   if(!c)return {deviceLimit:null,linkedDevices:0,deviceIndex:null};
   const rows=db.prepare("SELECT id FROM client_devices WHERE client_id=? AND status IN ('pending','active') ORDER BY id ASC").all(c.id);
@@ -1861,7 +1876,7 @@ async function route(req,res){
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
   if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v6',mediaDetection:'media-adapters-v3-cochi-encrypted',mediaAdapters:['generic-json-flex','m3u-text-html','cochi-aes256-ecb'],mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
-  if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:CLIENT_DEVICE_LIMIT,clientDevicesDefault:CLIENT_DEVICE_LIMIT,clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX});
+  if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:globalClientDeviceBlockSize(),clientDevicesDefault:globalClientDeviceBlockSize(),clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
     if(Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)!==0)return sendJson(res,409,{error:'El panel ya fue configurado'});
@@ -2076,7 +2091,7 @@ async function route(req,res){
     return sendJson(res,200,{ok:true,account:acc,expiresAt:s.expiresAt},{'Set-Cookie':sessionCookie(s.token)});
   }
   if(p==='/api/panel/me'&&m==='GET'){
-    const s=requirePanel(req,res);if(!s)return;return sendJson(res,200,{account:accountPublic(accountRaw(s.account.id)),limits:{panelDevices:2,clientDevices:CLIENT_DEVICE_LIMIT,clientDevicesDefault:CLIENT_DEVICE_LIMIT,clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX,clientDays:30,renewWindowDays:10,minCreditTransfer:MIN_CREDIT_TRANSFER,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES},features:{demosEnabled:boolSetting('demos_enabled',false),playbackSecurityEnabled:boolSetting('playback_security_enabled',false)}});
+    const s=requirePanel(req,res);if(!s)return;return sendJson(res,200,{account:accountPublic(accountRaw(s.account.id)),limits:{panelDevices:2,clientDevices:globalClientDeviceBlockSize(),clientDevicesDefault:globalClientDeviceBlockSize(),clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX,clientDays:30,renewWindowDays:10,minCreditTransfer:MIN_CREDIT_TRANSFER,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES},features:{demosEnabled:boolSetting('demos_enabled',false),playbackSecurityEnabled:boolSetting('playback_security_enabled',false)}});
   }
   if(p==='/api/panel/logout'&&m==='POST'){
     const tok=parseCookies(req).cochi_panel_session;if(tok)db.prepare('DELETE FROM panel_sessions WHERE token_hash=?').run(sha(tok));
@@ -2309,20 +2324,15 @@ async function route(req,res){
     if(p==='/api/admin/clients'&&m==='POST'){
       const b=await readJson(req),name=String(b.name||'').trim();if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});let owner=actor.id;
       if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.deviceLimit!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede definir la cantidad de dispositivos'});
-      let deviceLimit=CLIENT_DEVICE_LIMIT;
-      if(actor.role_level===1&&b.deviceLimit!==undefined){deviceLimit=validateClientDeviceLimit(b.deviceLimit);if(deviceLimit===null)return sendJson(res,400,{error:`La cantidad de dispositivos debe estar entre ${CLIENT_DEVICE_LIMIT_MIN} y ${CLIENT_DEVICE_LIMIT_MAX}`});}
+      let deviceLimit=globalClientDeviceBlockSize();
+      if(b.deviceLimit!==undefined)return sendJson(res,409,{error:'El límite base se define globalmente desde ADMINISTRACIÓN'});
       const t=nowIso();const r=db.prepare('INSERT INTO clients(name,owner_account_id,notes,active,expires_at,device_limit,created_at,updated_at) VALUES (?,?,?,1,NULL,?,?,?)').run(name,owner,String(b.notes||'').trim(),deviceLimit,t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),deviceLimit});
     }
     const cm=p.match(/^\/api\/admin\/clients\/(\d+)$/);
     if(cm&&m==='PUT'){
       const c=clientRow(Number(cm[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés editar clientes directos'});const b=await readJson(req);let owner=c.owner_account_id;if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.ownerAccountId!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede mover clientes'});
-      if(actor.role_level!==1&&b.deviceLimit!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede definir la cantidad de dispositivos'});
+      if(b.deviceLimit!==undefined)return sendJson(res,409,{error:'El límite base se define globalmente desde ADMINISTRACIÓN'});
       let deviceLimit=clientDeviceLimit(c);
-      if(actor.role_level===1&&b.deviceLimit!==undefined){
-        deviceLimit=validateClientDeviceLimit(b.deviceLimit);if(deviceLimit===null)return sendJson(res,400,{error:`La cantidad de dispositivos debe estar entre ${CLIENT_DEVICE_LIMIT_MIN} y ${CLIENT_DEVICE_LIMIT_MAX}`});
-        const linked=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status IN ('pending','active')").get(c.id).n);
-        if(deviceLimit<linked)return sendJson(res,409,{error:`No se puede bajar a ${deviceLimit}: el cliente tiene ${linked} dispositivos vinculados. Desvinculá primero los excedentes.`});
-      }
       db.prepare('UPDATE clients SET name=?,owner_account_id=?,notes=?,active=?,device_limit=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():c.name,owner,b.notes!==undefined?String(b.notes).trim():c.notes,b.active!==undefined?(b.active?1:0):c.active,deviceLimit,nowIso(),c.id);return sendJson(res,200,{ok:true,deviceLimit});
     }
     if(cm&&m==='DELETE'){
@@ -2332,6 +2342,19 @@ async function route(req,res){
       deleteClientRecord(c.id,{actorId:actor.id,reason:String(b.reason||'Eliminación manual').trim()||'Eliminación manual'});
       return sendJson(res,200,{ok:true,deletedClientId:c.id});
     }
+    if(p==='/api/admin/device-policy'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede ver esta configuración'});
+      return sendJson(res,200,{blockSize:globalClientDeviceBlockSize(),min:CLIENT_DEVICE_LIMIT_MIN,max:CLIENT_DEVICE_LIMIT_MAX,rule:'1 crédito = 1 bloque global'});
+    }
+    if(p==='/api/admin/device-policy'&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar esta configuración'});
+      const b=await readJson(req),newBase=validateClientDeviceLimit(b.blockSize);if(newBase===null)return sendJson(res,400,{error:`El bloque global debe estar entre ${CLIENT_DEVICE_LIMIT_MIN} y ${CLIENT_DEVICE_LIMIT_MAX}`});
+      const oldBase=globalClientDeviceBlockSize(),rows=db.prepare('SELECT id,device_limit,extra_device_allowance FROM clients').all();
+      for(const c of rows){const next=newBase+Math.max(0,Number(c.extra_device_allowance||0));if(next>CLIENT_DEVICE_LIMIT_MAX)return sendJson(res,409,{error:`No se puede aplicar ${newBase}: el cliente #${c.id} superaría el máximo de ${CLIENT_DEVICE_LIMIT_MAX} dispositivos por sus ampliaciones existentes`});}
+      const t=nowIso();db.exec('BEGIN');try{setSetting('client_device_block_size',String(newBase));for(const c of rows){db.prepare('UPDATE clients SET device_limit=?,updated_at=? WHERE id=?').run(newBase+Math.max(0,Number(c.extra_device_allowance||0)),t,c.id);}audit(actor.id,'global_client_device_block_changed','settings',null,`${oldBase}→${newBase}`);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+      return sendJson(res,200,{ok:true,oldBlockSize:oldBase,blockSize:newBase,clientsUpdated:rows.length});
+    }
+
     if(p==='/api/admin/deleted-clients'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede ver el historial de eliminados'});
       return sendJson(res,200,{items:db.prepare('SELECT * FROM deleted_clients_history ORDER BY id DESC LIMIT 300').all()});
@@ -2373,19 +2396,25 @@ async function route(req,res){
     }
     const cdev=p.match(/^\/api\/admin\/clients\/(\d+)\/devices$/);
     if(cdev&&m==='GET'){
-      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),deviceLimit:clientDeviceLimit(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
+      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),deviceLimit:clientDeviceLimit(c),deviceBlockSize:globalClientDeviceBlockSize(),extraDeviceBlocks:clientExtraDeviceBlocks(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
     }
-    // Compatibilidad con paneles anteriores: la ampliación +2 queda reservada a ADMINISTRACIÓN.
-    // No consume créditos; la capacidad es una decisión administrativa del perfil.
+    // v0.9.69: ampliar un cliente consume 1 crédito y suma exactamente el bloque global vigente.
     const extraDevices=p.match(/^\/api\/admin\/clients\/(\d+)\/extra-devices$/);
     if(extraDevices&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar la cantidad de dispositivos'});
       const c=clientRow(Number(extraDevices[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});
-      const t=nowIso(),oldLimit=clientDeviceLimit(c),newLimit=Math.min(CLIENT_DEVICE_LIMIT_MAX,oldLimit+2);
-      if(newLimit===oldLimit)return sendJson(res,409,{error:`El límite máximo es ${CLIENT_DEVICE_LIMIT_MAX} dispositivos`});
-      db.prepare('UPDATE clients SET device_limit=?,updated_at=? WHERE id=?').run(newLimit,t,c.id);
-      audit(actor.id,'client_device_limit_changed','client',c.id,`límite ${oldLimit}→${newLimit}; compatibilidad +2; costo 0`);
-      return sendJson(res,200,{ok:true,creditsSpent:0,oldLimit,newLimit,expiresAt:c.expires_at||null,sharedExpiry:true,adminControlled:true});
+      if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés ampliar clientes directos'});
+      const owner=accountRaw(c.owner_account_id),blockSize=globalClientDeviceBlockSize(),oldLimit=clientDeviceLimit(c),newLimit=oldLimit+blockSize;
+      if(newLimit>CLIENT_DEVICE_LIMIT_MAX)return sendJson(res,409,{error:`La ampliación de +${blockSize} superaría el máximo de ${CLIENT_DEVICE_LIMIT_MAX} dispositivos`});
+      if(owner.role_level!==1&&owner.credits<1)return sendJson(res,409,{error:'La ficha propietaria necesita 1 crédito para ampliar dispositivos'});
+      const t=nowIso();db.exec('BEGIN');
+      try{
+        if(owner.role_level!==1)db.prepare('UPDATE accounts SET credits=credits-1,updated_at=? WHERE id=?').run(t,owner.id);
+        db.prepare('UPDATE clients SET device_limit=?,extra_device_blocks=extra_device_blocks+1,extra_device_allowance=extra_device_allowance+?,updated_at=? WHERE id=?').run(newLimit,blockSize,t,c.id);
+        db.prepare('INSERT INTO client_service_ledger(client_id,charged_account_id,created_by_account_id,credits_spent,previous_expiry,new_expiry,action,created_at) VALUES (?,?,?,?,?,?,?,?)').run(c.id,owner.id,actor.id,owner.role_level===1?0:1,c.expires_at||null,c.expires_at||null,'extra_devices',t);
+        db.exec('COMMIT');
+      }catch(e){db.exec('ROLLBACK');throw e;}
+      audit(actor.id,'client_devices_expanded','client',c.id,`+${blockSize}; límite ${oldLimit}→${newLimit}; costo ${owner.role_level===1?0:1}`);
+      return sendJson(res,200,{ok:true,creditsSpent:owner.role_level===1?0:1,blockSize,oldLimit,newLimit,expiresAt:c.expires_at||null,sharedExpiry:true,extraBlocks:clientExtraDeviceBlocks(c)+1});
     }
 
     const deleteDevice=p.match(/^\/api\/admin\/client-devices\/(\d+)$/);
