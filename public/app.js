@@ -1213,10 +1213,11 @@ async function reloadContentSource(){
     if(srcNow!==String(saved?.url||'').trim()||enabled!==(saved?.enabled!==false))await saveContentSource();
     if(btn){btn.disabled=true;btn.textContent='RECARGANDO...';}
     msg($('#contentMsg'),`Recargando ${label} desde la URL de origen...`);
-    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:true}});
+    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:false}});
     await loadContent(true);
     const st=r.stats?`${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:'contenido actualizado';
-    const text=`URL RECARGADA · ${label} · ${st} · Revisá y tocá GUARDAR Y PUBLICAR para enviarlo a CO-CHI.`;
+    const diag=r.sourceSha256?` · SHA256 ${r.sourceSha256.slice(0,12)}`:'';
+    const text=`URL RECARGADA Y REEMPLAZADA · ${label} · ${st}${diag} · Revisá y tocá GUARDAR Y PUBLICAR para enviarlo a CO-CHI.`;
     msg($('#contentMsg'),text,true);toast(text,'ok');
   }catch(e){
     const text='NO SE PUDO RECARGAR LA URL · '+e.message;

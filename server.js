@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.70';
+const VERSION = '0.9.71';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -445,6 +445,12 @@ async function githubRequest(url,options={}){
   const token=githubToken();if(!token)throw new Error('Falta configurar COCHI_GITHUB_TOKEN en Railway para poder guardar en el JSON original de GitHub.');
   const rr=await fetch(url,{...options,headers:githubApiHeaders(token,options.headers||{}),signal:AbortSignal.timeout(30000)});
   return rr;
+}
+async function githubReadRequest(url,options={}){
+  const token=githubToken();
+  const headers={'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':`CO-CHI-PANEL/${VERSION}`,...(options.headers||{})};
+  if(token)headers.Authorization=`Bearer ${token}`;
+  return fetch(url,{...options,cache:'no-store',headers,signal:AbortSignal.timeout(30000)});
 }
 async function replaceGithubReleaseAsset(info,newText){
   const releaseUrl=`https://api.github.com/repos/${encodeURIComponent(info.owner)}/${encodeURIComponent(info.repo)}/releases/tags/${encodeURIComponent(info.tag)}`;
@@ -2705,15 +2711,17 @@ async function route(req,res){
         // Si es un asset de Release usamos la API autenticada y el ID actual del asset.
         const sourceInfo=parseGithubWritableSource(src.url);
         let rr, resolvedSource=src.url;
-        if(sourceInfo?.kind==='release_asset' && githubToken()){
+        if(sourceInfo?.kind==='release_asset'){
+          // v0.9.71: para Release assets consultamos siempre el ID actual por API.
+          // En repos públicos funciona sin token; si existe COCHI_GITHUB_TOKEN se usa para ampliar el límite.
           const releaseUrl=`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/tags/${encodeURIComponent(sourceInfo.tag)}`;
-          const relRes=await githubRequest(releaseUrl,{headers:{'Cache-Control':'no-cache'}});
+          const relRes=await githubReadRequest(releaseUrl,{headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}});
           if(!relRes.ok)throw new Error(`GitHub no pudo abrir la release ${sourceInfo.tag} (HTTP ${relRes.status})`);
           const release=await relRes.json();
           const asset=(release.assets||[]).find(a=>String(a.name)===sourceInfo.assetName);
           if(!asset)throw new Error(`No se encontró el asset ${sourceInfo.assetName} dentro de la release ${sourceInfo.tag}`);
           resolvedSource=`github-api:asset/${asset.id}`;
-          rr=await githubRequest(`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/assets/${asset.id}`,{headers:{Accept:'application/octet-stream','Cache-Control':'no-cache'}});
+          rr=await githubReadRequest(`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/assets/${asset.id}`,{headers:{Accept:'application/octet-stream','Cache-Control':'no-cache, no-store','Pragma':'no-cache'}});
         }else{
           const fresh=new URL(src.url);fresh.searchParams.set('_cochi',Date.now().toString());
           resolvedSource=fresh.toString();
