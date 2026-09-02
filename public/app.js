@@ -46,7 +46,7 @@ function toast(text,kind='ok'){
 }
 function openModal(html){$('#modal').innerHTML=html;$('#modalBackdrop').classList.remove('hidden');}
 function closeModal(){$('#modalBackdrop').classList.add('hidden');$('#modal').classList.remove('content-editor-modal');$('#modal').innerHTML='';}
-$('#modalBackdrop').addEventListener('click',e=>{if(e.target===$('#modalBackdrop'))closeModal();});
+$('#modalBackdrop').addEventListener('click',e=>{if(e.target!==$('#modalBackdrop'))return;/* El editor de contenido no se cierra tocando fuera: evita cierres accidentales al hacer scroll/tocar en móvil o TV. */if($('#modal').classList.contains('content-editor-modal')){toast('Editor protegido: usá X, Cancelar o Guardar para salir.','ok');return;}closeModal();});
 
 async function bootstrap(){
   const st=await api('/api/setup/status').catch(()=>({needsSetup:false}));
@@ -1011,6 +1011,9 @@ function editContentItem(groupIndex,itemIndex=null){
   const streamType=String(cur.type||cur.tipo||'auto').toLowerCase();
   const drmScheme=String(cur.drm_scheme||'').toLowerCase();
   const existingKeys=Array.isArray(cur.keys)?cur.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):(drmScheme==='clearkey'?String(cur.drm_license_url||''):'');
+  const existingLicenseUrl=drmScheme==='widevine'?String(cur.drm_license_url||cur.license_url||''):'';
+  const existingLicenseHeaders=(cur.drm_license_headers&&typeof cur.drm_license_headers==='object'?cur.drm_license_headers:(cur.license_headers&&typeof cur.license_headers==='object'?cur.license_headers:{}));
+  const existingLicenseHeaderText=Object.entries(existingLicenseHeaders).map(([k,v])=>`${k}: ${v}`).join('\n');
   const existingHeaders=cur.headers&&typeof cur.headers==='object'?Object.entries(cur.headers).map(([k,v])=>`${k}: ${v}`).join('\n'):'';
   const existingBackups=Array.isArray(cur.backupUris)?cur.backupUris.join('\n'):'';
   openModal(`<div class="content-editor-head"><div><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: la URL principal ocupa todo el ancho. Los datos adicionales quedan abajo para facilitar la revisión.</p></div><button type="button" class="ghost compact-close" data-close>✕</button></div><form id="contentItemForm" class="content-editor-form">
@@ -1019,7 +1022,7 @@ function editContentItem(groupIndex,itemIndex=null){
         <label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label>
         <label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>
         ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`}
-        ${isTv?`<div class="stream-format-box"><h4>FORMATO DE REPRODUCCIÓN</h4><div class="form-row"><label>Tipo de entrada<select id="ciStreamType"><option value="auto" ${streamType==='auto'?'selected':''}>Automático (recomendado)</option><option value="hls" ${streamType==='hls'?'selected':''}>HLS / M3U8</option><option value="dash" ${streamType==='dash'?'selected':''}>DASH / MPD</option><option value="youtube" ${streamType==='youtube'?'selected':''}>YouTube</option><option value="remote_playlist" ${streamType==='remote_playlist'?'selected':''}>Lista remota M3U/M3U8</option></select></label><label>DRM<select id="ciDrmScheme"><option value="" ${!drmScheme?'selected':''}>Sin DRM</option><option value="clearkey" ${drmScheme==='clearkey'?'selected':''}>ClearKey / MultiKey</option></select></label></div><label id="ciKeysWrap">Claves ClearKey / MultiKey<textarea id="ciKeys" rows="4" spellcheck="false" placeholder="KID:KEY&#10;KID2:KEY2">${esc(existingKeys)}</textarea><span class="muted tiny">Una clave por línea. El PANEL la guarda como arreglo <b>keys</b> compatible con CO-CHI.</span></label><label>Headers opcionales<textarea id="ciHeaders" rows="4" spellcheck="false" placeholder="Referer: https://...&#10;Origin: https://...&#10;User-Agent: ...">${esc(existingHeaders)}</textarea></label><label>Fuentes de respaldo / FAILOVER<textarea id="ciBackupUris" rows="4" spellcheck="false" placeholder="https://respaldo-1/...&#10;https://respaldo-2/...">${esc(existingBackups)}</textarea><span class="muted tiny">Una URL por línea. El backend prueba la principal y usa el primer respaldo saludable al entregar TV1/TV2. Conserva siempre la URL principal original.</span></label><p class="muted tiny">Para Pluto u otra lista remota elegí <b>Lista remota M3U/M3U8</b>. Widevine con servidor de licencias no se muestra todavía porque la APK actual no implementa ese flujo; así evitamos guardar una configuración que no podría reproducir.</p></div>`:''}
+        ${isTv?`<div class="stream-format-box"><h4>FORMATO DE REPRODUCCIÓN</h4><div class="form-row"><label>Tipo de entrada<select id="ciStreamType"><option value="auto" ${streamType==='auto'?'selected':''}>Automático (recomendado)</option><option value="hls" ${streamType==='hls'?'selected':''}>HLS / M3U8</option><option value="dash" ${streamType==='dash'?'selected':''}>DASH / MPD</option><option value="youtube" ${streamType==='youtube'?'selected':''}>YouTube</option><option value="remote_playlist" ${streamType==='remote_playlist'?'selected':''}>Lista remota M3U/M3U8</option></select></label><label>DRM<select id="ciDrmScheme"><option value="" ${!drmScheme?'selected':''}>Sin DRM</option><option value="clearkey" ${drmScheme==='clearkey'?'selected':''}>ClearKey / MultiKey</option><option value="widevine" ${drmScheme==='widevine'?'selected':''}>Widevine</option></select></label></div><label id="ciKeysWrap">Claves ClearKey / MultiKey<textarea id="ciKeys" rows="4" spellcheck="false" placeholder="KID:KEY&#10;KID2:KEY2">${esc(existingKeys)}</textarea><span class="muted tiny">Una clave por línea. El PANEL la guarda como arreglo <b>keys</b> compatible con CO-CHI.</span></label><div id="ciWidevineWrap"><label>URL de licencia Widevine<textarea id="ciLicenseUrl" rows="2" spellcheck="false" placeholder="https://licencias.ejemplo.com/widevine">${esc(existingLicenseUrl)}</textarea><span class="muted tiny">Se guarda como <b>drm_license_url</b>. Debe ser una URL HTTPS/HTTP válida del servidor de licencias autorizado.</span></label><label>Headers de licencia Widevine<textarea id="ciLicenseHeaders" rows="4" spellcheck="false" placeholder="Authorization: Bearer ...&#10;Origin: https://...&#10;Referer: https://...">${esc(existingLicenseHeaderText)}</textarea><span class="muted tiny">Se guardan por separado como <b>drm_license_headers</b>, para no mezclarlos con los headers del MPD/HLS.</span></label></div><label>Headers opcionales del stream<textarea id="ciHeaders" rows="4" spellcheck="false" placeholder="Referer: https://...&#10;Origin: https://...&#10;User-Agent: ...">${esc(existingHeaders)}</textarea></label><label>Fuentes de respaldo / FAILOVER<textarea id="ciBackupUris" rows="4" spellcheck="false" placeholder="https://respaldo-1/...&#10;https://respaldo-2/...">${esc(existingBackups)}</textarea><span class="muted tiny">Una URL por línea. El backend prueba la principal y usa el primer respaldo saludable al entregar TV1/TV2. Conserva siempre la URL principal original.</span></label><p class="muted tiny">Para Pluto u otra lista remota elegí <b>Lista remota M3U/M3U8</b>. Widevine queda disponible para streams DASH/HLS protegidos cuando la app cliente implementa Media3/ExoPlayer con servidor de licencias autorizado.</p></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
         ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
       </section>
@@ -1049,7 +1052,7 @@ function editContentItem(groupIndex,itemIndex=null){
     <div class="modal-actions content-editor-actions"><button type="button" class="ghost" data-close>Cancelar</button><button id="ciSubmitBtn" class="primary" type="submit">${isQuickEditable?'ACTUALIZAR':(itemIndex===null?'AGREGAR':'GUARDAR')}</button></div><div id="ciMsg" class="msg"></div>
   </form>`);
   $('#modal').classList.add('content-editor-modal');
-  $$('[data-close]').forEach(x=>x.onclick=closeModal);
+  // El cierre del editor se maneja por delegación en #modal; evitamos doble ejecución de closeModal().
   $$('[data-item-move]').forEach(b=>b.onclick=()=>{
     if(itemIndex===null)return;
     let to=itemIndex;
@@ -1125,7 +1128,7 @@ function editContentItem(groupIndex,itemIndex=null){
   }
   const parseHeaderLines=text=>{const out={};for(const line of String(text||'').split(/\r?\n/)){const i=line.indexOf(':');if(i<=0)continue;const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
   const parseKeyLines=text=>{const out=[];for(const line of String(text||'').split(/[\r\n,;]+/)){const p=line.trim();if(!p)continue;const i=p.indexOf(':');if(i<=0||i>=p.length-1)throw new Error('Clave inválida. Usá KID:KEY, una por línea.');const kid=p.slice(0,i).trim(),key=p.slice(i+1).trim();if(!kid||!key)throw new Error('Clave inválida. Usá KID:KEY.');out.push({kid,key});}return out;};
-  const refreshStreamFields=()=>{if(!isTv)return;const drm=$('#ciDrmScheme')?.value||'';if($('#ciKeysWrap'))$('#ciKeysWrap').style.display=drm==='clearkey'?'grid':'none';};
+  const refreshStreamFields=()=>{if(!isTv)return;const drm=$('#ciDrmScheme')?.value||'';if($('#ciKeysWrap'))$('#ciKeysWrap').style.display=drm==='clearkey'?'grid':'none';if($('#ciWidevineWrap'))$('#ciWidevineWrap').style.display=drm==='widevine'?'grid':'none';};
   if(isTv){$('#ciDrmScheme')?.addEventListener('change',refreshStreamFields);$('#ciStreamType')?.addEventListener('change',()=>{if($('#ciStreamType').value==='remote_playlist'){if($('#ciDrmScheme'))$('#ciDrmScheme').value='';refreshStreamFields();}});refreshStreamFields();}
   $('#contentItemForm').onsubmit=async e=>{
     e.preventDefault();
@@ -1139,10 +1142,18 @@ function editContentItem(groupIndex,itemIndex=null){
       if(isTv){
         const t=$('#ciStreamType').value||'auto',drm=$('#ciDrmScheme').value||'',headers=parseHeaderLines($('#ciHeaders').value);
         if(t&&t!=='auto')obj.type=t;else delete obj.type;delete obj.tipo;
-        if(drm==='clearkey'){const keys=parseKeyLines($('#ciKeys').value);if(!keys.length)throw new Error('ClearKey seleccionado: cargá al menos un par KID:KEY.');obj.drm_scheme='clearkey';obj.keys=keys;delete obj.drm_license_url;}else{delete obj.drm_scheme;delete obj.keys;if(String(obj.drm_license_url||'').includes(':'))delete obj.drm_license_url;}
+        if(drm==='clearkey'){
+          const keys=parseKeyLines($('#ciKeys').value);if(!keys.length)throw new Error('ClearKey seleccionado: cargá al menos un par KID:KEY.');
+          obj.drm_scheme='clearkey';obj.keys=keys;delete obj.drm_license_url;delete obj.drm_license_headers;delete obj.license_url;delete obj.license_headers;
+        }else if(drm==='widevine'){
+          const licenseUrl=String($('#ciLicenseUrl')?.value||'').trim(),licenseHeaders=parseHeaderLines($('#ciLicenseHeaders')?.value||'');
+          if(!/^https?:\/\//i.test(licenseUrl))throw new Error('Widevine seleccionado: cargá una URL de licencia HTTP/HTTPS válida.');
+          obj.drm_scheme='widevine';obj.drm_license_url=licenseUrl;delete obj.keys;delete obj.license_url;delete obj.license_headers;
+          if(Object.keys(licenseHeaders).length)obj.drm_license_headers=licenseHeaders;else delete obj.drm_license_headers;
+        }else{delete obj.drm_scheme;delete obj.keys;delete obj.drm_license_url;delete obj.drm_license_headers;delete obj.license_url;delete obj.license_headers;}
         if(Object.keys(headers).length)obj.headers=headers;else delete obj.headers;
         const backups=String($('#ciBackupUris')?.value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(backups.length)obj.backupUris=[...new Set(backups.filter(x=>x!==uri))];else delete obj.backupUris;
-        if(t==='remote_playlist'){delete obj.drm_scheme;delete obj.keys;delete obj.drm_license_url;}
+        if(t==='remote_playlist'){delete obj.drm_scheme;delete obj.keys;delete obj.drm_license_url;delete obj.drm_license_headers;delete obj.license_url;delete obj.license_headers;}
       }
       const targetGroup=Number($('#ciCategory').value);
       let pos=Math.max(1,Number($('#ciPosition').value)||1)-1;
