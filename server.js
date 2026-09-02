@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.71';
+const VERSION = '0.9.72';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -2703,8 +2703,17 @@ async function route(req,res){
     }
     const importMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)\/import$/);
     if(importMatch&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});const src=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);const privateSrc=privateSourceRow(importMatch[1]);if(!privateSrc?.json_text&&!src?.url)return sendJson(res,400,{error:'Esta fuente no tiene JSON privado subido ni URL configurada'});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona contenido'});
       const b=await readJson(req).catch(()=>({}));
+      const storedSrc=db.prepare('SELECT url FROM sources WHERE source_key=?').get(importMatch[1]);
+      const requestedSourceUrl=String(b.sourceUrl||'').trim();
+      if(requestedSourceUrl&&!/^https?:\/\//i.test(requestedSourceUrl))return sendJson(res,400,{error:'URL de origen inválida'});
+      if(requestedSourceUrl&&looksLikeOwnContentEndpoint(requestedSourceUrl,importMatch[1]))return sendJson(res,400,{error:'Esa es la salida protegida del backend. Pegá la URL real del JSON/repo.'});
+      // v0.9.72: si el panel envía sourceUrl, esa URL manda sobre cualquier valor viejo de la DB.
+      const effectiveSourceUrl=requestedSourceUrl||String(storedSrc?.url||'').trim();
+      const src={url:effectiveSourceUrl};
+      const privateSrc=privateSourceRow(importMatch[1]);
+      if(!privateSrc?.json_text&&!src.url)return sendJson(res,400,{error:'Esta fuente no tiene JSON privado subido ni URL configurada'});
       try{
         if(privateSrc?.json_text){const imported=decryptManagedContent(JSON.parse(privateSrc.json_text));const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_merged_from_private_upload');updatedAt=nowIso();}return sendJson(res,200,{json,stats,sourceUrl:'private-upload://'+importMatch[1],resolvedSource:`PANEL PRIVADO · ${privateSrc.file_name||'JSON subido'}`,sourceBytes:Number(privateSrc.source_bytes||0),sourceSha256:crypto.createHash('sha256').update(privateSrc.json_text,'utf8').digest('hex'),fetchedAt:nowIso(),editorMode:'decrypted',persisted:b.persist===true,preservedManaged:b.preserveManaged!==false,updatedAt,privateUpload:true});}
         // v0.9.13: leer GitHub sin pasar por la URL CDN cacheada del Release.
@@ -2712,7 +2721,7 @@ async function route(req,res){
         const sourceInfo=parseGithubWritableSource(src.url);
         let rr, resolvedSource=src.url;
         if(sourceInfo?.kind==='release_asset'){
-          // v0.9.71: para Release assets consultamos siempre el ID actual por API.
+          // v0.9.72: para Release assets consultamos siempre el ID actual por API.
           // En repos públicos funciona sin token; si existe COCHI_GITHUB_TOKEN se usa para ampliar el límite.
           const releaseUrl=`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/tags/${encodeURIComponent(sourceInfo.tag)}`;
           const relRes=await githubReadRequest(releaseUrl,{headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}});
@@ -2732,8 +2741,13 @@ async function route(req,res){
         if(bytes>25*1024*1024)throw new Error('El JSON supera 25 MB');
         const hash=crypto.createHash('sha256').update(text,'utf8').digest('hex');
         let encrypted;try{encrypted=JSON.parse(text);}catch(parseErr){throw new Error(`${parseErr.message} · descargado ${bytes} bytes · SHA256 ${hash.slice(0,16)} · ${resolvedSource}`)}
-        const imported=decryptManagedContent(encrypted);const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_merged_from_private_source');updatedAt=nowIso();}
-        return sendJson(res,200,{json,stats,sourceUrl:src.url,resolvedSource,sourceBytes:bytes,sourceSha256:hash,fetchedAt:nowIso(),editorMode:'decrypted',persisted:b.persist===true,preservedManaged:b.preserveManaged!==false,updatedAt});
+        const imported=decryptManagedContent(encrypted);const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){
+          saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_replaced_from_explicit_source');
+          // La URL escrita en pantalla se guarda solamente después de comprobar que descargó y abrió bien.
+          if(requestedSourceUrl){db.prepare('UPDATE sources SET url=?,enabled=?,updated_at=? WHERE source_key=?').run(requestedSourceUrl,b.enabled===false?0:1,nowIso(),importMatch[1]);}
+          updatedAt=nowIso();
+        }
+        return sendJson(res,200,{json,stats,sourceUrl:src.url,effectiveSourceUrl:src.url,resolvedSource,sourceBytes:bytes,sourceSha256:hash,fetchedAt:nowIso(),editorMode:'decrypted',persisted:b.persist===true,preservedManaged:b.preserveManaged!==false,updatedAt});
       }catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
     }
 

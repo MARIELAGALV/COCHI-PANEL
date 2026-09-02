@@ -1213,11 +1213,20 @@ async function reloadContentSource(){
     if(srcNow!==String(saved?.url||'').trim()||enabled!==(saved?.enabled!==false))await saveContentSource();
     if(btn){btn.disabled=true;btn.textContent='RECARGANDO...';}
     msg($('#contentMsg'),`Recargando ${label} desde la URL de origen...`);
-    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:false}});
-    await loadContent(true);
+    // v0.9.72: enviamos al backend EXACTAMENTE la URL que está escrita en pantalla.
+    // Así RECARGAR URL no puede usar por error una URL anterior que hubiera quedado en memoria/DB.
+    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:false,sourceUrl:srcNow,enabled}});
+    // Pintamos directamente lo que el backend acaba de descargar, sin una segunda lectura intermedia.
+    state.content[key]={json:r.json||[],stats:r.stats||null,updatedAt:r.updatedAt||new Date().toISOString()};
+    state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
+    setContentPlain(r.json||[]);
     const st=r.stats?`${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:'contenido actualizado';
+    $('#contentState').textContent=`Guardado: ${fmt(r.updatedAt||new Date().toISOString())}${r.stats?` · ${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:''}`;
+    $('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;
     const diag=r.sourceSha256?` · SHA256 ${r.sourceSha256.slice(0,12)}`:'';
-    const text=`URL RECARGADA Y REEMPLAZADA · ${label} · ${st}${diag} · Revisá y tocá GUARDAR Y PUBLICAR para enviarlo a CO-CHI.`;
+    const effective=r.effectiveSourceUrl||r.sourceUrl||srcNow;
+    const sourceDiag=` · FUENTE ${effective}`;
+    const text=`URL RECARGADA Y REEMPLAZADA · ${label} · ${st}${diag}${sourceDiag} · Revisá y tocá GUARDAR Y PUBLICAR para enviarlo a CO-CHI.`;
     msg($('#contentMsg'),text,true);toast(text,'ok');
   }catch(e){
     const text='NO SE PUDO RECARGAR LA URL · '+e.message;
