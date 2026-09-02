@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.72';
+const VERSION = '0.9.73';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -2713,9 +2713,13 @@ async function route(req,res){
       const effectiveSourceUrl=requestedSourceUrl||String(storedSrc?.url||'').trim();
       const src={url:effectiveSourceUrl};
       const privateSrc=privateSourceRow(importMatch[1]);
-      if(!privateSrc?.json_text&&!src.url)return sendJson(res,400,{error:'Esta fuente no tiene JSON privado subido ni URL configurada'});
+      // v0.9.73: una URL enviada explícitamente por RECARGAR URL tiene prioridad TOTAL.
+      // Antes, si existía un JSON privado antiguo para TV2, ese JSON ganaba y la URL nueva
+      // (por ejemplo TV2C) nunca llegaba a descargarse aunque el panel la mostrara en pantalla.
+      const usePrivateSource=!requestedSourceUrl&&!!privateSrc?.json_text;
+      if(!usePrivateSource&&!src.url)return sendJson(res,400,{error:'Esta fuente no tiene JSON privado subido ni URL configurada'});
       try{
-        if(privateSrc?.json_text){const imported=decryptManagedContent(JSON.parse(privateSrc.json_text));const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_merged_from_private_upload');updatedAt=nowIso();}return sendJson(res,200,{json,stats,sourceUrl:'private-upload://'+importMatch[1],resolvedSource:`PANEL PRIVADO · ${privateSrc.file_name||'JSON subido'}`,sourceBytes:Number(privateSrc.source_bytes||0),sourceSha256:crypto.createHash('sha256').update(privateSrc.json_text,'utf8').digest('hex'),fetchedAt:nowIso(),editorMode:'decrypted',persisted:b.persist===true,preservedManaged:b.preserveManaged!==false,updatedAt,privateUpload:true});}
+        if(usePrivateSource){const imported=decryptManagedContent(JSON.parse(privateSrc.json_text));const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_merged_from_private_upload');updatedAt=nowIso();}return sendJson(res,200,{json,stats,sourceUrl:'private-upload://'+importMatch[1],resolvedSource:`PANEL PRIVADO · ${privateSrc.file_name||'JSON subido'}`,sourceBytes:Number(privateSrc.source_bytes||0),sourceSha256:crypto.createHash('sha256').update(privateSrc.json_text,'utf8').digest('hex'),fetchedAt:nowIso(),editorMode:'decrypted',persisted:b.persist===true,preservedManaged:b.preserveManaged!==false,updatedAt,privateUpload:true});}
         // v0.9.13: leer GitHub sin pasar por la URL CDN cacheada del Release.
         // Si es un asset de Release usamos la API autenticada y el ID actual del asset.
         const sourceInfo=parseGithubWritableSource(src.url);
