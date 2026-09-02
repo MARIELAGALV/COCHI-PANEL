@@ -1200,8 +1200,33 @@ async function loadContent(preserveMessage=false){
     $('#contentPublicUrl').textContent=`URL cifrada PANEL: ${location.origin}/api/content/${key}`;if(!preserveMessage)msg($('#contentMsg'),'');
   }catch(e){msg($('#contentMsg'),e.message);}
 }
+async function reloadContentSource(){
+  const btn=$('#contentSourceReloadBtn');
+  try{
+    const key=$('#contentKey').value;
+    const label=key.toUpperCase();
+    const srcNow=$('#contentSourceUrl').value.trim();
+    const enabled=$('#contentSourceEnabled').checked;
+    if(!srcNow)throw new Error('Primero cargá la URL de origen.');
+    if(!/^https?:\/\//i.test(srcNow))throw new Error('La URL debe comenzar con http:// o https://');
+    const saved=(state.sources||[]).find(x=>x.source_key===key);
+    if(srcNow!==String(saved?.url||'').trim()||enabled!==(saved?.enabled!==false))await saveContentSource();
+    if(btn){btn.disabled=true;btn.textContent='RECARGANDO...';}
+    msg($('#contentMsg'),`Recargando ${label} desde la URL de origen...`);
+    const r=await api(`/api/admin/content/${key}/import`,{method:'POST',body:{persist:true,preserveManaged:true}});
+    await loadContent(true);
+    const st=r.stats?`${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:'contenido actualizado';
+    const text=`URL RECARGADA · ${label} · ${st} · Revisá y tocá GUARDAR Y PUBLICAR para enviarlo a CO-CHI.`;
+    msg($('#contentMsg'),text,true);toast(text,'ok');
+  }catch(e){
+    const text='NO SE PUDO RECARGAR LA URL · '+e.message;
+    msg($('#contentMsg'),text);toast(text,'bad');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='RECARGAR URL';}
+  }
+}
 $('#contentSourceSaveBtn')?.addEventListener('click',saveContentSource);
-$('#contentSourceReloadBtn')?.addEventListener('click',loadContentSource);
+$('#contentSourceReloadBtn')?.addEventListener('click',reloadContentSource);
 $('#contentKey')?.addEventListener('change',loadContent);
 $('#contentLoadBtn')?.addEventListener('click',loadContent);
 $('#contentSearch')?.addEventListener('input',renderContentVisual);
