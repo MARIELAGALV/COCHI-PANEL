@@ -421,3 +421,7 @@ body{min-height:100dvh}
 .small-btn{padding:6px 9px;font-size:.75rem}
 .source-selector-note{display:flex;flex-direction:column;gap:3px;border-left:3px solid rgba(100,170,255,.65);padding:8px 10px;margin:4px 0 10px}
 @media(max-width:700px){.playback-source-title>button{width:100%}.playback-source-row-head{align-items:stretch}.playback-active-label{justify-content:center}}
+/* v0.9.79 - estado visual claro de la fuente TV seleccionada */
+.playback-source-row.playback-source-active{outline:2px solid rgba(70,180,255,.7);box-shadow:0 0 0 3px rgba(70,180,255,.08) inset}
+.playback-source-row-head [data-source-status]{margin-left:auto}
+.playback-source-row-head [data-toggle-playback-source]{min-width:92px}
