@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.74';
+const VERSION = '0.9.76';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -381,6 +381,56 @@ function decryptContentValue(value){
   return Buffer.concat([d.update(Buffer.from(String(value),'base64')),d.final()]).toString('utf8');
 }
 function cloneJson(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
+function remoteItemName(x,i=0){return String(x?.name??x?.title??x?.nombre??x?.channel_name??x?.channel??`Canal ${i+1}`).trim()||`Canal ${i+1}`;}
+function remoteItemUri(x){return String(x?.uri??x?.url??x?.link??x?.stream_url??x?.streamUrl??x?.src??x?.source??'').trim();}
+function remoteItemIcon(x){return String(x?.icon??x?.logo??x?.image??x?.poster??x?.thumbnail??x?.['tvg-logo']??'').trim();}
+function looksLikeRemoteItem(x){return !!(x&&typeof x==='object'&&!Array.isArray(x)&&(x.code||remoteItemUri(x)||x.uri!==undefined||x.url!==undefined||x.link!==undefined||x.stream_url!==undefined));}
+function normalizeRemoteItem(x,i=0){
+  if(!x||typeof x!=='object'||Array.isArray(x))return null;
+  if(x.code)return cloneJson(x);
+  const out=cloneJson(x),name=remoteItemName(x,i),uri=remoteItemUri(x),icon=remoteItemIcon(x);
+  out.name=name;if(uri)out.uri=uri;if(icon)out.icon=icon;
+  if(out.url!==undefined&&out.uri!==undefined)delete out.url;
+  if(out.link!==undefined&&out.uri!==undefined)delete out.link;
+  if(out.stream_url!==undefined&&out.uri!==undefined)delete out.stream_url;
+  return out;
+}
+function normalizeRemoteGroups(arr,defaultName='General'){
+  if(!Array.isArray(arr))return null;
+  const groupish=arr.some(x=>x&&typeof x==='object'&&!Array.isArray(x)&&(Array.isArray(x.samples)||Array.isArray(x.channels)||Array.isArray(x.items)||Array.isArray(x.streams)||Array.isArray(x.entries)));
+  if(groupish){
+    return arr.map((g,gi)=>{
+      if(!g||typeof g!=='object'||Array.isArray(g))return null;
+      const items=Array.isArray(g.samples)?g.samples:Array.isArray(g.channels)?g.channels:Array.isArray(g.items)?g.items:Array.isArray(g.streams)?g.streams:Array.isArray(g.entries)?g.entries:[];
+      const out={...g,name:String(g.name??g.title??g.category??g.group??`Categoría ${gi+1}`),samples:items.map(normalizeRemoteItem).filter(Boolean)};
+      delete out.channels;delete out.items;delete out.streams;delete out.entries;return out;
+    }).filter(Boolean);
+  }
+  if(arr.length===0)return [];
+  if(arr.every(x=>looksLikeRemoteItem(x))){
+    const groups=new Map();arr.forEach((x,i)=>{const cat=String(x.category??x.categoria??x.group??x.group_title??x['group-title']??x.genre??defaultName).trim()||defaultName;if(!groups.has(cat))groups.set(cat,[]);const item=normalizeRemoteItem(x,i);if(item)groups.get(cat).push(item)});
+    return [...groups.entries()].map(([name,samples])=>({name,samples}));
+  }
+  return null;
+}
+function normalizeRemoteCatalogRoot(input,key='tv1',depth=0){
+  if(depth>5)throw new Error('El JSON remoto tiene demasiados niveles anidados');
+  if(Array.isArray(input))return normalizeRemoteGroups(input,key.toUpperCase())||input;
+  if(!input||typeof input!=='object')throw new Error('El JSON remoto no contiene una lista utilizable');
+  const preferred=['categories','groups','channels','items','data','results','live','streams','tv','content','contents','playlist'];
+  for(const k of preferred){if(input[k]!==undefined){try{const r=normalizeRemoteCatalogRoot(input[k],key,depth+1);if(Array.isArray(r)&&r.length)return r}catch{}}}
+  const mapped=[];
+  for(const [name,val] of Object.entries(input)){
+    if(!Array.isArray(val))continue;
+    const items=val.map(normalizeRemoteItem).filter(Boolean);
+    if(items.length)mapped.push({name,samples:items});
+  }
+  if(mapped.length)return mapped;
+  const vals=Object.values(input);if(vals.length===1)return normalizeRemoteCatalogRoot(vals[0],key,depth+1);
+  throw new Error('Formato JSON no reconocido: no encontré categorías ni canales');
+}
+function prepareRemoteCatalog(raw,key){return normalizeRemoteCatalogRoot(raw,key);}
+
 function decryptManagedContent(input){
   if(!Array.isArray(input))throw new Error('La lista debe ser un arreglo de categorías');
   return input.map((group,gi)=>{
@@ -1429,6 +1479,18 @@ function applyExpiredAutoHide(json,nowMs=Date.now()){
   }
   return {changed,channels,categories};
 }
+function selectedPlaybackSource(item){
+  const sources=Array.isArray(item?.playbackSources)?item.playbackSources.filter(x=>x&&typeof x==='object'&&String(x.url||'').trim()):[];
+  if(!sources.length)return null;
+  let idx=Number.isInteger(item.activePlaybackSource)?item.activePlaybackSource:sources.findIndex(x=>x.enabled===true);
+  if(idx<0||idx>=sources.length)idx=0;
+  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{}};
+}
+function applySelectedPlaybackSource(item,{stripConfig=false}={}){
+  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;}
+  if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
+  return x;
+}
 function publishedContentView(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
@@ -1442,7 +1504,7 @@ function publishedContentView(key,json){
     out.samples=samples.filter(item=>{
       if(item?._cochiHidden===true)return false;
       const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
-    }).map(item=>{const x=cloneJson(item||{});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
+    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
     return out;
   });
 }
@@ -1495,6 +1557,7 @@ async function applyTvFailover(payload){
   if(!Array.isArray(payload))return payload;
   const out=structuredClone(payload);
   for(const g of out){for(const item of (Array.isArray(g?.samples)?g.samples:[])){
+    if(Array.isArray(item?.playbackSources)&&item.playbackSources.length){const selected=applySelectedPlaybackSource(item);Object.assign(item,selected);continue;}
     const primary=String(item?.uri||'').trim(),backups=Array.isArray(item?.backupUris)?item.backupUris.map(x=>String(x||'').trim()).filter(Boolean):[];
     if(!primary||!backups.length)continue;
     const candidates=[primary,...backups];let selected=primary,idx=0;
@@ -2744,7 +2807,7 @@ async function route(req,res){
         const text=await rr.text(),bytes=Buffer.byteLength(text,'utf8');
         if(bytes>25*1024*1024)throw new Error('El JSON supera 25 MB');
         const hash=crypto.createHash('sha256').update(text,'utf8').digest('hex');
-        let encrypted;try{encrypted=JSON.parse(text);}catch(parseErr){throw new Error(`${parseErr.message} · descargado ${bytes} bytes · SHA256 ${hash.slice(0,16)} · ${resolvedSource}`)}
+        let encrypted;try{encrypted=prepareRemoteCatalog(JSON.parse(text),importMatch[1]);}catch(parseErr){throw new Error(`${parseErr.message} · descargado ${bytes} bytes · SHA256 ${hash.slice(0,16)} · ${resolvedSource}`)}
         const imported=decryptManagedContent(encrypted);const current=loadManagedEditable(importMatch[1]);const json=b.preserveManaged===false?imported:mergeImportedWithManaged(imported,current);const stats=contentStats(json);let updatedAt=null;if(b.persist===true){
           saveManagedEditable(importMatch[1],json,actor.id,'managed_content_reimported_replaced_from_explicit_source');
           // La URL escrita en pantalla se guarda solamente después de comprobar que descargó y abrió bien.
@@ -2778,7 +2841,7 @@ async function route(req,res){
         if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
         const raw=await rr.text();
         if(Buffer.byteLength(raw,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');
-        json=decryptManagedContent(JSON.parse(raw));
+        json=decryptManagedContent(prepareRemoteCatalog(JSON.parse(raw),key));
         json=mergeImportedWithManaged(json,loadManagedEditable(key));
         stats=contentStats(json);
         encrypted=encryptManagedContent(json);

@@ -408,3 +408,16 @@ body{min-height:100dvh}
 .timer-btn{min-width:34px!important}.schedule-current{padding:9px 11px;margin:8px 0 12px;border:1px solid rgba(54,208,255,.22);border-radius:10px;background:rgba(54,208,255,.06);font-size:12px}
 
 /* v0.9.66 — editor: URL principal a ancho completo y datos adicionales debajo */
+
+
+/* v0.9.76 — selector manual de URLs de reproducción por canal */
+.playback-source-box{border:1px solid rgba(125,170,255,.28);border-radius:14px;padding:12px;margin-top:10px;background:rgba(20,36,68,.34)}
+.playback-source-title,.playback-source-row-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.playback-source-title h4,.playback-source-row h4{margin:0}
+.playback-source-row{border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px;margin-top:12px;background:rgba(0,0,0,.16)}
+.playback-source-row-head{margin-bottom:8px}
+.playback-active-label{font-weight:700;padding:7px 10px;border-radius:999px;background:rgba(80,200,120,.12);border:1px solid rgba(80,200,120,.28)}
+.playback-active-label input{accent-color:currentColor}
+.small-btn{padding:6px 9px;font-size:.75rem}
+.source-selector-note{display:flex;flex-direction:column;gap:3px;border-left:3px solid rgba(100,170,255,.65);padding:8px 10px;margin:4px 0 10px}
+@media(max-width:700px){.playback-source-title>button{width:100%}.playback-source-row-head{align-items:stretch}.playback-active-label{justify-content:center}}
