@@ -1484,10 +1484,10 @@ function selectedPlaybackSource(item){
   if(!sources.length)return null;
   let idx=Number.isInteger(item.activePlaybackSource)?item.activePlaybackSource:sources.findIndex(x=>x.enabled===true);
   if(idx<0||idx>=sources.length)idx=0;
-  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{}};
+  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{},drm_scheme:String(src.drm_scheme||'').toLowerCase(),keys:Array.isArray(src.keys)?cloneJson(src.keys):[],drm_license_url:String(src.drm_license_url||src.license_url||'').trim(),drm_license_headers:src.drm_license_headers&&typeof src.drm_license_headers==='object'?cloneJson(src.drm_license_headers):((src.license_headers&&typeof src.license_headers==='object')?cloneJson(src.license_headers):{})};
 }
 function applySelectedPlaybackSource(item,{stripConfig=false}={}){
-  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;}
+  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;delete x.drm_scheme;delete x.keys;delete x.drm_license_url;delete x.drm_license_headers;delete x.license_url;delete x.license_headers;if(sel.drm_scheme==='clearkey'){x.drm_scheme='clearkey';x.keys=sel.keys;}else if(sel.drm_scheme==='widevine'){x.drm_scheme='widevine';x.drm_license_url=sel.drm_license_url;if(Object.keys(sel.drm_license_headers).length)x.drm_license_headers=sel.drm_license_headers;}}
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
