@@ -1059,7 +1059,7 @@ function editContentItem(groupIndex,itemIndex=null){
   // El cierre del editor se maneja por delegación en #modal; evitamos doble ejecución de closeModal().
   const headerText=o=>Object.entries(o&&typeof o==='object'?o:{}).map(([k,v])=>`${k}: ${v}`).join('\n');
   const sourceKeysText=src=>Array.isArray(src?.keys)?src.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):'';
-  const looseHeaders=text=>{const raw=String(text||'').trim(),out={};if(!raw)return out;if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}}for(const line0 of raw.split(/\r?\n/)){const line=line0.trim();if(!line||line.startsWith('#')||/^https?:\/\//i.test(line))continue;let i=line.indexOf(':');if(i<=0){i=line.indexOf('=');if(i<=0)continue;}const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
+  const looseHeaders=text=>{const raw=String(text||'').trim(),out={};if(!raw)return out;if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}}for(const line0 of raw.split(/\r?\n/)){const line=line0.trim();if(!line||line.startsWith('#'))continue;if(/^https?:\/\//i.test(line)){if(!out.Referer&&!out.referer)out.Referer=line;continue;}let i=line.indexOf(':');if(i<=0){i=line.indexOf('=');if(i<=0)continue;}const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
   const looseKeys=text=>String(text||'').split(/[\r\n,;]+/).map(x=>x.trim()).filter(Boolean).map(p=>{const i=p.indexOf(':');return i>0?{kid:p.slice(0,i).trim(),key:p.slice(i+1).trim()}:null;}).filter(x=>x&&x.kid&&x.key);
   const syncPlaybackSourcesFromDom=()=>{
     if(!isTv)return;
@@ -1159,8 +1159,8 @@ function editContentItem(groupIndex,itemIndex=null){
     for(const line0 of raw.split(/\r?\n/)){
       const line=line0.trim();if(!line||line.startsWith('#'))continue;
       let i=line.indexOf(':');
-      // Una URL pegada sola no es un header válido; se conserva en pantalla hasta que el usuario la etiquete.
-      if(/^https?:\/\//i.test(line))continue;
+      // Si el usuario pega una URL sola en Headers, se interpreta como Referer y se conserva.
+      if(/^https?:\/\//i.test(line)){if(!out.Referer&&!out.referer)out.Referer=line;continue;}
       if(i<=0){i=line.indexOf('=');if(i<=0)continue;}
       const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;
     }
