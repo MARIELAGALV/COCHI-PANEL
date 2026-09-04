@@ -1059,7 +1059,7 @@ function editContentItem(groupIndex,itemIndex=null){
   // El cierre del editor se maneja por delegación en #modal; evitamos doble ejecución de closeModal().
   const headerText=o=>Object.entries(o&&typeof o==='object'?o:{}).map(([k,v])=>`${k}: ${v}`).join('\n');
   const sourceKeysText=src=>Array.isArray(src?.keys)?src.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):'';
-  const looseHeaders=text=>{const out={};for(const line of String(text||'').split(/\r?\n/)){const i=line.indexOf(':');if(i<=0)continue;const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
+  const looseHeaders=text=>{const raw=String(text||'').trim(),out={};if(!raw)return out;if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}}for(const line0 of raw.split(/\r?\n/)){const line=line0.trim();if(!line||line.startsWith('#')||/^https?:\/\//i.test(line))continue;let i=line.indexOf(':');if(i<=0){i=line.indexOf('=');if(i<=0)continue;}const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
   const looseKeys=text=>String(text||'').split(/[\r\n,;]+/).map(x=>x.trim()).filter(Boolean).map(p=>{const i=p.indexOf(':');return i>0?{kid:p.slice(0,i).trim(),key:p.slice(i+1).trim()}:null;}).filter(x=>x&&x.kid&&x.key);
   const syncPlaybackSourcesFromDom=()=>{
     if(!isTv)return;
@@ -1150,7 +1150,22 @@ function editContentItem(groupIndex,itemIndex=null){
     };
     $('#ciMarkerSeason').onchange=loadMarkerFields;$('#ciMarkerEpisode').onchange=loadMarkerFields;loadMarkerFields();
   }
-  const parseHeaderLines=text=>{const out={};for(const line of String(text||'').split(/\r?\n/)){const i=line.indexOf(':');if(i<=0)continue;const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
+  // v0.9.80: parser tolerante y persistente de headers. Acepta JSON, `Nombre: valor` y `Nombre=valor`.
+  // Importante: una URL sola NO se interpreta como nombre de header (antes `https://...` podía quedar como `https: //...`).
+  const parseHeaderLines=text=>{
+    const raw=String(text||'').trim(),out={};if(!raw)return out;
+    if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}
+    }
+    for(const line0 of raw.split(/\r?\n/)){
+      const line=line0.trim();if(!line||line.startsWith('#'))continue;
+      let i=line.indexOf(':');
+      // Una URL pegada sola no es un header válido; se conserva en pantalla hasta que el usuario la etiquete.
+      if(/^https?:\/\//i.test(line))continue;
+      if(i<=0){i=line.indexOf('=');if(i<=0)continue;}
+      const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;
+    }
+    return out;
+  };
   const parseKeyLines=text=>{const out=[];for(const line of String(text||'').split(/[\r\n,;]+/)){const p=line.trim();if(!p)continue;const i=p.indexOf(':');if(i<=0||i>=p.length-1)throw new Error('Clave inválida. Usá KID:KEY, una por línea.');const kid=p.slice(0,i).trim(),key=p.slice(i+1).trim();if(!kid||!key)throw new Error('Clave inválida. Usá KID:KEY.');out.push({kid,key});}return out;};
   $('#contentItemForm').onsubmit=async e=>{
     e.preventDefault();
