@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.85</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.86</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -256,7 +256,11 @@
             <div class="source-fields"><label class="switch-row"><input id="homeBannerShowEyebrow" type="checkbox" checked> Mostrar etiqueta</label><label class="switch-row"><input id="homeBannerShowTitle" type="checkbox" checked> Mostrar título</label></div>
             <div class="source-fields"><label class="switch-row"><input id="homeBannerShowDescription" type="checkbox" checked> Mostrar descripción</label><label class="switch-row"><input id="homeBannerShowMeta" type="checkbox" checked> Mostrar texto corto</label></div>
             <label class="switch-row"><input id="homeBannerShowScrim" type="checkbox" checked> Mostrar sombreado sobre imagen/video para facilitar lectura</label>
-            <div class="muted small">Video admite MP4/HLS/DASH y enlaces normales de YouTube (youtube.com o youtu.be). YouTube se adapta automáticamente para autoplay sin sonido y loop. Si falla, CO-CHI usa la imagen de respaldo. Podés ocultar individualmente textos y ambos botones para dejar solamente la imagen/video.</div>
+            <div class="source-head"><div class="source-title">Portadas adicionales para rotación (2 a 10)</div></div>
+            <div class="muted small">Podés agregar hasta 9 imágenes fijas adicionales. Junto con la URL principal forman un carrusel de hasta 10 destacados.</div>
+            <div id="homeBannerExtraUrls" class="source-fields"></div>
+            <label>CAMBIO AUTOMÁTICO CADA (SEGUNDOS)<input id="homeBannerRotationSeconds" type="number" min="3" max="60" value="8"></label>
+            <div class="muted small">Video admite MP4/HLS/DASH y enlaces normales de YouTube. CO-CHI intenta reproducir YouTube con audio, en loop y ocupando el banner. Las URLs 2 a 10 son portadas fijas y rotan automáticamente. Si falla, CO-CHI usa la imagen de respaldo. Podés ocultar individualmente textos y ambos botones para dejar solamente la imagen/video.</div>
             <div id="homeBannerMsg" class="msg"></div>
           </div>
         </div>

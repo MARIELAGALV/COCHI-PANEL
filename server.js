@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.85';
+const VERSION = '0.9.86';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -650,6 +650,8 @@ function normalizeHomeBanner(raw){
     showPrimaryButton:x.showPrimaryButton!==false,
     showExploreButton:x.showExploreButton!==false,
     showScrim:x.showScrim!==false,
+    extraMediaUrls:(Array.isArray(x.extraMediaUrls)?x.extraMediaUrls:[]).map(v=>String(v||'').trim().slice(0,2000)).filter(Boolean).slice(0,9),
+    rotationSeconds:Math.max(3,Math.min(60,Number(x.rotationSeconds||8)||8)),
     targetSource,
     targetId:String(x.targetId||'').trim().slice(0,160)
   };
