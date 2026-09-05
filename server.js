@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.84';
+const VERSION = '0.9.85';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -642,6 +642,14 @@ function normalizeHomeBanner(raw){
     description:String(x.description||'').trim().slice(0,300),
     meta:String(x.meta||'').trim().slice(0,120),
     buttonText:String(x.buttonText||'Ver ahora').trim().slice(0,40),
+    exploreButtonText:String(x.exploreButtonText||'Explorar').trim().slice(0,40),
+    showEyebrow:x.showEyebrow!==false,
+    showTitle:x.showTitle!==false,
+    showDescription:x.showDescription!==false,
+    showMeta:x.showMeta!==false,
+    showPrimaryButton:x.showPrimaryButton!==false,
+    showExploreButton:x.showExploreButton!==false,
+    showScrim:x.showScrim!==false,
     targetSource,
     targetId:String(x.targetId||'').trim().slice(0,160)
   };
@@ -2957,7 +2965,7 @@ async function route(req,res){
       if(!/^https?:\/\//i.test(url))return sendJson(res,400,{error:'URL de origen inválida'});
       if(looksLikeOwnContentEndpoint(url,key))return sendJson(res,400,{error:'Esa URL es la salida protegida del panel, no la fuente original'});
       try{
-        const rr=await fetch(url,{headers:{'User-Agent':'CO-CHI-PANEL/0.9.84'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
+        const rr=await fetch(url,{headers:{'User-Agent':'CO-CHI-PANEL/0.9.85'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
         const raw=await rr.text();if(Buffer.byteLength(raw,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');
         const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new Error('El JSON debe ser un arreglo de categorías');
         const imported=decryptManagedContent(prepareRemoteCatalog(parsed,key));const json=mergeImportedWithManaged(imported,loadManagedEditable(key));

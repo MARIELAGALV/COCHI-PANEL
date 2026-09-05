@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.84</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.85</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -246,13 +246,17 @@
           <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Elegí qué aparece en el destacado grande de la portada. Puede ser una imagen o un video corto automático sin sonido.</p></div><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div>
           <div class="source-row">
             <div class="source-head"><div class="source-title">Destacado administrable</div><label class="switch-row"><input id="homeBannerEnabled" type="checkbox"> Activado</label></div>
-            <div class="source-fields"><label>TIPO<select id="homeBannerType"><option value="image">Imagen fija</option><option value="video">Video automático</option></select></label><label>URL DE IMAGEN / VIDEO<input id="homeBannerMediaUrl" type="url" placeholder="https://.../banner.jpg o promo.mp4"></label></div>
+            <div class="source-fields"><label>TIPO<select id="homeBannerType"><option value="image">Imagen fija</option><option value="video">Video automático / YouTube</option></select></label><label>URL DE IMAGEN / VIDEO / YOUTUBE<input id="homeBannerMediaUrl" type="url" placeholder="https://.../banner.jpg, promo.mp4, youtube.com/watch?v=... o youtu.be/..."></label></div>
             <div class="source-fields"><label>IMAGEN DE RESPALDO (opcional)<input id="homeBannerFallback" type="url" placeholder="https://.../respaldo.jpg"></label><label>ETIQUETA<input id="homeBannerEyebrow" maxlength="60" placeholder="NUEVO ESTRENO"></label></div>
             <div class="source-fields"><label>TÍTULO<input id="homeBannerTitle" maxlength="120" placeholder="Nombre de la serie o promoción"></label><label>META / TEXTO CORTO<input id="homeBannerMeta" maxlength="120" placeholder="Nueva temporada · 2026"></label></div>
             <label>DESCRIPCIÓN<textarea id="homeBannerDescription" rows="3" maxlength="300" placeholder="Texto que aparecerá debajo del título"></textarea></label>
-            <div class="source-fields"><label>TEXTO DEL BOTÓN<input id="homeBannerButtonText" maxlength="40" placeholder="Ver ahora"></label><label>DESTINO<select id="homeBannerTargetSource"><option value="">Solo mostrar banner</option><option value="series">Series</option><option value="movies">Películas</option><option value="tv1">TV1</option><option value="tv2">TV2</option></select></label></div>
-            <label>ID DEL CONTENIDO (opcional)<input id="homeBannerTargetId" maxlength="160" placeholder="ID exacto de la serie, película o canal; vacío abre la sección"></label>
-            <div class="muted small">Para video: MP4/HLS/DASH HTTPS. Se reproduce en loop, sin sonido. Si falla, CO-CHI usa la imagen de respaldo.</div>
+            <div class="source-fields"><label>TEXTO BOTÓN PRINCIPAL<input id="homeBannerButtonText" maxlength="40" placeholder="Ver ahora"></label><label>TEXTO BOTÓN SECUNDARIO<input id="homeBannerExploreText" maxlength="40" placeholder="Explorar"></label></div>
+            <div class="source-fields"><label>DESTINO<select id="homeBannerTargetSource"><option value="">Solo mostrar banner</option><option value="series">Series</option><option value="movies">Películas</option><option value="tv1">TV1</option><option value="tv2">TV2</option></select></label><label>ID DEL CONTENIDO (opcional)<input id="homeBannerTargetId" maxlength="160" placeholder="ID exacto; vacío abre la sección"></label></div>
+            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowPrimary" type="checkbox" checked> Mostrar botón principal</label><label class="switch-row"><input id="homeBannerShowExplore" type="checkbox" checked> Mostrar botón Explorar</label></div>
+            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowEyebrow" type="checkbox" checked> Mostrar etiqueta</label><label class="switch-row"><input id="homeBannerShowTitle" type="checkbox" checked> Mostrar título</label></div>
+            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowDescription" type="checkbox" checked> Mostrar descripción</label><label class="switch-row"><input id="homeBannerShowMeta" type="checkbox" checked> Mostrar texto corto</label></div>
+            <label class="switch-row"><input id="homeBannerShowScrim" type="checkbox" checked> Mostrar sombreado sobre imagen/video para facilitar lectura</label>
+            <div class="muted small">Video admite MP4/HLS/DASH y enlaces normales de YouTube (youtube.com o youtu.be). YouTube se adapta automáticamente para autoplay sin sonido y loop. Si falla, CO-CHI usa la imagen de respaldo. Podés ocultar individualmente textos y ambos botones para dejar solamente la imagen/video.</div>
             <div id="homeBannerMsg" class="msg"></div>
           </div>
         </div>
