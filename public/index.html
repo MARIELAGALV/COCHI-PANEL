@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.86</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.87</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -57,6 +57,7 @@
         <button class="nav-btn admin-only" data-view="demos">⏱ <span>Demos</span></button>
         <button class="nav-btn admin-only" data-view="adults">🔒 <span>Adultos</span></button>
         <button class="nav-btn admin-only" data-view="security">🛡 <span>Seguridad</span></button>
+        <button class="nav-btn admin-only" data-view="appearance">🎨 <span>Diseño y apariencia</span></button>
         <div class="nav-group admin-only" id="contentToolsGroup">
           <button class="nav-group-toggle" id="contentToolsToggle" type="button" aria-expanded="true">✎ <span>Edición de contenido</span><b>⌄</b></button>
           <div class="nav-submenu">
@@ -165,6 +166,28 @@
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Fecha</th><th>Tipo</th><th>Desde</th><th>Hacia</th><th>Cantidad</th><th>Detalle</th></tr></thead><tbody id="creditsBody"></tbody>
         </table></div></div>
+      </section>
+
+      <section id="view-appearance" class="view admin-only">
+        <div class="neon-card panel-card control-card">
+          <div class="card-head"><div><h3>Diseño y apariencia</h3><p class="muted">Solo ADMINISTRACIÓN. Prepará un borrador, revisá la vista previa y publicalo cuando esté listo.</p></div><span id="themePublishedBadge" class="badge active">TEMA PUBLICADO</span></div>
+          <div class="theme-layout">
+            <div class="theme-controls">
+              <label>Tema predefinido<select id="themePreset"><option value="blue">Azul CO-CHI</option><option value="red">Rojo</option><option value="green">Verde</option><option value="violet">Violeta</option><option value="orange">Naranja</option><option value="dark">Oscuro</option><option value="custom">Personalizado</option></select></label>
+              <div class="theme-color-grid">
+                <label>Color principal<input id="themePrimary" type="color" value="#00CFFF"><input id="themePrimaryHex" maxlength="7" value="#00CFFF"></label>
+                <label>Color de selección<input id="themeSelection" type="color" value="#1E90FF"><input id="themeSelectionHex" maxlength="7" value="#1E90FF"></label>
+                <label>Color de fondo<input id="themeBackground" type="color" value="#0A0F1B"><input id="themeBackgroundHex" maxlength="7" value="#0A0F1B"></label>
+                <label>Color de botones<input id="themeButton" type="color" value="#162338"><input id="themeButtonHex" maxlength="7" value="#162338"></label>
+                <label>Color de bordes<input id="themeBorder" type="color" value="#1E3D6B"><input id="themeBorderHex" maxlength="7" value="#1E3D6B"></label>
+                <label>Color de texto<input id="themeText" type="color" value="#FFFFFF"><input id="themeTextHex" maxlength="7" value="#FFFFFF"></label>
+                <label>Texto secundario<input id="themeSecondary" type="color" value="#B0B0B0"><input id="themeSecondaryHex" maxlength="7" value="#B0B0B0"></label>
+              </div>
+              <div class="panel-control-actions mt10"><button id="saveThemeDraftBtn" class="ghost" type="button">GUARDAR BORRADOR</button><button id="publishThemeBtn" class="primary" type="button">PUBLICAR EN CO-CHI</button><button id="resetThemeBtn" class="ghost" type="button">RESTAURAR AZUL CO-CHI</button></div><div id="themeMsg" class="msg"></div>
+            </div>
+            <div class="theme-preview-wrap"><div class="muted small">VISTA PREVIA</div><div id="themePreview" class="theme-preview"><div class="theme-preview-side"><b>CO-CHI</b><span>CUENTA ACTIVA</span><button>⌂ Inicio</button><button>▣ TV 1</button><button>▣ TV 2</button><button>Películas</button><button>Series</button></div><div class="theme-preview-main"><div class="theme-preview-hero"><b>BANNER 60%</b><span>Video / imagen promocional</span></div><h4>Continuar viendo · 40%</h4><div class="theme-preview-row"><i></i><i></i><i></i></div></div></div><p class="muted small mt10">El APK toma el tema publicado al actualizar su configuración. Guardar borrador no cambia a los clientes.</p></div>
+          </div>
+        </div>
       </section>
 
       <section id="view-promotions" class="view admin-only">

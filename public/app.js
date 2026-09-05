@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{} };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{} };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -106,7 +106,7 @@ function switchView(name){
   if(contentGroup&&['content','sources','resolver'].includes(name))contentGroup.classList.remove('collapsed');
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
   document.body.dataset.view=name;
-  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción'};
+  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción',appearance:'Diseño y apariencia'};
   $('#pageTitle').textContent=t[name]||name;refreshCurrent();
 }
 async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#roleEyebrow').textContent=state.me.is_root_admin?'ADMINISTRACIÓN PRINCIPAL':state.me.role_name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;applyAccessVisibility();}
@@ -122,6 +122,7 @@ async function refreshCurrent(){
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
     if(v==='security'&&state.me.role_level===1){await loadPlaybackSecurity();await loadTvGateways();}
+    if(v==='appearance'&&state.me.role_level===1)await loadAppTheme();
     if(v==='sources'&&state.me.role_level===1){await loadSources();await loadHomeBanner();}
     if(v==='resolver'&&state.me.role_level===1){}
     if(v==='content'&&state.me.role_level===1)await loadContent();
@@ -742,6 +743,25 @@ $('#saveHomeBannerBtn')?.addEventListener('click',async()=>{
   const banner={enabled:$('#homeBannerEnabled').checked,type:$('#homeBannerType').value,mediaUrl:$('#homeBannerMediaUrl').value.trim(),fallbackImage:$('#homeBannerFallback').value.trim(),eyebrow:$('#homeBannerEyebrow').value.trim(),title:$('#homeBannerTitle').value.trim(),description:$('#homeBannerDescription').value.trim(),meta:$('#homeBannerMeta').value.trim(),buttonText:$('#homeBannerButtonText').value.trim(),exploreButtonText:$('#homeBannerExploreText').value.trim(),showPrimaryButton:$('#homeBannerShowPrimary').checked,showExploreButton:$('#homeBannerShowExplore').checked,showEyebrow:$('#homeBannerShowEyebrow').checked,showTitle:$('#homeBannerShowTitle').checked,showDescription:$('#homeBannerShowDescription').checked,showMeta:$('#homeBannerShowMeta').checked,showScrim:$('#homeBannerShowScrim').checked,targetSource:$('#homeBannerTargetSource').value,targetId:$('#homeBannerTargetId').value.trim(),extraMediaUrls,rotationSeconds:Number($('#homeBannerRotationSeconds')?.value||8)};
   try{await api('/api/admin/home-banner',{method:'PUT',body:{banner}});msg($('#homeBannerMsg'),'BANNER GUARDADO. Hasta 10 destacados disponibles para rotación.',true);toast('Banner principal actualizado','ok');await loadHomeBanner()}catch(e){msg($('#homeBannerMsg'),e.message);toast(e.message,'bad')}
 });
+
+
+const THEME_PRESETS={
+  blue:{primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'},
+  red:{primary:'#FF3948',selection:'#E8192E',background:'#12090D',button:'#2A1118',border:'#6A2631',text:'#FFFFFF',secondary:'#D2B8BD'},
+  green:{primary:'#38E87A',selection:'#14B85B',background:'#07140D',button:'#10281A',border:'#245F3B',text:'#FFFFFF',secondary:'#B5CEBE'},
+  violet:{primary:'#B14CFF',selection:'#8534D8',background:'#100918',button:'#21122F',border:'#59307A',text:'#FFFFFF',secondary:'#C6B7D0'},
+  orange:{primary:'#FF9D24',selection:'#F27016',background:'#160E06',button:'#2F1D0D',border:'#74451D',text:'#FFFFFF',secondary:'#D5C1AA'},
+  dark:{primary:'#E8F0F7',selection:'#64798C',background:'#06090D',button:'#151A20',border:'#38434E',text:'#FFFFFF',secondary:'#A7B0B8'}
+};
+function themeRead(){return {preset:$('#themePreset').value,primary:$('#themePrimaryHex').value.toUpperCase(),selection:$('#themeSelectionHex').value.toUpperCase(),background:$('#themeBackgroundHex').value.toUpperCase(),button:$('#themeButtonHex').value.toUpperCase(),border:$('#themeBorderHex').value.toUpperCase(),text:$('#themeTextHex').value.toUpperCase(),secondary:$('#themeSecondaryHex').value.toUpperCase()}}
+function themePut(x){const t=x||THEME_PRESETS.blue;$('#themePreset').value=t.preset||'custom';for(const k of ['Primary','Selection','Background','Button','Border','Text','Secondary']){const key=k.toLowerCase();const val=t[key]||THEME_PRESETS.blue[key];$('#theme'+k).value=val;$('#theme'+k+'Hex').value=val;}themePreview()}
+function themePreview(){const t=themeRead(),p=$('#themePreview');if(!p)return;p.style.setProperty('--tp',t.primary);p.style.setProperty('--ts',t.selection);p.style.setProperty('--tb',t.background);p.style.setProperty('--tbtn',t.button);p.style.setProperty('--tborder',t.border);p.style.setProperty('--tt',t.text);p.style.setProperty('--tm',t.secondary)}
+async function loadAppTheme(){const d=await api('/api/admin/app-theme');state.appTheme=d;themePut(d.draft||d.published||d.defaults);$('#themePublishedBadge').textContent='TEMA PUBLICADO';msg($('#themeMsg'),'')}
+$('#themePreset')?.addEventListener('change',()=>{const v=$('#themePreset').value;if(v!=='custom'&&THEME_PRESETS[v])themePut({preset:v,...THEME_PRESETS[v]});else themePreview()});
+for(const k of ['Primary','Selection','Background','Button','Border','Text','Secondary']){const c='#theme'+k,h='#theme'+k+'Hex';$(c)?.addEventListener('input',()=>{$(h).value=$(c).value.toUpperCase();$('#themePreset').value='custom';themePreview()});$(h)?.addEventListener('input',()=>{if(/^#[0-9A-Fa-f]{6}$/.test($(h).value)){$(c).value=$(h).value;$('#themePreset').value='custom';themePreview()}})}
+$('#saveThemeDraftBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/admin/app-theme/draft',{method:'PUT',body:{theme:themeRead()}});state.appTheme.draft=r.theme;msg($('#themeMsg'),'BORRADOR GUARDADO. Los clientes todavía conservan el tema publicado.',true);toast('Borrador de diseño guardado','ok')}catch(e){msg($('#themeMsg'),e.message);toast(e.message,'bad')}});
+$('#publishThemeBtn')?.addEventListener('click',async()=>{if(!confirm('¿Publicar estos colores para CO-CHI? Los dispositivos los tomarán al actualizar su configuración.'))return;try{const r=await api('/api/admin/app-theme/publish',{method:'POST',body:{theme:themeRead()}});state.appTheme.published=r.theme;msg($('#themeMsg'),'TEMA PUBLICADO CORRECTAMENTE.',true);toast('Diseño publicado en CO-CHI','ok')}catch(e){msg($('#themeMsg'),e.message);toast(e.message,'bad')}});
+$('#resetThemeBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/admin/app-theme/reset',{method:'POST'});themePut(r.theme);msg($('#themeMsg'),'Azul CO-CHI restaurado en el borrador. Publicá para aplicarlo a clientes.',true)}catch(e){msg($('#themeMsg'),e.message)}});
 
 async function loadSources(){
   const d=await api('/api/admin/sources');state.sources=d.sources;
