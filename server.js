@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.82';
+const VERSION = '0.9.84';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -627,6 +627,28 @@ function daysRemaining(expiry){if(!expiry)return null;return (Date.parse(expiry)
 function addMinutes(value,minutes){const d=new Date(value);d.setUTCMinutes(d.getUTCMinutes()+minutes);return d.toISOString();}
 function getSetting(key,fallback=''){const r=db.prepare('SELECT setting_value FROM settings WHERE setting_key=?').get(key);return r?r.setting_value:fallback;}
 function setSetting(key,value){db.prepare(`INSERT INTO settings(setting_key,setting_value,updated_at) VALUES (?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at`).run(key,String(value),nowIso());}
+
+function normalizeHomeBanner(raw){
+  const x=raw&&typeof raw==='object'?raw:{};
+  const type=String(x.type||'image').toLowerCase()==='video'?'video':'image';
+  const targetSource=['tv1','tv2','movies','series'].includes(String(x.targetSource||'').toLowerCase())?String(x.targetSource).toLowerCase():'';
+  return {
+    enabled:x.enabled===true,
+    type,
+    mediaUrl:String(x.mediaUrl||'').trim().slice(0,2000),
+    fallbackImage:String(x.fallbackImage||'').trim().slice(0,2000),
+    eyebrow:String(x.eyebrow||'DESTACADO').trim().slice(0,60),
+    title:String(x.title||'').trim().slice(0,120),
+    description:String(x.description||'').trim().slice(0,300),
+    meta:String(x.meta||'').trim().slice(0,120),
+    buttonText:String(x.buttonText||'Ver ahora').trim().slice(0,40),
+    targetSource,
+    targetId:String(x.targetId||'').trim().slice(0,160)
+  };
+}
+function homeBannerSetting(){
+  try{return normalizeHomeBanner(JSON.parse(getSetting('home_banner_json','{}')))}catch{return normalizeHomeBanner({})}
+}
 function boolSetting(key,fallback=false){return getSetting(key,fallback?'1':'0')==='1';}
 // v0.9.69 — migración de límites por cliente a base global + ampliaciones acumuladas.
 if(getSetting('client_device_policy_migrated_v0969','0')!=='1'){
@@ -2276,7 +2298,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,client:{name:c.name,expiresAt:c.expires_at,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,contentDelivery:'backend-protected',serverTime:nowIso()});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,client:{name:c.name,expiresAt:c.expires_at,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -2291,6 +2313,21 @@ async function route(req,res){
 
   if(p.startsWith('/api/admin/')){
     const s=requirePanel(req,res);if(!s)return;const actor=accountPublic(accountRaw(s.account.id));
+
+    if(p==='/api/admin/home-banner'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
+      return sendJson(res,200,{banner:homeBannerSetting()});
+    }
+    if(p==='/api/admin/home-banner'&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
+      const b=await readJson(req),banner=normalizeHomeBanner(b.banner||b);
+      if(banner.enabled&&!banner.mediaUrl)return sendJson(res,400,{error:'Ingresá una URL de imagen o video para activar el banner'});
+      if(banner.type==='video'&&banner.mediaUrl&&!/^https?:\/\//i.test(banner.mediaUrl))return sendJson(res,400,{error:'La URL del video debe ser HTTP/HTTPS'});
+      if(banner.type==='image'&&banner.mediaUrl&&!/^https?:\/\//i.test(banner.mediaUrl))return sendJson(res,400,{error:'La URL de la imagen debe ser HTTP/HTTPS'});
+      setSetting('home_banner_json',JSON.stringify(banner));
+      audit(actor.id,'home_banner_changed','settings',null,`${banner.enabled?'on':'off'}:${banner.type}:${banner.title}`);
+      return sendJson(res,200,{ok:true,banner});
+    }
 
     if(p==='/api/admin/stream-resolver'&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});
@@ -2898,14 +2935,37 @@ async function route(req,res){
       }catch(e){return sendJson(res,502,{error:'No se pudo importar/desencriptar la fuente: '+e.message});}
     }
 
-    const privateUploadMatch=p.match(/^\/api\/admin\/sources\/(movies)\/upload-json$/);
+    const privateUploadMatch=p.match(/^\/api\/admin\/sources\/(tv1|tv2|movies|series)\/upload-json$/);
     if(privateUploadMatch&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede subir la fuente privada'});
       const key=privateUploadMatch[1],b=await readJson(req,30*1024*1024);if(b.json===undefined)return sendJson(res,400,{error:'Seleccioná un archivo JSON'});
-      try{if(!Array.isArray(b.json))throw new Error('El JSON debe ser un arreglo de categorías');const stats=contentStats(b.json);if(!stats.categories)throw new Error('El JSON no contiene categorías');const fileName=String(b.fileName||'peliculas.json').slice(0,255);const saved=savePrivateSourceMaster(key,b.json,fileName);db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,nowIso(),key);db.prepare('UPDATE sources SET updated_at=? WHERE source_key=?').run(nowIso(),key);audit(actor.id,'private_source_json_uploaded','content',null,`${key}; ${fileName}; ${stats.items} contenidos`);return sendJson(res,200,{ok:true,key,fileName,stats,bytes:saved.bytes,uploadedAt:saved.updatedAt,private:true,backupsKept:5});}catch(e){return sendJson(res,400,{error:'No se pudo guardar el JSON privado: '+e.message});}
+      try{if(!Array.isArray(b.json))throw new Error('El JSON debe ser un arreglo de categorías');const stats=contentStats(b.json);if(!stats.categories)throw new Error('El JSON no contiene categorías');const fileName=String(b.fileName||`${key}.json`).slice(0,255);const saved=savePrivateSourceMaster(key,b.json,fileName);db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,nowIso(),key);db.prepare('UPDATE sources SET updated_at=? WHERE source_key=?').run(nowIso(),key);audit(actor.id,'private_source_json_uploaded','content',null,`${key}; ${fileName}; ${stats.items} contenidos`);return sendJson(res,200,{ok:true,key,fileName,stats,bytes:saved.bytes,uploadedAt:saved.updatedAt,private:true,backupsKept:5});}catch(e){return sendJson(res,400,{error:'No se pudo guardar el JSON privado: '+e.message});}
     }
-    if(p==='/api/admin/sources/movies/private-upload'&&m==='DELETE'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar la fuente privada'});const old=privateSourceRow('movies');if(!old)return sendJson(res,404,{error:'Películas no tiene un JSON privado subido'});backupPrivateSource('movies');db.prepare('DELETE FROM private_source_files WHERE source_key=?').run('movies');audit(actor.id,'private_source_json_removed','content',null,'movies');return sendJson(res,200,{ok:true});
+    const privateRemoveMatch=p.match(/^\/api\/admin\/sources\/(tv1|tv2|movies|series)\/private-upload$/);
+    if(privateRemoveMatch&&m==='DELETE'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar la fuente privada'});
+      const key=privateRemoveMatch[1],old=privateSourceRow(key);if(!old)return sendJson(res,404,{error:'Esta fuente no tiene un JSON privado subido'});
+      backupPrivateSource(key);db.prepare('DELETE FROM private_source_files WHERE source_key=?').run(key);audit(actor.id,'private_source_json_removed','content',null,key);return sendJson(res,200,{ok:true,key});
+    }
+
+    const migratePrivateMatch=p.match(/^\/api\/admin\/sources\/(tv1|tv2|movies|series)\/migrate-private$/);
+    if(migratePrivateMatch&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede migrar fuentes'});
+      const key=migratePrivateMatch[1],b=await readJson(req).catch(()=>({}));
+      const row=db.prepare('SELECT url FROM sources WHERE source_key=?').get(key);const url=String(b.url||row?.url||'').trim();
+      if(!url)return sendJson(res,400,{error:'No hay URL externa configurada para migrar'});
+      if(!/^https?:\/\//i.test(url))return sendJson(res,400,{error:'URL de origen inválida'});
+      if(looksLikeOwnContentEndpoint(url,key))return sendJson(res,400,{error:'Esa URL es la salida protegida del panel, no la fuente original'});
+      try{
+        const rr=await fetch(url,{headers:{'User-Agent':'CO-CHI-PANEL/0.9.84'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
+        const raw=await rr.text();if(Buffer.byteLength(raw,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');
+        const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new Error('El JSON debe ser un arreglo de categorías');
+        const imported=decryptManagedContent(prepareRemoteCatalog(parsed,key));const json=mergeImportedWithManaged(imported,loadManagedEditable(key));
+        const fileName=String(b.fileName||`${key}.json`).slice(0,255);const saved=savePrivateSourceMaster(key,json,fileName);const t=nowIso();
+        db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,t,key);db.prepare('UPDATE sources SET url=?,updated_at=? WHERE source_key=?').run('',t,key);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+        audit(actor.id,'source_migrated_to_private_panel','content',null,`${key}; ${url}; ${saved.stats.items} contenidos`);
+        return sendJson(res,200,{ok:true,key,stats:saved.stats,bytes:saved.bytes,private:true,externalDetached:true,sourceUrlRemoved:true,backupsKept:5,updatedAt:t});
+      }catch(e){return sendJson(res,502,{error:'No se pudo migrar la fuente al panel privado: '+e.message});}
     }
 
     const sourceImportMatch=p.match(/^\/api\/admin\/sources\/(tv1|tv2|movies|series)\/save-import$/);
