@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.81';
+const VERSION = '0.9.82';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -850,6 +850,50 @@ async function tvDedicatedAdminState(sourceKey){
     ticketTtlSeconds:COCHI_TV_GATEWAY_TTL_SECONDS,
     worker:await tvDedicatedHealth(sourceKey)
   };
+}
+
+
+// ---- v0.9.82 / TV2 catálogo por ID ----
+// En modo piloto, la APK nueva puede pedir un catálogo TV2 sin URLs/headers/DRM.
+// El panel conserva la fuente completa y entrega únicamente metadatos + un ID resoluble.
+function tv2IdCatalogRequested(req){
+  return String(req.headers['x-cochi-tv2-id-catalog']||'').trim()==='1';
+}
+function tv2StableSourceId(group,item,groupIndex,itemIndex){
+  const explicit=String(item?._cochiSourceId||item?.source_id||'').trim();
+  if(/^TV2_[A-Z0-9_-]{4,64}$/i.test(explicit))return explicit.toUpperCase();
+  const seed=[String(group?.name||''),String(item?.name||item?.title||''),String(groupIndex),String(itemIndex)].join('|');
+  return 'TV2_'+crypto.createHash('sha256').update(seed,'utf8').digest('hex').slice(0,12).toUpperCase();
+}
+function tv2MetadataCatalog(clear){
+  if(!Array.isArray(clear))return clear;
+  return clear.map((group,gi)=>{
+    const outGroup={};
+    for(const k of ['name','title','category','_cochiHidden'])if(group?.[k]!==undefined)outGroup[k]=group[k];
+    const samples=Array.isArray(group?.samples)?group.samples:[];
+    outGroup.samples=samples.map((item,si)=>{
+      const id=tv2StableSourceId(group,item,gi,si);
+      const out={source_id:id,uri:`cochi://resolve/tv2/${id}`};
+      for(const k of ['id','number','numero','name','nombre','title','icon','logo','icono','poster','image','description','descripcion','adult','adulto','category','categoria','_cochiHidden']){
+        if(item?.[k]!==undefined)out[k]=item[k];
+      }
+      if(!out.id)out.id=id;
+      return out;
+    });
+    return outGroup;
+  });
+}
+function tv2FindBySourceId(clear,wantedId){
+  if(!Array.isArray(clear))return null;
+  const wanted=String(wantedId||'').trim().toUpperCase();
+  for(let gi=0;gi<clear.length;gi++){
+    const group=clear[gi],samples=Array.isArray(group?.samples)?group.samples:[];
+    for(let si=0;si<samples.length;si++){
+      const item=samples[si];
+      if(tv2StableSourceId(group,item,gi,si)===wanted)return {group,item,gi,si};
+    }
+  }
+  return null;
 }
 
 // ---- v0.9.44 / Cifrado TV V2 exclusivo CO-CHI ----
@@ -2042,6 +2086,35 @@ async function route(req,res){
     return sendJson(res,200,{ok:true,title,media_type:mediaType,providersConfigured:MEDIA_PROVIDERS.length,options});
   }
 
+  const tv2Resolve=p.match(/^\/api\/content\/tv2\/resolve\/(TV2_[A-Za-z0-9_-]+)$/);
+  if(tv2Resolve&&m==='GET'){
+    let d=clientContentDevice(req,u);if(!d)return sendJson(res,401,{error:'Sesión de CO-CHI requerida'});
+    d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get('tv2');if(!src||!src.enabled)return sendJson(res,404,{error:'TV2 deshabilitada'});
+    processAutoHideTimers();
+    const r=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get('tv2');if(!r||!r.json_text)return sendJson(res,404,{error:'TV2 todavía no publicada'});
+    try{
+      const sec=playbackSecurityState();
+      let clear=decryptManagedContent(JSON.parse(r.json_text));
+      if(st.mode==='demo')clear=filterDemoCategories(clear);
+      const found=tv2FindBySourceId(clear,tv2Resolve[1]);if(!found)return sendJson(res,404,{error:'ID TV2 no encontrado'});
+      let one=[{name:String(found.group?.name||'General'),samples:[structuredClone(found.item)]}];
+      one=await applyTvFailover(one);
+      if(tvDedicatedEnabled('tv2')){
+        if(!tvDedicatedConfigured('tv2'))return sendJson(res,503,{error:'Gateway TV2 activado pero no configurado'});
+        one=tvDedicatedPlaybackObject(one,'tv2');
+      }else if(sec.enabled){
+        if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
+        one=securePlaybackObject(one,sec.generation);
+      }
+      if(tvCryptoRequested(req,'tv2')){
+        const envelope=tvCatalogEnvelope(one,'tv2',req.headers['x-cochi-tv-pub']);
+        return sendJson(res,200,envelope,{'Cache-Control':'private, no-cache, no-store, must-revalidate','X-COCHI-TV2-Resolved':tv2Resolve[1],'X-COCHI-TV-Crypto':'2'});
+      }
+      return sendJson(res,200,one,{'Cache-Control':'private, no-cache, no-store, must-revalidate','X-COCHI-TV2-Resolved':tv2Resolve[1]});
+    }catch(e){return sendJson(res,500,{error:'No se pudo resolver TV2: '+String(e?.message||e)});}
+  }
+
   const publicContent=p.match(/^\/api\/content\/(tv1|tv2|movies|series)$/);
   if(publicContent&&m==='GET'){
     let d=clientContentDevice(req,u);if(!d)return sendJson(res,401,{error:'Sesión de CO-CHI requerida'});
@@ -2073,6 +2146,7 @@ async function route(req,res){
             if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
             clear=securePlaybackObject(clear,sec.generation);
           }
+          if(sourceKey==='tv2'&&tv2IdCatalogRequested(req))clear=tv2MetadataCatalog(clear);
           const envelope=tvCatalogEnvelope(clear,sourceKey,req.headers['x-cochi-tv-pub']);
           return sendJson(res,200,envelope,{
             'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
@@ -2095,8 +2169,14 @@ async function route(req,res){
       // reconstruirse si el gateway no está activo.
       if(!sec.enabled){
         let payload=JSON.parse(r.json_text);
-        if(st.mode==='demo')payload=filterDemoCategories(payload);
-        if(publicContent[1]==='tv1'||publicContent[1]==='tv2')payload=await applyTvFailover(payload);
+        if(publicContent[1]==='tv2'&&tv2IdCatalogRequested(req)){
+          payload=decryptManagedContent(payload);
+          if(st.mode==='demo')payload=filterDemoCategories(payload);
+          payload=tv2MetadataCatalog(payload);
+        }else{
+          if(st.mode==='demo')payload=filterDemoCategories(payload);
+          if(publicContent[1]==='tv1'||publicContent[1]==='tv2')payload=await applyTvFailover(payload);
+        }
         return sendJson(res,200,payload,{
           'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
           'X-COCHI-Access-Mode':String(st.mode||''),
