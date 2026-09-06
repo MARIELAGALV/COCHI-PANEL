@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.87</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.88</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -175,13 +175,13 @@
             <div class="theme-controls">
               <label>Tema predefinido<select id="themePreset"><option value="blue">Azul CO-CHI</option><option value="red">Rojo</option><option value="green">Verde</option><option value="violet">Violeta</option><option value="orange">Naranja</option><option value="dark">Oscuro</option><option value="custom">Personalizado</option></select></label>
               <div class="theme-color-grid">
-                <label>Color principal<input id="themePrimary" type="color" value="#00CFFF"><input id="themePrimaryHex" maxlength="7" value="#00CFFF"></label>
-                <label>Color de selección<input id="themeSelection" type="color" value="#1E90FF"><input id="themeSelectionHex" maxlength="7" value="#1E90FF"></label>
-                <label>Color de fondo<input id="themeBackground" type="color" value="#0A0F1B"><input id="themeBackgroundHex" maxlength="7" value="#0A0F1B"></label>
-                <label>Color de botones<input id="themeButton" type="color" value="#162338"><input id="themeButtonHex" maxlength="7" value="#162338"></label>
-                <label>Color de bordes<input id="themeBorder" type="color" value="#1E3D6B"><input id="themeBorderHex" maxlength="7" value="#1E3D6B"></label>
-                <label>Color de texto<input id="themeText" type="color" value="#FFFFFF"><input id="themeTextHex" maxlength="7" value="#FFFFFF"></label>
-                <label>Texto secundario<input id="themeSecondary" type="color" value="#B0B0B0"><input id="themeSecondaryHex" maxlength="7" value="#B0B0B0"></label>
+                <label><span class="theme-color-title">Color principal</span><input id="themePrimary" type="color" value="#00CFFF"><input id="themePrimaryHex" maxlength="7" value="#00CFFF"></label>
+                <label><span class="theme-color-title">Color de selección</span><input id="themeSelection" type="color" value="#1E90FF"><input id="themeSelectionHex" maxlength="7" value="#1E90FF"></label>
+                <label><span class="theme-color-title">Color de fondo</span><input id="themeBackground" type="color" value="#0A0F1B"><input id="themeBackgroundHex" maxlength="7" value="#0A0F1B"></label>
+                <label><span class="theme-color-title">Color de botones</span><input id="themeButton" type="color" value="#162338"><input id="themeButtonHex" maxlength="7" value="#162338"></label>
+                <label><span class="theme-color-title">Color de bordes</span><input id="themeBorder" type="color" value="#1E3D6B"><input id="themeBorderHex" maxlength="7" value="#1E3D6B"></label>
+                <label><span class="theme-color-title">Color de texto</span><input id="themeText" type="color" value="#FFFFFF"><input id="themeTextHex" maxlength="7" value="#FFFFFF"></label>
+                <label><span class="theme-color-title">Texto secundario</span><input id="themeSecondary" type="color" value="#B0B0B0"><input id="themeSecondaryHex" maxlength="7" value="#B0B0B0"></label>
               </div>
               <div class="panel-control-actions mt10"><button id="saveThemeDraftBtn" class="ghost" type="button">GUARDAR BORRADOR</button><button id="publishThemeBtn" class="primary" type="button">PUBLICAR EN CO-CHI</button><button id="resetThemeBtn" class="ghost" type="button">RESTAURAR AZUL CO-CHI</button></div><div id="themeMsg" class="msg"></div>
             </div>
@@ -275,10 +275,15 @@
             <label>DESCRIPCIÓN<textarea id="homeBannerDescription" rows="3" maxlength="300" placeholder="Texto que aparecerá debajo del título"></textarea></label>
             <div class="source-fields"><label>TEXTO BOTÓN PRINCIPAL<input id="homeBannerButtonText" maxlength="40" placeholder="Ver ahora"></label><label>TEXTO BOTÓN SECUNDARIO<input id="homeBannerExploreText" maxlength="40" placeholder="Explorar"></label></div>
             <div class="source-fields"><label>DESTINO<select id="homeBannerTargetSource"><option value="">Solo mostrar banner</option><option value="series">Series</option><option value="movies">Películas</option><option value="tv1">TV1</option><option value="tv2">TV2</option></select></label><label>ID DEL CONTENIDO (opcional)<input id="homeBannerTargetId" maxlength="160" placeholder="ID exacto; vacío abre la sección"></label></div>
-            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowPrimary" type="checkbox" checked> Mostrar botón principal</label><label class="switch-row"><input id="homeBannerShowExplore" type="checkbox" checked> Mostrar botón Explorar</label></div>
-            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowEyebrow" type="checkbox" checked> Mostrar etiqueta</label><label class="switch-row"><input id="homeBannerShowTitle" type="checkbox" checked> Mostrar título</label></div>
-            <div class="source-fields"><label class="switch-row"><input id="homeBannerShowDescription" type="checkbox" checked> Mostrar descripción</label><label class="switch-row"><input id="homeBannerShowMeta" type="checkbox" checked> Mostrar texto corto</label></div>
-            <label class="switch-row"><input id="homeBannerShowScrim" type="checkbox" checked> Mostrar sombreado sobre imagen/video para facilitar lectura</label>
+            <div class="banner-toggle-grid" aria-label="Elementos visibles del banner">
+              <label class="switch-row"><input id="homeBannerShowPrimary" type="checkbox" checked><span>Mostrar botón principal</span></label>
+              <label class="switch-row"><input id="homeBannerShowExplore" type="checkbox" checked><span>Mostrar botón Explorar</span></label>
+              <label class="switch-row"><input id="homeBannerShowEyebrow" type="checkbox" checked><span>Mostrar etiqueta</span></label>
+              <label class="switch-row"><input id="homeBannerShowTitle" type="checkbox" checked><span>Mostrar título</span></label>
+              <label class="switch-row"><input id="homeBannerShowDescription" type="checkbox" checked><span>Mostrar descripción</span></label>
+              <label class="switch-row"><input id="homeBannerShowMeta" type="checkbox" checked><span>Mostrar texto corto</span></label>
+              <label class="switch-row banner-toggle-wide"><input id="homeBannerShowScrim" type="checkbox" checked><span>Mostrar sombreado sobre imagen/video para facilitar lectura</span></label>
+            </div>
             <div class="source-head"><div class="source-title">Portadas adicionales para rotación (2 a 10)</div></div>
             <div class="muted small">Podés agregar hasta 9 imágenes fijas adicionales. Junto con la URL principal forman un carrusel de hasta 10 destacados.</div>
             <div id="homeBannerExtraUrls" class="source-fields"></div>
