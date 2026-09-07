@@ -436,3 +436,5 @@ body{min-height:100dvh}
 
 /* v0.9.93 COCHI RESCUE */
 .rescue-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.rescue-grid .wide{grid-column:1/-1}.rescue-grid textarea{width:100%;resize:vertical}.check-line{display:flex!important;gap:8px;align-items:center}.check-line input{width:auto!important}.rescue-row{border:1px solid var(--line,#284052);border-radius:12px;padding:12px;margin-top:10px}.rescue-row-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.rescue-status-ok{color:#76e6a8}.rescue-status-error{color:#ff8d8d}@media(max-width:760px){.rescue-grid{grid-template-columns:1fr}.rescue-grid .wide{grid-column:auto}.rescue-row-head{flex-direction:column}}
+/* v0.9.94 COCHI RESCUE retry log */
+.rescue-attempts{margin-top:8px;border-top:1px dashed var(--line,#284052);padding-top:7px}.rescue-attempts summary{cursor:pointer;font-weight:700;margin-bottom:6px}.rescue-attempts .tiny{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}

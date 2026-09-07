@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.93';
+const VERSION = '0.9.94';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -419,6 +419,10 @@ ensureColumn('clients','adult_fail_count','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','device_limit','INTEGER NOT NULL DEFAULT 2');
 ensureColumn('clients','extra_device_blocks','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','extra_device_allowance','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('rescue_resolver_channels','retry_count','INTEGER NOT NULL DEFAULT 5');
+ensureColumn('rescue_resolver_channels','retry_delay_seconds','INTEGER NOT NULL DEFAULT 1');
+ensureColumn('rescue_resolver_channels','timeout_seconds','INTEGER NOT NULL DEFAULT 10');
+ensureColumn('rescue_resolver_channels','last_attempts_json',"TEXT NOT NULL DEFAULT '[]'");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS client_device_changes (
@@ -1586,7 +1590,8 @@ async function probePlayableUrl(rawUrl,headers={}){
 function rescueResolverRow(row){
   if(!row)return null;
   let headers={};try{headers=JSON.parse(row.headers_json||'{}')}catch{}
-  return {...row,headers,enabled:Boolean(row.enabled)};
+  let attempts=[];try{attempts=JSON.parse(row.last_attempts_json||'[]')}catch{}
+  return {...row,headers,attempts,enabled:Boolean(row.enabled)};
 }
 function rescueApplyTemplate(row,base){
   const vars={token:String(base||''),codigo:String(row.code||''),nombre:String(row.name||''),ruta:String(row.route_path||''),archivo:String(row.file_name||'')};
@@ -1596,34 +1601,61 @@ function rescueExtractBase(finalUrl){
   const s=String(finalUrl||'');const i=s.toLowerCase().indexOf('/live/');
   return i>0?s.slice(0,i).replace(/\/+$/,''):'';
 }
-async function rescueFollowRedirect(rawUrl,headers={}){
+function rescueUrlChanged(a,b){
+  try{const x=new URL(String(a||'')),y=new URL(String(b||''));return x.href!==y.href}catch{return String(a||'')!==String(b||'')}
+}
+function rescueFinalMatchesCode(finalUrl,code){
+  const s=String(finalUrl||'').toLowerCase(),c=String(code||'').trim().toLowerCase();
+  if(!s.includes('/live/'))return false;
+  return !c||s.includes('/live/'+c+'/');
+}
+async function rescueFollowRedirect(rawUrl,headers={},timeoutSeconds=10){
   assertPublicHttpUrl(rawUrl);
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+  const ctl=new AbortController(),timeoutMs=Math.max(3,Math.min(60,Number(timeoutSeconds)||10))*1000,timer=setTimeout(()=>ctl.abort(),timeoutMs);
+  const started=Date.now();
   try{
     const h={};for(const [k,v] of Object.entries(headers||{}))if(v)h[String(k)]=String(v).slice(0,1000);
-    h['User-Agent']=h['User-Agent']||'Mozilla/5.0 (compatible; CO-CHI-Rescue/0.9.93)';h.Accept=h.Accept||'*/*';h.Range=h.Range||'bytes=0-2047';
+    // Copia el comportamiento del script local: User-Agent y redirect follow, sin Range forzado.
+    h['User-Agent']=h['User-Agent']||'Mozilla/5.0 (Node.js Redirect Checker)';
     const r=await fetch(rawUrl,{method:'GET',headers:h,redirect:'follow',signal:ctl.signal});
     try{if(r.body)await r.body.cancel()}catch{}
-    return {status:r.status,ok:r.ok,finalUrl:r.url||rawUrl};
+    return {status:r.status,ok:r.ok,finalUrl:r.url||rawUrl,error:'',elapsedMs:Date.now()-started};
+  }catch(e){
+    return {status:null,ok:false,finalUrl:null,error:e?.name==='AbortError'?'Timeout':String(e?.message||e),elapsedMs:Date.now()-started};
   }finally{clearTimeout(timer)}
 }
 async function runRescueResolverChannel(id){
   const row=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(id));if(!row)throw new Error('Canal de rescate no encontrado');
   let headers={};try{headers=JSON.parse(row.headers_json||'{}')}catch{}
-  const t=nowIso();
-  try{
-    const rr=await rescueFollowRedirect(row.resolver_url,headers),base=rescueExtractBase(rr.finalUrl);
-    if(!base)throw new Error('La URL final no contiene /live/ y no se pudo extraer la base');
-    const generated=rescueApplyTemplate(row,base);
-    assertPublicHttpUrl(generated);
-    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,last_good_base=?,generated_url=?,last_final_url=?,last_status='OK',last_http=?,last_error='',last_run_at=?,updated_at=? WHERE id=?`).run(base,base,generated,rr.finalUrl,rr.status,t,t,row.id);
-    return rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(row.id));
-  }catch(e){
-    const lastGood=String(row.last_good_base||'');const generated=lastGood?rescueApplyTemplate(row,lastGood):String(row.generated_url||'');
-    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,generated_url=?,last_status='ERROR',last_error=?,last_run_at=?,updated_at=? WHERE id=?`).run(lastGood,generated,String(e?.message||e).slice(0,1000),t,t,row.id);
-    const out=rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(row.id));out.keptLastGood=Boolean(lastGood);return out;
+  const retryCount=Math.max(1,Math.min(20,Number(row.retry_count)||5));
+  const retryDelaySeconds=Math.max(0,Math.min(60,Number(row.retry_delay_seconds)||1));
+  const timeoutSeconds=Math.max(3,Math.min(60,Number(row.timeout_seconds)||10));
+  const attempts=[];let winner=null;
+  for(let round=1;round<=retryCount;round++){
+    const rr=await rescueFollowRedirect(row.resolver_url,headers,timeoutSeconds);
+    const base=rr.finalUrl?rescueExtractBase(rr.finalUrl):'';
+    const matchesCode=rr.finalUrl?rescueFinalMatchesCode(rr.finalUrl,row.code):false;
+    const changed=rr.finalUrl?rescueUrlChanged(row.resolver_url,rr.finalUrl):false;
+    // Una redirección que llega a /live/<codigo>/ sirve aunque el recurso final responda 400/404/503,
+    // igual que el script local. Si no hubo redirección, solo aceptamos una respuesta 2xx.
+    const valid=Boolean(base&&matchesCode&&(changed||rr.ok));
+    attempts.push({round,status:rr.status,finalUrl:rr.finalUrl||'',base,error:rr.error||'',elapsedMs:rr.elapsedMs,changed,valid});
+    if(valid){winner={rr,base};break}
+    if(round<retryCount&&retryDelaySeconds>0)await new Promise(r=>setTimeout(r,retryDelaySeconds*1000));
   }
+  const t=nowIso(),attemptsJson=JSON.stringify(attempts).slice(0,20000);
+  if(winner){
+    const generated=rescueApplyTemplate(row,winner.base);assertPublicHttpUrl(generated);
+    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,last_good_base=?,generated_url=?,last_final_url=?,last_status='OK',last_http=?,last_error='',last_attempts_json=?,last_run_at=?,updated_at=? WHERE id=?`).run(winner.base,winner.base,generated,winner.rr.finalUrl,winner.rr.status,attemptsJson,t,t,row.id);
+  }else{
+    const lastGood=String(row.last_good_base||''),generated=lastGood?rescueApplyTemplate(row,lastGood):String(row.generated_url||'');
+    const last=attempts[attempts.length-1]||{};
+    const detail=last.error||(`Sin redirección válida después de ${attempts.length} intento${attempts.length===1?'':'s'}${last.status?` (último HTTP ${last.status})`:''}`);
+    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,generated_url=?,last_status='ERROR',last_http=?,last_error=?,last_attempts_json=?,last_run_at=?,updated_at=? WHERE id=?`).run(lastGood,generated,last.status||null,String(detail).slice(0,1000),attemptsJson,t,t,row.id);
+  }
+  const out=rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(row.id));out.keptLastGood=Boolean(out.last_good_base&&out.last_status!=='OK');return out;
 }
+
 let rescueAutoBusy=false;
 async function rescueAutoTick(){
   if(rescueAutoBusy)return;rescueAutoBusy=true;
@@ -2578,16 +2610,16 @@ async function route(req,res){
       if(!name||!code||!resolverUrl)return sendJson(res,400,{error:'Nombre, código y URL resolver son obligatorios'});
       try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
       const template=String(b.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').trim(),routePath=String(b.routePath||'SA_Live_dash_enc').trim(),fileName=String(b.fileName||'{nombre}.mpd').trim();
-      const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes)||5));const t=nowIso();
-      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,t,t);
+      const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds)||10));const t=nowIso();
+      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,retry_count,retry_delay_seconds,timeout_seconds,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,retryCount,retryDelay,timeoutSeconds,t,t);
       audit(actor.id,'rescue_resolver_created','resolver',Number(r.lastInsertRowid),`${name};${code}`);return sendJson(res,201,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(r.lastInsertRowid)))});
     }
     const rescueItem=p.match(/^\/api\/admin\/rescue-resolver\/channels\/(\d+)$/);
     if(rescueItem&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});const id=Number(rescueItem[1]),old=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id);if(!old)return sendJson(res,404,{error:'Canal no encontrado'});const b=await readJson(req);
       const name=String(b.name??old.name).trim(),code=String(b.code??old.code).trim(),resolverUrl=String(b.resolverUrl??old.resolver_url).trim();try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
-      const headers=b.headers&&typeof b.headers==='object'?b.headers:(()=>{try{return JSON.parse(old.headers_json||'{}')}catch{return {}}})();const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes??old.interval_minutes)||5));const t=nowIso();
-      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,t,id);
+      const headers=b.headers&&typeof b.headers==='object'?b.headers:(()=>{try{return JSON.parse(old.headers_json||'{}')}catch{return {}}})();const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes??old.interval_minutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount??old.retry_count)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds??old.retry_delay_seconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds??old.timeout_seconds)||10));const t=nowIso();
+      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,retry_count=?,retry_delay_seconds=?,timeout_seconds=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,retryCount,retryDelay,timeoutSeconds,t,id);
       audit(actor.id,'rescue_resolver_updated','resolver',id,`${name};${code}`);return sendJson(res,200,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id))});
     }
     if(rescueItem&&m==='DELETE'){
