@@ -423,6 +423,7 @@ ensureColumn('rescue_resolver_channels','retry_count','INTEGER NOT NULL DEFAULT 
 ensureColumn('rescue_resolver_channels','retry_delay_seconds','INTEGER NOT NULL DEFAULT 1');
 ensureColumn('rescue_resolver_channels','timeout_seconds','INTEGER NOT NULL DEFAULT 10');
 ensureColumn('rescue_resolver_channels','last_attempts_json',"TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('rescue_resolver_channels','resolver_mode',"TEXT NOT NULL DEFAULT 'HTTP'");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS client_device_changes (
@@ -1624,22 +1625,45 @@ async function rescueFollowRedirect(rawUrl,headers={},timeoutSeconds=10){
     return {status:null,ok:false,finalUrl:null,error:e?.name==='AbortError'?'Timeout':String(e?.message||e),elapsedMs:Date.now()-started};
   }finally{clearTimeout(timer)}
 }
+async function rescueFollowBrowser(rawUrl,headers={},timeoutSeconds=15){
+  assertPublicHttpUrl(rawUrl);
+  const executablePath=process.env.CHROMIUM_PATH||'/usr/bin/chromium';
+  if(!fs.existsSync(executablePath))return {status:null,ok:false,finalUrl:null,error:'Chromium no está instalado en el servidor',elapsedMs:0};
+  const timeoutMs=Math.max(5,Math.min(60,Number(timeoutSeconds)||15))*1000,started=Date.now();
+  let browser=null,page=null,lastUrl=rawUrl,status=null,navError='';
+  try{
+    browser=await puppeteer.launch({executablePath,headless:true,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-first-run','--no-zygote']});
+    page=await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36');
+    const extra={};for(const [k,v] of Object.entries(headers||{}))if(v)extra[String(k)]=String(v).slice(0,4000);
+    if(Object.keys(extra).length)await page.setExtraHTTPHeaders(extra);
+    page.on('framenavigated',frame=>{try{if(frame===page.mainFrame()&&/^https?:/i.test(frame.url()))lastUrl=frame.url()}catch{}});
+    try{const r=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:timeoutMs});status=r?.status?.()??null;lastUrl=page.url()||lastUrl}catch(e){navError=e?.name==='TimeoutError'?'Timeout de navegación':String(e?.message||e);try{lastUrl=page.url()||lastUrl}catch{}}
+    // Chrome puede haber recibido la redirección aunque el documento final no termine de cargar.
+    const changed=rescueUrlChanged(rawUrl,lastUrl),base=rescueExtractBase(lastUrl);
+    if(changed&&base)return {status,ok:true,finalUrl:lastUrl,error:'',elapsedMs:Date.now()-started,browser:true};
+    return {status,ok:Boolean(status&&status>=200&&status<300),finalUrl:lastUrl,error:navError,elapsedMs:Date.now()-started,browser:true};
+  }catch(e){return {status,ok:false,finalUrl:lastUrl||null,error:String(e?.message||e),elapsedMs:Date.now()-started,browser:true}}
+  finally{try{if(page)await page.close()}catch{}try{if(browser)await browser.close()}catch{}}
+}
+
 async function runRescueResolverChannel(id){
   const row=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(id));if(!row)throw new Error('Canal de rescate no encontrado');
   let headers={};try{headers=JSON.parse(row.headers_json||'{}')}catch{}
   const retryCount=Math.max(1,Math.min(20,Number(row.retry_count)||5));
   const retryDelaySeconds=Math.max(0,Math.min(60,Number(row.retry_delay_seconds)||1));
   const timeoutSeconds=Math.max(3,Math.min(60,Number(row.timeout_seconds)||10));
+  const mode=String(row.resolver_mode||'HTTP').toUpperCase()==='BROWSER'?'BROWSER':'HTTP';
   const attempts=[];let winner=null;
   for(let round=1;round<=retryCount;round++){
-    const rr=await rescueFollowRedirect(row.resolver_url,headers,timeoutSeconds);
+    const rr=mode==='BROWSER'?await rescueFollowBrowser(row.resolver_url,headers,timeoutSeconds):await rescueFollowRedirect(row.resolver_url,headers,timeoutSeconds);
     const base=rr.finalUrl?rescueExtractBase(rr.finalUrl):'';
     const matchesCode=rr.finalUrl?rescueFinalMatchesCode(rr.finalUrl,row.code):false;
     const changed=rr.finalUrl?rescueUrlChanged(row.resolver_url,rr.finalUrl):false;
     // Una redirección que llega a /live/<codigo>/ sirve aunque el recurso final responda 400/404/503,
     // igual que el script local. Si no hubo redirección, solo aceptamos una respuesta 2xx.
     const valid=Boolean(base&&matchesCode&&(changed||rr.ok));
-    attempts.push({round,status:rr.status,finalUrl:rr.finalUrl||'',base,error:rr.error||'',elapsedMs:rr.elapsedMs,changed,valid});
+    attempts.push({round,mode,status:rr.status,finalUrl:rr.finalUrl||'',base,error:rr.error||'',elapsedMs:rr.elapsedMs,changed,valid});
     if(valid){winner={rr,base};break}
     if(round<retryCount&&retryDelaySeconds>0)await new Promise(r=>setTimeout(r,retryDelaySeconds*1000));
   }
@@ -2611,7 +2635,7 @@ async function route(req,res){
       try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
       const template=String(b.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').trim(),routePath=String(b.routePath||'SA_Live_dash_enc').trim(),fileName=String(b.fileName||'{nombre}.mpd').trim();
       const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds)||10));const t=nowIso();
-      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,retry_count,retry_delay_seconds,timeout_seconds,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,retryCount,retryDelay,timeoutSeconds,t,t);
+      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,retry_count,retry_delay_seconds,timeout_seconds,resolver_mode,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,retryCount,retryDelay,timeoutSeconds,String(b.resolverMode||'HTTP').toUpperCase()==='BROWSER'?'BROWSER':'HTTP',t,t);
       audit(actor.id,'rescue_resolver_created','resolver',Number(r.lastInsertRowid),`${name};${code}`);return sendJson(res,201,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(r.lastInsertRowid)))});
     }
     const rescueItem=p.match(/^\/api\/admin\/rescue-resolver\/channels\/(\d+)$/);
@@ -2619,7 +2643,7 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});const id=Number(rescueItem[1]),old=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id);if(!old)return sendJson(res,404,{error:'Canal no encontrado'});const b=await readJson(req);
       const name=String(b.name??old.name).trim(),code=String(b.code??old.code).trim(),resolverUrl=String(b.resolverUrl??old.resolver_url).trim();try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
       const headers=b.headers&&typeof b.headers==='object'?b.headers:(()=>{try{return JSON.parse(old.headers_json||'{}')}catch{return {}}})();const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes??old.interval_minutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount??old.retry_count)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds??old.retry_delay_seconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds??old.timeout_seconds)||10));const t=nowIso();
-      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,retry_count=?,retry_delay_seconds=?,timeout_seconds=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,retryCount,retryDelay,timeoutSeconds,t,id);
+      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,retry_count=?,retry_delay_seconds=?,timeout_seconds=?,resolver_mode=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,retryCount,retryDelay,timeoutSeconds,String(b.resolverMode??old.resolver_mode??'HTTP').toUpperCase()==='BROWSER'?'BROWSER':'HTTP',t,id);
       audit(actor.id,'rescue_resolver_updated','resolver',id,`${name};${code}`);return sendJson(res,200,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id))});
     }
     if(rescueItem&&m==='DELETE'){
