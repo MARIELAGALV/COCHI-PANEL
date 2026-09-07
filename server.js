@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.92';
+const VERSION = '0.9.93';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -270,6 +270,30 @@ CREATE TABLE IF NOT EXISTS managed_content (
 CREATE TABLE IF NOT EXISTS published_content (
   source_key TEXT PRIMARY KEY,
   json_text TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS rescue_resolver_channels (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL DEFAULT '',
+  code TEXT NOT NULL DEFAULT '',
+  stream_type TEXT NOT NULL DEFAULT 'MPD',
+  resolver_url TEXT NOT NULL DEFAULT '',
+  template TEXT NOT NULL DEFAULT '{token}/live/{codigo}/{nombre}/{ruta}/{archivo}',
+  route_path TEXT NOT NULL DEFAULT 'SA_Live_dash_enc',
+  file_name TEXT NOT NULL DEFAULT '{nombre}.mpd',
+  headers_json TEXT NOT NULL DEFAULT '{}',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  interval_minutes INTEGER NOT NULL DEFAULT 5,
+  current_base TEXT NOT NULL DEFAULT '',
+  last_good_base TEXT NOT NULL DEFAULT '',
+  generated_url TEXT NOT NULL DEFAULT '',
+  last_final_url TEXT NOT NULL DEFAULT '',
+  last_status TEXT NOT NULL DEFAULT 'PENDIENTE',
+  last_http INTEGER,
+  last_error TEXT NOT NULL DEFAULT '',
+  last_run_at TEXT,
+  created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 ) STRICT;
 
@@ -1558,6 +1582,59 @@ async function probePlayableUrl(rawUrl,headers={}){
   assertPublicHttpUrl(rawUrl);const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
   try{const cleanHeaders={};for(const [k,v] of Object.entries(headers||{})){if(v)cleanHeaders[k]=String(v).slice(0,1000)}cleanHeaders['User-Agent']=cleanHeaders['User-Agent']||'Android/CO-CHI (Media3)';cleanHeaders.Accept=cleanHeaders.Accept||'*/*';cleanHeaders.Range='bytes=0-65535';const r=await fetch(rawUrl,{headers:cleanHeaders,redirect:'follow',signal:ctl.signal});const ct=String(r.headers.get('content-type')||'').toLowerCase();let body='';try{body=Buffer.from(await r.arrayBuffer()).subarray(0,65536).toString('utf8')}catch{}const low=String(r.url||rawUrl).toLowerCase();let type=/\.m3u8(?:[?#]|$)/i.test(low)||body.includes('#EXTM3U')||ct.includes('mpegurl')?'HLS':/\.mpd(?:[?#]|$)/i.test(low)||ct.includes('dash+xml')||/<MPD[\s>]/i.test(body)?'DASH':/\.mp4(?:[?#]|$)/i.test(low)||ct.includes('video/mp4')?'MP4':'';return {ok:r.ok&&Boolean(type),status:r.status,type:type||'DESCONOCIDO',contentType:ct,finalUrl:r.url||rawUrl};}finally{clearTimeout(timer)}
 }
+
+function rescueResolverRow(row){
+  if(!row)return null;
+  let headers={};try{headers=JSON.parse(row.headers_json||'{}')}catch{}
+  return {...row,headers,enabled:Boolean(row.enabled)};
+}
+function rescueApplyTemplate(row,base){
+  const vars={token:String(base||''),codigo:String(row.code||''),nombre:String(row.name||''),ruta:String(row.route_path||''),archivo:String(row.file_name||'')};
+  return String(row.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').replace(/\{(token|codigo|nombre|ruta|archivo)\}/g,(_,k)=>vars[k]||'');
+}
+function rescueExtractBase(finalUrl){
+  const s=String(finalUrl||'');const i=s.toLowerCase().indexOf('/live/');
+  return i>0?s.slice(0,i).replace(/\/+$/,''):'';
+}
+async function rescueFollowRedirect(rawUrl,headers={}){
+  assertPublicHttpUrl(rawUrl);
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+  try{
+    const h={};for(const [k,v] of Object.entries(headers||{}))if(v)h[String(k)]=String(v).slice(0,1000);
+    h['User-Agent']=h['User-Agent']||'Mozilla/5.0 (compatible; CO-CHI-Rescue/0.9.93)';h.Accept=h.Accept||'*/*';h.Range=h.Range||'bytes=0-2047';
+    const r=await fetch(rawUrl,{method:'GET',headers:h,redirect:'follow',signal:ctl.signal});
+    try{if(r.body)await r.body.cancel()}catch{}
+    return {status:r.status,ok:r.ok,finalUrl:r.url||rawUrl};
+  }finally{clearTimeout(timer)}
+}
+async function runRescueResolverChannel(id){
+  const row=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(id));if(!row)throw new Error('Canal de rescate no encontrado');
+  let headers={};try{headers=JSON.parse(row.headers_json||'{}')}catch{}
+  const t=nowIso();
+  try{
+    const rr=await rescueFollowRedirect(row.resolver_url,headers),base=rescueExtractBase(rr.finalUrl);
+    if(!base)throw new Error('La URL final no contiene /live/ y no se pudo extraer la base');
+    const generated=rescueApplyTemplate(row,base);
+    assertPublicHttpUrl(generated);
+    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,last_good_base=?,generated_url=?,last_final_url=?,last_status='OK',last_http=?,last_error='',last_run_at=?,updated_at=? WHERE id=?`).run(base,base,generated,rr.finalUrl,rr.status,t,t,row.id);
+    return rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(row.id));
+  }catch(e){
+    const lastGood=String(row.last_good_base||'');const generated=lastGood?rescueApplyTemplate(row,lastGood):String(row.generated_url||'');
+    db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,generated_url=?,last_status='ERROR',last_error=?,last_run_at=?,updated_at=? WHERE id=?`).run(lastGood,generated,String(e?.message||e).slice(0,1000),t,t,row.id);
+    const out=rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(row.id));out.keptLastGood=Boolean(lastGood);return out;
+  }
+}
+let rescueAutoBusy=false;
+async function rescueAutoTick(){
+  if(rescueAutoBusy)return;rescueAutoBusy=true;
+  try{
+    const rows=db.prepare('SELECT * FROM rescue_resolver_channels WHERE enabled=1 ORDER BY id').all();const now=Date.now();
+    for(const row of rows){const interval=Math.max(1,Math.min(1440,Number(row.interval_minutes)||5))*60000;const due=!row.last_run_at||!Number.isFinite(Date.parse(row.last_run_at))||(now-Date.parse(row.last_run_at)>=interval);if(due){try{await runRescueResolverChannel(row.id)}catch{}}}
+  }finally{rescueAutoBusy=false}
+}
+setInterval(()=>rescueAutoTick().catch(()=>{}),60000).unref?.();
+setTimeout(()=>rescueAutoTick().catch(()=>{}),5000).unref?.();
+
 async function resolvePublicStreamPage(rawUrl,initialReferer=''){
   const first=await safeWebFetch(rawUrl,initialReferer),pages=[first.url],visited=new Set([first.url]),all=new Map(),queue=[{page:first,depth:0,parent:''}];let fetched=0,maxDepthSeen=0;
   while(queue.length&&fetched<40){const {page,depth}=queue.shift();fetched++;maxDepthSeen=Math.max(maxDepthSeen,depth);const items=extractWebCandidates(page.text,page.url);for(const c of items){if(!all.has(c.url))all.set(c.url,c)}if(depth>=6)continue;
@@ -2490,6 +2567,35 @@ async function route(req,res){
       const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
       try{const result=await resolveDynamicPublicStreamPage(url,referer);audit(actor.id,'stream_resolver_iframe_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo buscar el stream dentro del iframe: '+e.message});}
+    }
+    if(p==='/api/admin/rescue-resolver/channels'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});
+      return sendJson(res,200,{items:db.prepare('SELECT * FROM rescue_resolver_channels ORDER BY id').all().map(rescueResolverRow)});
+    }
+    if(p==='/api/admin/rescue-resolver/channels'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});
+      const b=await readJson(req),name=String(b.name||'').trim(),code=String(b.code||'').trim(),resolverUrl=String(b.resolverUrl||'').trim();
+      if(!name||!code||!resolverUrl)return sendJson(res,400,{error:'Nombre, código y URL resolver son obligatorios'});
+      try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
+      const template=String(b.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').trim(),routePath=String(b.routePath||'SA_Live_dash_enc').trim(),fileName=String(b.fileName||'{nombre}.mpd').trim();
+      const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes)||5));const t=nowIso();
+      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,t,t);
+      audit(actor.id,'rescue_resolver_created','resolver',Number(r.lastInsertRowid),`${name};${code}`);return sendJson(res,201,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(r.lastInsertRowid)))});
+    }
+    const rescueItem=p.match(/^\/api\/admin\/rescue-resolver\/channels\/(\d+)$/);
+    if(rescueItem&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});const id=Number(rescueItem[1]),old=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id);if(!old)return sendJson(res,404,{error:'Canal no encontrado'});const b=await readJson(req);
+      const name=String(b.name??old.name).trim(),code=String(b.code??old.code).trim(),resolverUrl=String(b.resolverUrl??old.resolver_url).trim();try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
+      const headers=b.headers&&typeof b.headers==='object'?b.headers:(()=>{try{return JSON.parse(old.headers_json||'{}')}catch{return {}}})();const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes??old.interval_minutes)||5));const t=nowIso();
+      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,t,id);
+      audit(actor.id,'rescue_resolver_updated','resolver',id,`${name};${code}`);return sendJson(res,200,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id))});
+    }
+    if(rescueItem&&m==='DELETE'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});const id=Number(rescueItem[1]);db.prepare('DELETE FROM rescue_resolver_channels WHERE id=?').run(id);audit(actor.id,'rescue_resolver_deleted','resolver',id,'');return sendJson(res,200,{ok:true});
+    }
+    const rescueRun=p.match(/^\/api\/admin\/rescue-resolver\/channels\/(\d+)\/run$/);
+    if(rescueRun&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});try{const item=await runRescueResolverChannel(Number(rescueRun[1]));audit(actor.id,'rescue_resolver_run','resolver',Number(rescueRun[1]),item.last_status);return sendJson(res,200,{ok:item.last_status==='OK',item});}catch(e){return sendJson(res,400,{error:e.message})}
     }
     if(p==='/api/admin/stream-resolver/published'&&m==='GET'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});return sendJson(res,200,{items:resolverPublishedEntries()});}
     if(p==='/api/admin/stream-resolver/probe'&&m==='POST'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL'});try{return sendJson(res,200,await probePlayableUrl(url,b.headers||{}));}catch(e){return sendJson(res,400,{error:'No se pudo probar la fuente: '+e.message});}}

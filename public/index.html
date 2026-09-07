@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.92</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.93</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -300,7 +300,17 @@
           <div class="card-head"><div><h3>Resolver Stream · URL DIRECTA + LEER PÁGINA</h3><p class="muted">Pegá una URL directa o la URL de una página. El Resolver detecta automáticamente el iframe del reproductor, incluso si cambia de URL o hay varios saltos, y busca HLS, DASH o MP4; si hace falta, también dispone de análisis dinámico.</p></div><span class="badge">TEST</span></div>
           <div class="resolver-form"><label>URL de la página<input id="resolverUrl" type="url" placeholder="https://www.enlace.org/envivo/"></label><button id="resolverBtn" class="primary" type="button">ANALIZAR PÁGINA</button><button id="resolverDynamicBtn" class="ghost" type="button">ANÁLISIS DINÁMICO</button></div>
           <div class="muted tiny">El modo dinámico abre un navegador limpio por unos segundos y observa solo solicitudes públicas. No inicia sesión ni intenta saltar DRM o controles de acceso.</div>
-          <div id="resolverMsg" class="msg"></div><div id="resolverResults" class="resolver-results"></div><div class="resolver-box resolver-published-box"><h4>Canales agregados desde Resolver</h4><p class="muted small">Podés enviarlos a TV1 o TV2 y quitarlos después sin afectar los demás canales.</p><div id="resolverPublished"></div></div>
+          <div id="resolverMsg" class="msg"></div><div id="resolverResults" class="resolver-results"></div>
+          <div class="resolver-box rescue-resolver-box"><div class="card-head"><div><h4>COCHI RESCUE · prueba independiente</h4><p class="muted small">Configuración privada del backend. Todos los campos son editables. Esta prueba no modifica TV1/TV2 actuales.</p></div><span class="badge">AISLADO</span></div>
+            <div class="rescue-grid">
+              <label>Nombre<input id="rescueName" placeholder="AmericaTV"></label><label>Código<input id="rescueCode" placeholder="c3eds"></label><label>Tipo<input id="rescueType" value="MPD con ClearKey"></label>
+              <label class="wide">URL resolver<input id="rescueResolverUrl" type="url" placeholder="https://..."></label><label class="wide">Plantilla<input id="rescueTemplate" value="{token}/live/{codigo}/{nombre}/{ruta}/{archivo}"></label>
+              <label>Ruta<input id="rescueRoute" value="SA_Live_dash_enc"></label><label>Archivo<input id="rescueFile" value="{nombre}.mpd"></label><label>Intervalo (min)<input id="rescueInterval" type="number" min="1" max="1440" value="5"></label>
+              <label class="wide">Headers opcionales<textarea id="rescueHeaders" rows="3" placeholder="Referer: https://...
+User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueEnabled" type="checkbox" checked> Automático activo</label>
+            </div><input id="rescueEditId" type="hidden"><div class="resolver-actions"><button id="rescueSaveBtn" class="primary" type="button">GUARDAR CANAL</button><button id="rescueCancelBtn" class="ghost" type="button">NUEVO / LIMPIAR</button></div><div id="rescueMsg" class="msg"></div><div id="rescueList"></div>
+          </div>
+          <div class="resolver-box resolver-published-box"><h4>Canales agregados desde Resolver</h4><p class="muted small">Podés enviarlos a TV1 o TV2 y quitarlos después sin afectar los demás canales.</p><div id="resolverPublished"></div></div>
         </div>
       </section>
 
