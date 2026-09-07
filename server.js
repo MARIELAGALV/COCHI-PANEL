@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.89';
+const VERSION = '0.9.90';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -64,29 +64,36 @@ function privateMediaIdFromUrl(raw){
   }catch(_){return ''}
 }
 
-async function issuePrivateMediaUrl(mediaId){
+async function issuePrivateMediaUrl(sourceUrl){
   if(!MEDIA_ISSUER_KEY)throw new Error('MEDIA_ISSUER_KEY no configurada en el PANEL');
   if(!COCHI_PRIVATE_MEDIA_WORKER_URL)throw new Error('Worker privado no configurado');
-  if(!/^[a-z0-9_-]{1,120}$/.test(mediaId))throw new Error('ID privado inválido');
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+  const source=String(sourceUrl||'').trim();
+  let parsed;
+  try{parsed=new URL(source)}catch(_){throw new Error('URL privada inválida')}
+  if(parsed.protocol!=='https:'||parsed.host.toLowerCase()!=='github.com'||!/\/releases\/download\//i.test(parsed.pathname))
+    throw new Error('Solo se admiten assets de GitHub Releases');
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
   try{
-    const r=await fetch(`${COCHI_PRIVATE_MEDIA_WORKER_URL}/issue/${encodeURIComponent(mediaId)}?ttl=21600`,{
-      method:'GET',redirect:'follow',signal:ctl.signal,
+    const r=await fetch(`${COCHI_PRIVATE_MEDIA_WORKER_URL}/cochi/issue`,{
+      method:'POST',redirect:'follow',signal:ctl.signal,
       headers:{
         'Authorization':`Bearer ${MEDIA_ISSUER_KEY}`,
         'Accept':'application/json',
+        'Content-Type':'application/json',
         'Cache-Control':'no-store',
         'User-Agent':`CO-CHI-PANEL/${VERSION}`
-      }
+      },
+      body:JSON.stringify({url:source,ttl:21600})
     });
     const text=await r.text();
-    if(!r.ok)throw new Error(`Worker privado HTTP ${r.status}`);
+    if(!r.ok)throw new Error(`Worker privado HTTP ${r.status}: ${text.slice(0,120)}`);
     let payload;try{payload=JSON.parse(text)}catch(_){throw new Error('Respuesta inválida del Worker privado')}
     const url=String(payload?.url||'').trim();
     if(!/^https:\/\//i.test(url))throw new Error('Worker no devolvió URL firmada');
     return {url,expires:Number(payload?.expires||0)||null};
   }finally{clearTimeout(timer)}
 }
+
 
 
 // v0.9.52 — Proveedores de reproducción autorizados y reemplazables sin recompilar la APK.
@@ -2118,7 +2125,7 @@ async function route(req,res){
     const mediaId=privateMediaIdFromUrl(sourceUrl);
     if(!mediaId)return sendJson(res,400,{error:'Medio privado no reconocido'});
     try{
-      const issued=await issuePrivateMediaUrl(mediaId);
+      const issued=await issuePrivateMediaUrl(sourceUrl);
       return sendJson(res,200,{ok:true,id:mediaId,url:issued.url,expires:issued.expires});
     }catch(e){
       console.warn('[PRIVATE-MEDIA]',mediaId,e.message);
