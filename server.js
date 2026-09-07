@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.88';
+const VERSION = '0.9.89';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -36,6 +36,57 @@ const TMDB_API_BASE = 'https://api.themoviedb.org/3';
 const TMDB_API_KEY = String(process.env.TMDB_API_KEY || '').trim();
 const TMDB_READ_TOKEN = String(process.env.TMDB_READ_TOKEN || '').trim();
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+// v0.9.89 — Emisión de URLs temporales para Películas/Series privadas.
+// MEDIA_ISSUER_KEY vive únicamente en Railway/PANEL y nunca se entrega a la APK.
+const COCHI_PRIVATE_MEDIA_WORKER_URL = String(
+  process.env.COCHI_PRIVATE_MEDIA_WORKER_URL ||
+  'https://frosty-disk-8ae6.lacosadelatv.workers.dev'
+).trim().replace(/\/+$/,'');
+const MEDIA_ISSUER_KEY = String(process.env.MEDIA_ISSUER_KEY || '').trim();
+
+function privateMediaIdFromUrl(raw){
+  const value=String(raw||'').trim();
+  const custom=value.match(/^cochi-private:\/\/([A-Za-z0-9_-]{1,120})$/i);
+  if(custom)return custom[1].toLowerCase();
+  try{
+    const parsed=new URL(value);
+    const workerHost=(()=>{try{return new URL(COCHI_PRIVATE_MEDIA_WORKER_URL).host.toLowerCase()}catch(_){return ''}})();
+    if(parsed.host.toLowerCase()===workerHost){
+      const m=parsed.pathname.match(/^\/movie\/([A-Za-z0-9_-]{1,120})$/i);
+      if(m)return m[1].toLowerCase();
+    }
+    if(parsed.protocol!=='https:'||parsed.host.toLowerCase()!=='github.com')return '';
+    if(!/\/releases\/download\//i.test(parsed.pathname))return '';
+    const file=decodeURIComponent(parsed.pathname.split('/').pop()||'');
+    const stem=file.replace(/\.[A-Za-z0-9]{1,8}$/,'').trim();
+    return /^[A-Za-z0-9_-]{1,120}$/.test(stem)?stem.toLowerCase():'';
+  }catch(_){return ''}
+}
+
+async function issuePrivateMediaUrl(mediaId){
+  if(!MEDIA_ISSUER_KEY)throw new Error('MEDIA_ISSUER_KEY no configurada en el PANEL');
+  if(!COCHI_PRIVATE_MEDIA_WORKER_URL)throw new Error('Worker privado no configurado');
+  if(!/^[a-z0-9_-]{1,120}$/.test(mediaId))throw new Error('ID privado inválido');
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+  try{
+    const r=await fetch(`${COCHI_PRIVATE_MEDIA_WORKER_URL}/issue/${encodeURIComponent(mediaId)}?ttl=21600`,{
+      method:'GET',redirect:'follow',signal:ctl.signal,
+      headers:{
+        'Authorization':`Bearer ${MEDIA_ISSUER_KEY}`,
+        'Accept':'application/json',
+        'Cache-Control':'no-store',
+        'User-Agent':`CO-CHI-PANEL/${VERSION}`
+      }
+    });
+    const text=await r.text();
+    if(!r.ok)throw new Error(`Worker privado HTTP ${r.status}`);
+    let payload;try{payload=JSON.parse(text)}catch(_){throw new Error('Respuesta inválida del Worker privado')}
+    const url=String(payload?.url||'').trim();
+    if(!/^https:\/\//i.test(url))throw new Error('Worker no devolvió URL firmada');
+    return {url,expires:Number(payload?.expires||0)||null};
+  }finally{clearTimeout(timer)}
+}
 
 
 // v0.9.52 — Proveedores de reproducción autorizados y reemplazables sin recompilar la APK.
@@ -2053,6 +2104,26 @@ async function route(req,res){
     const r=db.prepare('INSERT INTO accounts(name,role_level,parent_id,contact,notes,credits,active,inactivity_blocked,activation_code,created_at,updated_at) VALUES (?,1,NULL,?,?,0,1,0,?,?,?)')
       .run(name,String(b.contact||'').trim(),String(b.notes||'').trim(),code,t,t);
     return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,role:'ADMINISTRACIÓN'});
+  }
+
+  // v0.9.89 — URL firmada para medios privados. La sesión del dispositivo
+  // se valida antes de hablar con el Worker y la clave de emisión nunca sale del servidor.
+  if(p==='/api/client-device/media-signed-url'&&m==='POST'){
+    if(!rateLimit(req,res,'client_private_media_signed_url',240,10*60*1000))return;
+    let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});
+    d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);
+    if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const b=await readJson(req),sourceUrl=String(b?.url||'').trim();
+    if(!sourceUrl||sourceUrl.length>2048)return sendJson(res,400,{error:'URL de medio inválida'});
+    const mediaId=privateMediaIdFromUrl(sourceUrl);
+    if(!mediaId)return sendJson(res,400,{error:'Medio privado no reconocido'});
+    try{
+      const issued=await issuePrivateMediaUrl(mediaId);
+      return sendJson(res,200,{ok:true,id:mediaId,url:issued.url,expires:issued.expires});
+    }catch(e){
+      console.warn('[PRIVATE-MEDIA]',mediaId,e.message);
+      return sendJson(res,503,{error:'No se pudo autorizar la reproducción privada'});
+    }
   }
 
   // v0.9.54 — buscador unificado: catálogos remotos + catálogo CO-CHI + TMDb opcional.
