@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.90';
+const VERSION = '0.9.91';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -47,20 +47,20 @@ const MEDIA_ISSUER_KEY = String(process.env.MEDIA_ISSUER_KEY || '').trim();
 
 function privateMediaIdFromUrl(raw){
   const value=String(raw||'').trim();
-  const custom=value.match(/^cochi-private:\/\/([A-Za-z0-9_-]{1,120})$/i);
+  const custom=value.match(/^cochi-private:\/\/([A-Za-z0-9_.-]{1,180})$/i);
   if(custom)return custom[1].toLowerCase();
   try{
     const parsed=new URL(value);
     const workerHost=(()=>{try{return new URL(COCHI_PRIVATE_MEDIA_WORKER_URL).host.toLowerCase()}catch(_){return ''}})();
     if(parsed.host.toLowerCase()===workerHost){
-      const m=parsed.pathname.match(/^\/movie\/([A-Za-z0-9_-]{1,120})$/i);
+      const m=parsed.pathname.match(/^\/movie\/([A-Za-z0-9_.-]{1,180})$/i);
       if(m)return m[1].toLowerCase();
     }
     if(parsed.protocol!=='https:'||parsed.host.toLowerCase()!=='github.com')return '';
     if(!/\/releases\/download\//i.test(parsed.pathname))return '';
     const file=decodeURIComponent(parsed.pathname.split('/').pop()||'');
     const stem=file.replace(/\.[A-Za-z0-9]{1,8}$/,'').trim();
-    return /^[A-Za-z0-9_-]{1,120}$/.test(stem)?stem.toLowerCase():'';
+    return /^[A-Za-z0-9_.-]{1,180}$/.test(stem)?stem.toLowerCase():'';
   }catch(_){return ''}
 }
 
