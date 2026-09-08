@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.101</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.102</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -328,7 +328,7 @@
             <div class="rescue-grid">
               <label>Nombre<input id="rescueName" placeholder="AmericaTV"></label><label>Código<input id="rescueCode" placeholder="c3eds"></label><label>Tipo<input id="rescueType" value="MPD con ClearKey"></label>
               <label class="wide">URL resolver<input id="rescueResolverUrl" type="url" placeholder="https://..."></label><label class="wide">Plantilla<input id="rescueTemplate" value="{token}/live/{codigo}/{nombre}/{ruta}/{archivo}"></label>
-              <label>Modo de resolución<select id="rescueMode"><option value="REMOTE" selected>RESCUE REMOTO (RECOMENDADO)</option><option value="HTTP">HTTP / FETCH DEL PANEL</option><option value="BROWSER">NAVEGADOR / CHROMIUM DEL PANEL</option></select></label><label>Ruta<input id="rescueRoute" value="SA_Live_dash_enc"></label><label>Archivo<input id="rescueFile" value="{nombre}.mpd"></label><label>Intervalo automático (min)<input id="rescueInterval" type="number" min="1" max="1440" value="5"></label><label>Intentos por ronda<input id="rescueRetryCount" type="number" min="1" max="20" value="5"></label><label>Espera entre intentos (seg)<input id="rescueRetryDelay" type="number" min="0" max="60" value="1"></label><label>Timeout por intento (seg)<input id="rescueTimeout" type="number" min="3" max="60" value="10"></label>
+              <label>Modo de resolución<select id="rescueMode"><option value="DIRECT" selected>DIRECTO 302 DEL PANEL (RECOMENDADO)</option><option value="REMOTE">DIRECTO 302 + RESCUE REMOTO (RESPALDO)</option><option value="HTTP">DIRECTO 302 + HTTP (RESPALDO)</option><option value="BROWSER">DIRECTO 302 + NAVEGADOR (RESPALDO)</option></select></label><label>Ruta<input id="rescueRoute" value="SA_Live_dash_enc"></label><label>Archivo<input id="rescueFile" value="{nombre}.mpd"></label><label>Intervalo automático (min)<input id="rescueInterval" type="number" min="1" max="1440" value="5"></label><label>Intentos por ronda<input id="rescueRetryCount" type="number" min="1" max="20" value="5"></label><label>Espera entre intentos (seg)<input id="rescueRetryDelay" type="number" min="0" max="60" value="1"></label><label>Timeout por intento (seg)<input id="rescueTimeout" type="number" min="3" max="60" value="10"></label>
               <label class="wide">Headers opcionales<textarea id="rescueHeaders" rows="3" placeholder="Referer: https://...
 User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueEnabled" type="checkbox" checked> Automático activo</label>
             </div><input id="rescueEditId" type="hidden"><div class="resolver-actions"><button id="rescueSaveBtn" class="primary" type="button">GUARDAR CANAL</button><button id="rescueCancelBtn" class="ghost" type="button">NUEVO / LIMPIAR</button></div><div id="rescueMsg" class="msg"></div><div id="rescueList"></div>

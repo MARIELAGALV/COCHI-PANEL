@@ -1,13 +1,16 @@
 'use strict';
 
 const http = require('node:http');
+const https = require('node:https');
+const dns = require('node:dns');
+const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.101';
+const VERSION = '0.9.102';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1623,13 +1626,64 @@ function rescueFinalMatchesCode(finalUrl,code){
   if(!s.includes('/live/'))return false;
   return !c||s.includes('/live/'+c+'/');
 }
+// v0.9.102 — captura directa del PRIMER 301/302 desde el propio PANEL.
+// No sigue el Location: así puede obtener /tok_.../ aunque el host edge del destino
+// no resuelva por DNS. Replica el método validado manualmente con curl/Python.
+const RESCUE_DIRECT_DNS_SERVERS=String(process.env.COCHI_RESCUE_DNS_SERVERS||process.env.RESCUE_DNS_SERVERS||'').split(',').map(x=>x.trim()).filter(Boolean);
+const rescueDirectResolver=new dns.Resolver();
+if(RESCUE_DIRECT_DNS_SERVERS.length){try{rescueDirectResolver.setServers(RESCUE_DIRECT_DNS_SERVERS)}catch{}}
+function rescuePrivateIp(ip){
+  if(net.isIP(ip)===4){const p=ip.split('.').map(Number);return p[0]===10||p[0]===127||p[0]===0||(p[0]===169&&p[1]===254)||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===192&&p[1]===168)||p[0]>=224}
+  const x=String(ip||'').toLowerCase();return x==='::1'||x==='::'||x.startsWith('fc')||x.startsWith('fd')||x.startsWith('fe8')||x.startsWith('fe9')||x.startsWith('fea')||x.startsWith('feb')||x.startsWith('::ffff:127.')||x.startsWith('::ffff:10.')||x.startsWith('::ffff:192.168.');
+}
+async function rescueResolveHost4(hostname){
+  if(net.isIP(hostname)===4)return [hostname];
+  if(net.isIP(hostname)===6)throw new Error('IPv6 directo no admitido por RESCUE DIRECTO');
+  const fn=RESCUE_DIRECT_DNS_SERVERS.length
+    ? cb=>rescueDirectResolver.resolve4(hostname,cb)
+    : cb=>dns.resolve4(hostname,cb);
+  return await new Promise((resolve,reject)=>fn((err,addrs)=>err?reject(err):resolve(addrs||[])));
+}
+async function rescueRequestManual(rawUrl,headers={},timeoutSeconds=10){
+  const u=assertPublicHttpUrl(rawUrl);
+  if(u.username||u.password)throw new Error('No se permiten credenciales en URL');
+  const addresses=await rescueResolveHost4(u.hostname);
+  if(!addresses.length)throw new Error('DNS sin resultados');
+  for(const ip of addresses)if(rescuePrivateIp(ip))throw new Error('Destino privado/local no permitido');
+  const timeoutMs=Math.max(3,Math.min(60,Number(timeoutSeconds)||10))*1000;
+  const transport=u.protocol==='https:'?https:http;
+  const h={};for(const [k,v] of Object.entries(headers||{}))if(v&&!/^(host|connection|content-length|transfer-encoding|authorization|cookie)$/i.test(String(k)))h[String(k)]=String(v).slice(0,4000);
+  h['User-Agent']=h['User-Agent']||'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36';
+  h.Accept=h.Accept||'*/*';
+  return await new Promise((resolve,reject)=>{
+    let settled=false;
+    const lookup=(hostname,opts,cb)=>rescueResolveHost4(hostname).then(a=>a[0]?cb(null,a[0],4):cb(new Error('DNS sin IPv4'))).catch(cb);
+    const req=transport.request({protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:'GET',headers:h,lookup,family:4,servername:u.hostname,timeout:timeoutMs,agent:false},res=>{
+      // No hace falta descargar el MPD: solo necesitamos status + Location.
+      const location=Array.isArray(res.headers.location)?res.headers.location[0]:(res.headers.location||'');
+      res.resume();
+      res.on('end',()=>{if(settled)return;settled=true;resolve({status:res.statusCode||0,location:String(location||''),addresses})});
+    });
+    req.on('timeout',()=>req.destroy(Object.assign(new Error('Timeout'),{code:'ETIMEDOUT'})));
+    req.on('error',e=>{if(settled)return;settled=true;reject(e)});
+    req.end();
+  });
+}
+async function rescueCaptureFirstLocation(rawUrl,headers={},timeoutSeconds=10){
+  const started=Date.now();
+  try{
+    const r=await rescueRequestManual(rawUrl,headers,timeoutSeconds);
+    let next='';if(r.location){try{next=new URL(r.location,rawUrl).href}catch{next=r.location}}
+    const captured=Boolean(next&&/\/tok_[^/]+\//i.test(next));
+    return {status:r.status,ok:captured,finalUrl:captured?next:null,error:captured?'':(r.location?'El primer Location no contiene /tok_/':'La primera respuesta no incluyó Location'),elapsedMs:Date.now()-started,direct302:true,location:next||r.location||'',resolvedIPv4:r.addresses||[]};
+  }catch(e){return {status:null,ok:false,finalUrl:null,error:String(e?.message||e),elapsedMs:Date.now()-started,direct302:true}}
+}
 async function rescueFollowRedirect(rawUrl,headers={},timeoutSeconds=10){
   assertPublicHttpUrl(rawUrl);
   const ctl=new AbortController(),timeoutMs=Math.max(3,Math.min(60,Number(timeoutSeconds)||10))*1000,timer=setTimeout(()=>ctl.abort(),timeoutMs);
   const started=Date.now();
   try{
     const h={};for(const [k,v] of Object.entries(headers||{}))if(v)h[String(k)]=String(v).slice(0,1000);
-    // Copia el comportamiento del script local: User-Agent y redirect follow, sin Range forzado.
     h['User-Agent']=h['User-Agent']||'Mozilla/5.0 (Node.js Redirect Checker)';
     const r=await fetch(rawUrl,{method:'GET',headers:h,redirect:'follow',signal:ctl.signal});
     try{if(r.body)await r.body.cancel()}catch{}
@@ -1683,24 +1737,38 @@ async function runRescueResolverChannel(id){
   const retryCount=Math.max(1,Math.min(20,Number(row.retry_count)||5));
   const retryDelaySeconds=Math.max(0,Math.min(60,Number(row.retry_delay_seconds)||1));
   const timeoutSeconds=Math.max(3,Math.min(60,Number(row.timeout_seconds)||10));
-  const requestedMode=String(row.resolver_mode||'HTTP').toUpperCase();
-  const mode=['HTTP','BROWSER','REMOTE'].includes(requestedMode)?requestedMode:'HTTP';
+  const requestedMode=String(row.resolver_mode||'DIRECT').toUpperCase();
+  const mode=['DIRECT','HTTP','BROWSER','REMOTE'].includes(requestedMode)?requestedMode:'DIRECT';
   const attempts=[];let winner=null;
   for(let round=1;round<=retryCount;round++){
-    const rr=mode==='REMOTE'?await rescueFollowRemote(row.resolver_url,headers,timeoutSeconds):mode==='BROWSER'?await rescueFollowBrowser(row.resolver_url,headers,timeoutSeconds):await rescueFollowRedirect(row.resolver_url,headers,timeoutSeconds);
-    const base=rr.finalUrl?rescueExtractBase(rr.finalUrl):'';
-    const matchesCode=rr.finalUrl?rescueFinalMatchesCode(rr.finalUrl,row.code):false;
-    const changed=rr.finalUrl?rescueUrlChanged(row.resolver_url,rr.finalUrl):false;
-    // Una redirección que llega a /live/<codigo>/ sirve aunque el recurso final responda 400/404/503,
-    // igual que el script local. Si no hubo redirección, solo aceptamos una respuesta 2xx.
-    const valid=Boolean(base&&matchesCode&&(changed||rr.ok));
-    attempts.push({round,mode,status:rr.status,finalUrl:rr.finalUrl||'',base,error:rr.error||'',elapsedMs:rr.elapsedMs,changed,valid});
+    // SIEMPRE primero: captura directa del 302 Location desde este mismo PANEL.
+    let rr=await rescueCaptureFirstLocation(row.resolver_url,headers,timeoutSeconds);
+    let usedMode='DIRECT_302';
+    let base=rr.finalUrl?rescueExtractBase(rr.finalUrl):'';
+    let matchesCode=rr.finalUrl?rescueFinalMatchesCode(rr.finalUrl,row.code):false;
+    let changed=rr.finalUrl?rescueUrlChanged(row.resolver_url,rr.finalUrl):false;
+    let valid=Boolean(base&&matchesCode&&changed&&rr.ok);
+
+    // Respaldo opcional: solo se usa si el primer Location no produjo una URL válida.
+    if(!valid&&mode!=='DIRECT'){
+      const directError=rr.error||'';
+      const fallback=mode==='REMOTE'?await rescueFollowRemote(row.resolver_url,headers,timeoutSeconds):mode==='BROWSER'?await rescueFollowBrowser(row.resolver_url,headers,timeoutSeconds):await rescueFollowRedirect(row.resolver_url,headers,timeoutSeconds);
+      rr=fallback;usedMode='DIRECT_302→'+mode;
+      base=rr.finalUrl?rescueExtractBase(rr.finalUrl):'';
+      matchesCode=rr.finalUrl?rescueFinalMatchesCode(rr.finalUrl,row.code):false;
+      changed=rr.finalUrl?rescueUrlChanged(row.resolver_url,rr.finalUrl):false;
+      valid=Boolean(base&&matchesCode&&(changed||rr.ok));
+      if(!valid&&directError)rr.error=`DIRECT 302: ${directError}${rr.error?` | ${mode}: ${rr.error}`:''}`;
+    }
+    attempts.push({round,mode:usedMode,status:rr.status,finalUrl:rr.finalUrl||'',base,error:rr.error||'',elapsedMs:rr.elapsedMs,changed,valid});
     if(valid){winner={rr,base};break}
     if(round<retryCount&&retryDelaySeconds>0)await new Promise(r=>setTimeout(r,retryDelaySeconds*1000));
   }
   const t=nowIso(),attemptsJson=JSON.stringify(attempts).slice(0,20000);
   if(winner){
-    const generated=rescueApplyTemplate(row,winner.base);assertPublicHttpUrl(generated);
+    // Si vino del 302 directo, usamos el Location COMPLETO tal como lo entregó el origen.
+    // Esto conserva también la ruta dinámica posterior a /live/ (no solo el prefijo /tok_...).
+    const generated=winner.rr.direct302&&winner.rr.finalUrl?winner.rr.finalUrl:rescueApplyTemplate(row,winner.base);assertPublicHttpUrl(generated);
     db.prepare(`UPDATE rescue_resolver_channels SET current_base=?,last_good_base=?,generated_url=?,last_final_url=?,last_status='OK',last_http=?,last_error='',last_attempts_json=?,last_run_at=?,updated_at=? WHERE id=?`).run(winner.base,winner.base,generated,winner.rr.finalUrl,winner.rr.status,attemptsJson,t,t,row.id);
   }else{
     const lastGood=String(row.last_good_base||''),generated=lastGood?rescueApplyTemplate(row,lastGood):String(row.generated_url||'');
@@ -2728,7 +2796,7 @@ async function route(req,res){
       try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
       const template=String(b.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').trim(),routePath=String(b.routePath||'SA_Live_dash_enc').trim(),fileName=String(b.fileName||'{nombre}.mpd').trim();
       const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds)||10));const t=nowIso();
-      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,retry_count,retry_delay_seconds,timeout_seconds,resolver_mode,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,retryCount,retryDelay,timeoutSeconds,(['HTTP','BROWSER','REMOTE'].includes(String(b.resolverMode||'HTTP').toUpperCase())?String(b.resolverMode||'HTTP').toUpperCase():'HTTP'),t,t);
+      const r=db.prepare(`INSERT INTO rescue_resolver_channels(name,code,stream_type,resolver_url,template,route_path,file_name,headers_json,enabled,interval_minutes,retry_count,retry_delay_seconds,timeout_seconds,resolver_mode,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(name,code,String(b.streamType||'MPD').trim(),resolverUrl,template,routePath,fileName,JSON.stringify(headers),b.enabled===false?0:1,interval,retryCount,retryDelay,timeoutSeconds,(['DIRECT','HTTP','BROWSER','REMOTE'].includes(String(b.resolverMode||'DIRECT').toUpperCase())?String(b.resolverMode||'DIRECT').toUpperCase():'DIRECT'),t,t);
       audit(actor.id,'rescue_resolver_created','resolver',Number(r.lastInsertRowid),`${name};${code}`);return sendJson(res,201,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(Number(r.lastInsertRowid)))});
     }
     const rescueItem=p.match(/^\/api\/admin\/rescue-resolver\/channels\/(\d+)$/);
@@ -2736,7 +2804,7 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede gestionar COCHI RESCUE'});const id=Number(rescueItem[1]),old=db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id);if(!old)return sendJson(res,404,{error:'Canal no encontrado'});const b=await readJson(req);
       const name=String(b.name??old.name).trim(),code=String(b.code??old.code).trim(),resolverUrl=String(b.resolverUrl??old.resolver_url).trim();try{assertPublicHttpUrl(resolverUrl)}catch(e){return sendJson(res,400,{error:e.message})}
       const headers=b.headers&&typeof b.headers==='object'?b.headers:(()=>{try{return JSON.parse(old.headers_json||'{}')}catch{return {}}})();const interval=Math.max(1,Math.min(1440,Number(b.intervalMinutes??old.interval_minutes)||5)),retryCount=Math.max(1,Math.min(20,Number(b.retryCount??old.retry_count)||5)),retryDelay=Math.max(0,Math.min(60,Number(b.retryDelaySeconds??old.retry_delay_seconds)??1)),timeoutSeconds=Math.max(3,Math.min(60,Number(b.timeoutSeconds??old.timeout_seconds)||10));const t=nowIso();
-      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,retry_count=?,retry_delay_seconds=?,timeout_seconds=?,resolver_mode=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,retryCount,retryDelay,timeoutSeconds,(['HTTP','BROWSER','REMOTE'].includes(String(b.resolverMode??old.resolver_mode??'HTTP').toUpperCase())?String(b.resolverMode??old.resolver_mode??'HTTP').toUpperCase():'HTTP'),t,id);
+      db.prepare(`UPDATE rescue_resolver_channels SET name=?,code=?,stream_type=?,resolver_url=?,template=?,route_path=?,file_name=?,headers_json=?,enabled=?,interval_minutes=?,retry_count=?,retry_delay_seconds=?,timeout_seconds=?,resolver_mode=?,updated_at=? WHERE id=?`).run(name,code,String(b.streamType??old.stream_type),resolverUrl,String(b.template??old.template),String(b.routePath??old.route_path),String(b.fileName??old.file_name),JSON.stringify(headers),b.enabled===undefined?old.enabled:(b.enabled?1:0),interval,retryCount,retryDelay,timeoutSeconds,(['DIRECT','HTTP','BROWSER','REMOTE'].includes(String(b.resolverMode??old.resolver_mode??'DIRECT').toUpperCase())?String(b.resolverMode??old.resolver_mode??'DIRECT').toUpperCase():'DIRECT'),t,id);
       audit(actor.id,'rescue_resolver_updated','resolver',id,`${name};${code}`);return sendJson(res,200,{ok:true,item:rescueResolverRow(db.prepare('SELECT * FROM rescue_resolver_channels WHERE id=?').get(id))});
     }
     if(rescueItem&&m==='DELETE'){
