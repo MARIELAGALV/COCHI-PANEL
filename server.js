@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.98';
+const VERSION = '0.9.99';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1840,12 +1840,12 @@ function publishOnlyEditable(key,json,actorId,action='content_published_to_app_o
 async function saveOriginalAndPublish(key,json,actorId,action='content_saved_original_and_published'){const saved=await saveEditableToOriginalSource(key,json);const published=encodePublishedContent(key,json),t=nowIso();db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,t,key);db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key};${saved.remote.kind};${saved.remote.owner}/${saved.remote.repo}; hidden=${published.hidden}`);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e}return {stats:{...saved.stats,publishedItems:published.stats.items,hiddenItems:published.hidden},remote:saved.remote};}
 function resolverPublishedEntries(){const out=[];for(const key of ['tv1','tv2']){let json=[];try{json=loadManagedEditable(key)}catch{}json.forEach((g,gi)=>(Array.isArray(g?.samples)?g.samples:[]).forEach((x,si)=>{if(x?._resolverId)out.push({id:x._resolverId,destination:key,category:g.name||'',name:x.name||'',uri:x.uri||'',type:x._resolverType||'',pageUrl:x._resolverPage||'',groupIndex:gi,itemIndex:si})}));}return out;}
 
-function mime(fp){return ({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.webmanifest':'application/manifest+json; charset=utf-8'})[path.extname(fp).toLowerCase()]||'application/octet-stream';}
+function mime(fp){return ({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.apng':'image/apng','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.bmp':'image/bmp','.ico':'image/x-icon','.avif':'image/avif','.webmanifest':'application/manifest+json; charset=utf-8'})[path.extname(fp).toLowerCase()]||'application/octet-stream';}
 function serveStatic(res,urlObj){
   let rel=decodeURIComponent(urlObj.pathname);if(rel==='/')rel='/index.html';
   const fp=path.join(PUBLIC_DIR,path.normalize(rel).replace(/^(\.\.[/\\])+/,''));
   if(!fp.startsWith(PUBLIC_DIR)||!fs.existsSync(fp)||!fs.statSync(fp).isFile())return sendText(res,404,'No encontrado');
-  const csp="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+  const csp="default-src 'self'; img-src 'self' data: blob: https: http:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
   res.writeHead(200,{'Content-Type':mime(fp),'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','Content-Security-Policy':csp,'X-Frame-Options':'DENY','X-Content-Type-Options':'nosniff','Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()',...(TRUST_PROXY_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{})});
   res.end(fs.readFileSync(fp));
 }
@@ -2246,6 +2246,22 @@ function mediaLanguageRank(option){
   if(!l)return 5;return 4;
 }
 
+function sniffImageMime(buffer,declared=''){
+  const d=String(declared||'').split(';')[0].trim().toLowerCase();
+  if(d.startsWith('image/'))return d;
+  const b=Buffer.isBuffer(buffer)?buffer:Buffer.from(buffer||[]);
+  if(b.length>=8&&b.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])))return 'image/png';
+  if(b.length>=3&&b[0]===0xff&&b[1]===0xd8&&b[2]===0xff)return 'image/jpeg';
+  if(b.length>=6&&['GIF87a','GIF89a'].includes(b.subarray(0,6).toString('ascii')))return 'image/gif';
+  if(b.length>=12&&b.subarray(0,4).toString('ascii')==='RIFF'&&b.subarray(8,12).toString('ascii')==='WEBP')return 'image/webp';
+  if(b.length>=2&&b.subarray(0,2).toString('ascii')==='BM')return 'image/bmp';
+  if(b.length>=4&&b[0]===0&&b[1]===0&&b[2]===1&&b[3]===0)return 'image/x-icon';
+  if(b.length>=12&&b.subarray(4,8).toString('ascii')==='ftyp'&&['avif','avis'].includes(b.subarray(8,12).toString('ascii')))return 'image/avif';
+  const head=b.subarray(0,2048).toString('utf8').replace(/^\uFEFF/,'').trimStart();
+  if(/^<svg[\s>]/i.test(head)||(/^<\?xml/i.test(head)&&/<svg[\s>]/i.test(head)))return 'image/svg+xml';
+  return '';
+}
+
 async function route(req,res){
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const p=u.pathname,m=req.method||'GET';
   if(m==='POST'&&['/api/setup','/api/panel/activate','/api/panel/session','/api/client-device/register','/api/client-device/status','/api/client-device/session','/api/client-device/adult/verify'].includes(p)){
@@ -2575,6 +2591,26 @@ async function route(req,res){
 
   if(p.startsWith('/api/admin/')){
     const s=requirePanel(req,res);if(!s)return;const actor=accountPublic(accountRaw(s.account.id));
+
+    // v0.9.99 — vista previa robusta de logos remotos. Sirve como respaldo
+    // cuando un host bloquea hotlink, usa HTTP o no envía un Content-Type fiable.
+    if(p==='/api/admin/image-preview'&&m==='GET'){
+      const raw=String(u.searchParams.get('url')||'').trim();
+      let target;try{target=new URL(raw)}catch{return sendText(res,400,'URL de imagen inválida')}
+      if(!['http:','https:'].includes(target.protocol))return sendText(res,400,'Protocolo de imagen inválido');
+      const host=target.hostname.toLowerCase();
+      if(host==='localhost'||host.endsWith('.local')||host==='::1'||/^127\./.test(host)||/^10\./.test(host)||/^192\.168\./.test(host)||/^169\.254\./.test(host)||/^172\.(1[6-9]|2\d|3[01])\./.test(host))return sendText(res,403,'Host de imagen no permitido');
+      const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
+      try{
+        const rr=await fetch(target,{redirect:'follow',signal:ctl.signal,headers:{'User-Agent':`Mozilla/5.0 CO-CHI-PANEL/${VERSION}`,'Accept':'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
+        if(!rr.ok)return sendText(res,rr.status,'No se pudo cargar la imagen');
+        const len=Number(rr.headers.get('content-length')||0);if(len>12*1024*1024)return sendText(res,413,'Imagen demasiado grande');
+        const buf=Buffer.from(await rr.arrayBuffer());if(buf.length>12*1024*1024)return sendText(res,413,'Imagen demasiado grande');
+        const type=sniffImageMime(buf,rr.headers.get('content-type')||'');if(!type)return sendText(res,415,'Formato de imagen no reconocido');
+        res.writeHead(200,{'Content-Type':type,'Content-Length':buf.length,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'"});
+        return res.end(buf);
+      }catch(e){return sendText(res,502,'No se pudo obtener la imagen')}finally{clearTimeout(timer)}
+    }
 
     if(p==='/api/admin/home-banner'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
