@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.99</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.100</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -266,10 +266,33 @@
         <div class="neon-card panel-card sources-card"><div class="card-head"><div><h3>Fuentes privadas y salida protegida</h3><p class="muted">Configurá aquí los 4 orígenes reales. CO-CHI nunca recibe estas URLs: consume únicamente los endpoints protegidos del backend.</p></div><button id="saveSourcesBtn" class="primary">GUARDAR CAMBIOS</button></div><div id="sourcesList" class="sources-list"></div><div id="sourcesMsg" class="msg"></div></div>
 
         <div class="neon-card panel-card sources-card mt18">
-          <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Elegí qué aparece en el destacado grande de la portada. Puede ser una imagen o un video corto automático sin sonido.</p></div><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div>
+          <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Elegí qué aparece en el destacado grande de la portada. Ahora podés previsualizar y ajustar cada imagen antes de publicarla.</p></div><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div>
           <div class="source-row">
             <div class="source-head"><div class="source-title">Destacado administrable</div><label class="switch-row"><input id="homeBannerEnabled" type="checkbox"> Activado</label></div>
-            <div class="source-fields"><label>TIPO<select id="homeBannerType"><option value="image">Imagen fija</option><option value="video">Video automático / YouTube</option></select></label><label>URL DE IMAGEN / VIDEO / YOUTUBE<input id="homeBannerMediaUrl" type="url" placeholder="https://.../banner.jpg, promo.mp4, youtube.com/watch?v=... o youtu.be/..."></label></div>
+
+            <div class="home-banner-preview-wrap">
+              <div class="home-banner-preview-head"><div><b>VISTA PREVIA EN CO-CHI</b><span class="muted tiny">La proporción del destacado replica el banner de la pantalla principal.</span></div><div id="homeBannerPreviewSlots" class="home-banner-preview-slots" aria-label="Seleccionar imagen para vista previa"></div></div>
+              <div class="home-banner-live-preview">
+                <div class="home-banner-live-side"><b>CO-CHI</b><span>CUENTA ACTIVA</span><i>⌂ Inicio</i><i>▣ TV 1</i><i>▣ TV 2</i><i>Películas</i><i>Series</i></div>
+                <div class="home-banner-live-main">
+                  <div id="homeBannerPreviewHero" class="home-banner-live-hero">
+                    <img id="homeBannerPreviewImage" alt="Vista previa del banner" hidden>
+                    <div id="homeBannerPreviewVideo" class="home-banner-preview-video" hidden>VIDEO / YOUTUBE</div>
+                    <div id="homeBannerPreviewScrim" class="home-banner-live-scrim"></div>
+                    <div class="home-banner-live-copy">
+                      <span id="homeBannerPreviewEyebrow">DESTACADO</span>
+                      <strong id="homeBannerPreviewTitle">BANNER PRINCIPAL</strong>
+                      <small id="homeBannerPreviewMeta"></small>
+                      <p id="homeBannerPreviewDescription"></p>
+                      <div class="home-banner-live-buttons"><i id="homeBannerPreviewPrimary">Ver ahora</i><i id="homeBannerPreviewExplore">Explorar</i></div>
+                    </div>
+                  </div>
+                  <h4>Continuar viendo · 40%</h4><div class="home-banner-live-row"><i></i><i></i><i></i></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="source-fields"><label>TIPO<select id="homeBannerType"><option value="image">Imagen fija</option><option value="video">Video automático / YouTube</option></select></label><label>IMAGEN / VIDEO 1<div class="banner-url-edit-row"><input id="homeBannerMediaUrl" type="url" placeholder="https://.../banner.jpg, promo.mp4, youtube.com/watch?v=... o youtu.be/..."><button id="homeBannerAdjustPrimaryBtn" class="ghost banner-adjust-btn" type="button">AJUSTAR IMAGEN</button><span id="homeBannerAdjustedPrimary" class="badge off">ORIGINAL</span></div></label></div>
             <div class="source-fields"><label>IMAGEN DE RESPALDO (opcional)<input id="homeBannerFallback" type="url" placeholder="https://.../respaldo.jpg"></label><label>ETIQUETA<input id="homeBannerEyebrow" maxlength="60" placeholder="NUEVO ESTRENO"></label></div>
             <div class="source-fields"><label>TÍTULO<input id="homeBannerTitle" maxlength="120" placeholder="Nombre de la serie o promoción"></label><label>META / TEXTO CORTO<input id="homeBannerMeta" maxlength="120" placeholder="Nueva temporada · 2026"></label></div>
             <label>DESCRIPCIÓN<textarea id="homeBannerDescription" rows="3" maxlength="300" placeholder="Texto que aparecerá debajo del título"></textarea></label>

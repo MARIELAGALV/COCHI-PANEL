@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.99';
+const VERSION = '0.9.100';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -745,6 +745,19 @@ function normalizeHomeBanner(raw){
 }
 function homeBannerSetting(){
   try{return normalizeHomeBanner(JSON.parse(getSetting('home_banner_json','{}')))}catch{return normalizeHomeBanner({})}
+}
+function homeBannerRenderMeta(slot){
+  slot=Math.max(1,Math.min(10,Number(slot)||1));
+  try{const x=JSON.parse(getSetting(`home_banner_render_${slot}_meta`,'{}'));return x&&typeof x==='object'?x:{}}catch{return {}}
+}
+function homeBannerAdjustedSlots(){
+  const out={};for(let slot=1;slot<=10;slot++){const meta=homeBannerRenderMeta(slot);if(meta.sourceUrl&&Number(meta.bytes||0)>0)out[String(slot)]={sourceUrl:String(meta.sourceUrl),updatedAt:String(meta.updatedAt||''),transform:meta.transform||null};}return out;
+}
+function homeBannerForClient(req){
+  const b=homeBannerSetting(),base=publicBaseUrl(req),adjusted=homeBannerAdjustedSlots();
+  if(b.type==='image'&&adjusted['1']?.sourceUrl===b.mediaUrl)b.mediaUrl=`${base}/api/public/home-banner-image/1?v=${encodeURIComponent(adjusted['1'].updatedAt||VERSION)}`;
+  b.extraMediaUrls=(b.extraMediaUrls||[]).map((url,i)=>{const slot=String(i+2),a=adjusted[slot];return a?.sourceUrl===url?`${base}/api/public/home-banner-image/${slot}?v=${encodeURIComponent(a.updatedAt||VERSION)}`:url;});
+  return b;
 }
 
 function normalizeAppTheme(raw){
@@ -2576,7 +2589,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,client:{name:c.name,expiresAt:c.expires_at,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerSetting(),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,client:{name:c.name,expiresAt:c.expires_at,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -2589,10 +2602,22 @@ async function route(req,res){
     return sendJson(res,locked?423:401,{allowed:false,error:locked?'PIN bloqueado por intentos fallidos':'PIN incorrecto',reason:locked?'adult_pin_locked':'invalid_pin',attempts:fail,maxAttempts:adult.maxAttempts});
   }
 
+  // v0.9.100 — imagen de banner ya recortada/ajustada por el panel.
+  // Se sirve públicamente porque la URL solo se entrega a dispositivos autenticados
+  // dentro de su configuración y evita cualquier cambio en la APK.
+  if(/^\/api\/public\/home-banner-image\/\d+$/.test(p)&&m==='GET'){
+    const slot=Math.max(1,Math.min(10,Number(p.split('/').pop())||1)),meta=homeBannerRenderMeta(slot),data=getSetting(`home_banner_render_${slot}_data`,'');
+    if(!data||!meta?.mime)return sendText(res,404,'Imagen ajustada no disponible');
+    let buf;try{buf=Buffer.from(data,'base64')}catch{return sendText(res,500,'Imagen ajustada inválida')}
+    if(!buf.length)return sendText(res,404,'Imagen ajustada no disponible');
+    res.writeHead(200,{'Content-Type':String(meta.mime||'image/jpeg'),'Content-Length':buf.length,'Cache-Control':'public, max-age=86400, immutable','X-Content-Type-Options':'nosniff','Access-Control-Allow-Origin':'*'});return res.end(buf);
+  }
+
+
   if(p.startsWith('/api/admin/')){
     const s=requirePanel(req,res);if(!s)return;const actor=accountPublic(accountRaw(s.account.id));
 
-    // v0.9.99 — vista previa robusta de logos remotos. Sirve como respaldo
+    // v0.9.100 — vista previa robusta de logos remotos. Sirve como respaldo
     // cuando un host bloquea hotlink, usa HTTP o no envía un Content-Type fiable.
     if(p==='/api/admin/image-preview'&&m==='GET'){
       const raw=String(u.searchParams.get('url')||'').trim();
@@ -2612,9 +2637,23 @@ async function route(req,res){
       }catch(e){return sendText(res,502,'No se pudo obtener la imagen')}finally{clearTimeout(timer)}
     }
 
+    if(/^\/api\/admin\/home-banner\/image-adjustment\/\d+$/.test(p)&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
+      const slot=Math.max(1,Math.min(10,Number(p.split('/').pop())||1)),b=await readJson(req,5*1024*1024),sourceUrl=String(b.sourceUrl||'').trim().slice(0,2000),dataUrl=String(b.dataUrl||'');
+      if(!/^https?:\/\//i.test(sourceUrl))return sendJson(res,400,{error:'La imagen debe tener una URL HTTP/HTTPS válida'});
+      const mm=dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);if(!mm)return sendJson(res,400,{error:'Formato de imagen procesada inválido'});
+      let buf;try{buf=Buffer.from(mm[2],'base64')}catch{return sendJson(res,400,{error:'Imagen procesada inválida'})}
+      if(!buf.length||buf.length>3*1024*1024)return sendJson(res,413,{error:'La imagen ajustada supera el límite de 3 MB'});
+      const updatedAt=nowIso(),transform=b.transform&&typeof b.transform==='object'?b.transform:null,meta={sourceUrl,mime:mm[1].toLowerCase(),bytes:buf.length,updatedAt,transform};
+      setSetting(`home_banner_render_${slot}_data`,buf.toString('base64'));setSetting(`home_banner_render_${slot}_meta`,JSON.stringify(meta));audit(actor.id,'home_banner_image_adjusted','settings',null,`slot:${slot}:${buf.length}`);return sendJson(res,200,{ok:true,slot,adjustment:{sourceUrl,updatedAt,transform}});
+    }
+    if(/^\/api\/admin\/home-banner\/image-adjustment\/\d+$/.test(p)&&m==='DELETE'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
+      const slot=Math.max(1,Math.min(10,Number(p.split('/').pop())||1));setSetting(`home_banner_render_${slot}_data`,'');setSetting(`home_banner_render_${slot}_meta`,'{}');audit(actor.id,'home_banner_image_original','settings',null,`slot:${slot}`);return sendJson(res,200,{ok:true,slot});
+    }
     if(p==='/api/admin/home-banner'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
-      return sendJson(res,200,{banner:homeBannerSetting()});
+      return sendJson(res,200,{banner:homeBannerSetting(),adjustedSlots:homeBannerAdjustedSlots()});
     }
     if(p==='/api/admin/home-banner'&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
