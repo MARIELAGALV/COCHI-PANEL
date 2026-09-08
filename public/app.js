@@ -1043,7 +1043,25 @@ function editContentItem(groupIndex,itemIndex=null){
   const existingFirst=Array.isArray(cur.temp)&&cur.temp.length?cur.temp[0]:{name:'1',icon:cur.icon||'',uri:cur.uri||''};
   const streamType=String(cur.type||cur.tipo||'auto').toLowerCase();
   const drmScheme=String(cur.drm_scheme||'').toLowerCase();
-  const existingKeys=Array.isArray(cur.keys)?cur.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):(drmScheme==='clearkey'?String(cur.drm_license_url||''):'');
+  // v0.9.97: recuperar claves ClearKey tanto del formato moderno `keys`
+  // como del formato histórico que las guardaba en `drm_license_url`.
+  const normalizeStoredKeys=value=>{
+    const out=[],seen=new Set(),add=(kid,key)=>{kid=String(kid??'').trim();key=String(key??'').trim();if(!kid||!key)return;const sig=`${kid}:${key}`;if(seen.has(sig))return;seen.add(sig);out.push({kid,key});};
+    const walk=v=>{
+      if(Array.isArray(v)){v.forEach(walk);return;}
+      if(v&&typeof v==='object'){
+        if((v.kid??v.KID)!==undefined&&(v.key??v.KEY)!==undefined){add(v.kid??v.KID,v.key??v.KEY);return;}
+        for(const [k,val] of Object.entries(v)){if(val!==undefined&&val!==null&&typeof val!=='object')add(k,val);}
+        return;
+      }
+      const raw=String(v??'').trim();if(!raw||/^https?:\/\//i.test(raw))return;
+      if((raw.startsWith('{')&&raw.endsWith('}'))||(raw.startsWith('[')&&raw.endsWith(']'))){try{walk(JSON.parse(raw));return;}catch{}}
+      for(const part of raw.split(/[\r\n,;]+/)){const pair=part.trim();if(!pair)continue;const i=pair.indexOf(':');if(i<=0||i>=pair.length-1)continue;add(pair.slice(0,i),pair.slice(i+1));}
+    };
+    walk(value);return out;
+  };
+  const existingKeyPairs=normalizeStoredKeys(cur.keys);
+  if(!existingKeyPairs.length&&drmScheme==='clearkey')existingKeyPairs.push(...normalizeStoredKeys(cur.drm_license_url));
   const existingLicenseUrl=drmScheme==='widevine'?String(cur.drm_license_url||cur.license_url||''):'';
   const existingLicenseHeaders=(cur.drm_license_headers&&typeof cur.drm_license_headers==='object'?cur.drm_license_headers:(cur.license_headers&&typeof cur.license_headers==='object'?cur.license_headers:{}));
   const existingLicenseHeaderText=Object.entries(existingLicenseHeaders).map(([k,v])=>`${k}: ${v}`).join('\n');
@@ -1051,8 +1069,11 @@ function editContentItem(groupIndex,itemIndex=null){
   const cleanPlaybackHeadersObj=(primary={},legacy=null)=>{const out={};const merge=o=>{if(!o||typeof o!=='object'||Array.isArray(o))return;for(const [k,v] of Object.entries(o)){const lk=String(k).toLowerCase();if(['drm_scheme','drm_header','drm_headers','drm_license_url','drm_license_headers','license_url','license_headers','keys','key','kid'].includes(lk))continue;if(v===undefined||v===null||typeof v==='object')continue;const sv=String(v).trim();if(sv)out[k]=sv;}};merge(primary);if(Array.isArray(legacy))legacy.forEach(merge);else merge(legacy);return out;};
   const primaryPlaybackHeaders=cleanPlaybackHeadersObj(cur.headers,cur.drm_header||cur.drm_headers);
   const legacyBackups=Array.isArray(cur.backupUris)?cur.backupUris.map(x=>String(x||'').trim()).filter(Boolean):[];
-  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>({url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,x?.drm_header||x?.drm_headers),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:String(x?.drm_scheme||'').toLowerCase(),keys:Array.isArray(x?.keys)?x.keys:[],drm_license_url:String(x?.drm_license_url||x?.license_url||'').trim(),drm_license_headers:(x?.drm_license_headers&&typeof x.drm_license_headers==='object')?x.drm_license_headers:((x?.license_headers&&typeof x.license_headers==='object')?x.license_headers:{}),enabled:x?.enabled===true})):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:Array.isArray(cur.keys)?cur.keys:[],drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
+  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>{const sourceDrm=String(x?.drm_scheme||'').toLowerCase();const sourceKeys=normalizeStoredKeys(x?.keys);if(!sourceKeys.length&&sourceDrm==='clearkey')sourceKeys.push(...normalizeStoredKeys(x?.drm_license_url));return {url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,x?.drm_header||x?.drm_headers),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:sourceDrm,keys:sourceKeys,drm_license_url:sourceDrm==='widevine'?String(x?.drm_license_url||x?.license_url||'').trim():'',drm_license_headers:(x?.drm_license_headers&&typeof x.drm_license_headers==='object')?x.drm_license_headers:((x?.license_headers&&typeof x.license_headers==='object')?x.license_headers:{}),enabled:x?.enabled===true};}):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:existingKeyPairs.map(x=>({...x})),drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
   let activePlaybackSource=Number.isInteger(cur.activePlaybackSource)?cur.activePlaybackSource:playbackSources.findIndex(x=>x&&x.enabled===true);if(activePlaybackSource<0||activePlaybackSource>=playbackSources.length)activePlaybackSource=0;
+  // Compatibilidad con canales creados antes de playbackSources: si la fuente activa
+  // todavía no contiene sus keys pero el canal principal sí, mostrarlas sin alterar nada.
+  if(playbackSources[activePlaybackSource]&&String(playbackSources[activePlaybackSource].drm_scheme||'').toLowerCase()==='clearkey'&&!normalizeStoredKeys(playbackSources[activePlaybackSource].keys).length&&existingKeyPairs.length){playbackSources[activePlaybackSource].keys=existingKeyPairs.map(x=>({...x}));}
   openModal(`<div class="content-editor-head"><div><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: cada fuente de TV conserva su URL, headers, formato y DRM de forma independiente.</p></div><button type="button" class="ghost compact-close" data-close>✕</button></div><form id="contentItemForm" class="content-editor-form">
     <div class="content-editor-grid">
       <section class="content-editor-column">
@@ -1091,7 +1112,7 @@ function editContentItem(groupIndex,itemIndex=null){
   $('#modal').classList.add('content-editor-modal');
   // El cierre del editor se maneja por delegación en #modal; evitamos doble ejecución de closeModal().
   const headerText=o=>Object.entries(o&&typeof o==='object'?o:{}).map(([k,v])=>`${k}: ${v}`).join('\n');
-  const sourceKeysText=src=>Array.isArray(src?.keys)?src.keys.map(x=>x&&x.kid&&x.key?`${x.kid}:${x.key}`:'').filter(Boolean).join('\n'):'';
+  const sourceKeysText=src=>normalizeStoredKeys(src?.keys).map(x=>`${x.kid}:${x.key}`).join('\n');
   const looseHeaders=text=>{const raw=String(text||'').trim(),out={};if(!raw)return out;if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}}for(const line0 of raw.split(/\r?\n/)){const line=line0.trim();if(!line||line.startsWith('#'))continue;if(/^https?:\/\//i.test(line)){if(!out.Referer&&!out.referer)out.Referer=line;continue;}let i=line.indexOf(':');if(i<=0){i=line.indexOf('=');if(i<=0)continue;}const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
   const looseKeys=text=>String(text||'').split(/[\r\n,;]+/).map(x=>x.trim()).filter(Boolean).map(p=>{const i=p.indexOf(':');return i>0?{kid:p.slice(0,i).trim(),key:p.slice(i+1).trim()}:null;}).filter(x=>x&&x.kid&&x.key);
   const syncPlaybackSourcesFromDom=()=>{
