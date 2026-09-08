@@ -1126,14 +1126,46 @@ function editContentItem(groupIndex,itemIndex=null){
   const existingKeyPairs=normalizeStoredKeys(cur.keys);
   if(!existingKeyPairs.length&&drmScheme==='clearkey')existingKeyPairs.push(...normalizeStoredKeys(cur.drm_license_url));
   const existingLicenseUrl=drmScheme==='widevine'?String(cur.drm_license_url||cur.license_url||''):'';
-  const existingLicenseHeaders=(cur.drm_license_headers&&typeof cur.drm_license_headers==='object'?cur.drm_license_headers:(cur.license_headers&&typeof cur.license_headers==='object'?cur.license_headers:{}));
+  // v0.9.101: parser único y tolerante de headers. Evita que al guardar/reabrir
+  // queden visibles solo Referer u otros headers parciales. Acepta objetos, arrays,
+  // JSON, líneas Nombre: valor / Nombre=valor y los headers comunes aun sin ':'.
+  const canonicalHeaderName=name=>{const raw=String(name||'').trim(),lk=raw.toLowerCase();const known={'referer':'Referer','referrer':'Referer','origin':'Origin','user-agent':'User-Agent','authorization':'Authorization','cookie':'Cookie','accept':'Accept','accept-language':'Accept-Language','accept-encoding':'Accept-Encoding','range':'Range','connection':'Connection','host':'Host'};return known[lk]||raw;};
+  const parseHeadersFlexible=value=>{
+    const out={};
+    const put=(k,v)=>{k=canonicalHeaderName(k);v=String(v??'').trim();if(k&&v)out[k]=v;};
+    const parseText=text=>{
+      const raw=String(text??'').trim();if(!raw)return;
+      if((raw.startsWith('{')&&raw.endsWith('}'))||(raw.startsWith('[')&&raw.endsWith(']'))){try{walk(JSON.parse(raw));return;}catch{}}
+      for(const line0 of raw.split(/\r?\n/)){
+        const line=String(line0||'').trim();if(!line||line.startsWith('#'))continue;
+        if(/^https?:\/\//i.test(line)){if(!out.Referer)put('Referer',line);continue;}
+        // Si varios headers fueron pegados en una sola línea, detectar los nombres
+        // comunes y separar cada valor sin perder Origin/User-Agent.
+        const re=/(^|[;,|]\s*|\s{1,})(Referer|Referrer|Origin|User-Agent|Authorization|Cookie|Accept-Language|Accept-Encoding|Accept|Range|Connection|Host|X-[A-Za-z0-9-]+)\s*(?::|=|\s)\s*/ig;
+        const matches=[];let m;while((m=re.exec(line))){const start=m.index+(m[1]?m[1].length:0);matches.push({name:m[2],start,valueStart:re.lastIndex});}
+        if(matches.length&&matches[0].start===0){for(let j=0;j<matches.length;j++){const a=matches[j],b=matches[j+1];put(a.name,line.slice(a.valueStart,b?b.start:line.length).replace(/[;,|]\s*$/,'').trim());}continue;}
+        let i=line.indexOf(':');if(i<=0)i=line.indexOf('=');
+        if(i>0){put(line.slice(0,i),line.slice(i+1));continue;}
+        // Último respaldo para "Origin https://..." / "User-Agent Mozilla/...".
+        const simple=line.match(/^(Referer|Referrer|Origin|User-Agent|Authorization|Cookie|Accept-Language|Accept-Encoding|Accept|Range|Connection|Host|X-[A-Za-z0-9-]+)\s+(.+)$/i);if(simple)put(simple[1],simple[2]);
+      }
+    };
+    const walk=v=>{if(v===undefined||v===null)return;if(Array.isArray(v)){v.forEach(walk);return;}if(v&&typeof v==='object'){for(const [k,val] of Object.entries(v)){if(val===undefined||val===null)continue;if(typeof val==='object'){if(Array.isArray(val))val.forEach(x=>{if(typeof x==='string')parseText(x)});continue;}put(k,val);}return;}parseText(v);};
+    walk(value);return out;
+  };
+  const mergeHeaders=(...values)=>{const out={};for(const v of values)Object.assign(out,parseHeadersFlexible(v));return out;};
+  const existingLicenseHeaders=mergeHeaders(cur.license_headers,cur.drm_license_headers);
   const existingLicenseHeaderText=Object.entries(existingLicenseHeaders).map(([k,v])=>`${k}: ${v}`).join('\n');
-  const existingHeaders=cur.headers&&typeof cur.headers==='object'?Object.entries(cur.headers).map(([k,v])=>`${k}: ${v}`).join('\n'):'';
-  const cleanPlaybackHeadersObj=(primary={},legacy=null)=>{const out={};const merge=o=>{if(!o||typeof o!=='object'||Array.isArray(o))return;for(const [k,v] of Object.entries(o)){const lk=String(k).toLowerCase();if(['drm_scheme','drm_header','drm_headers','drm_license_url','drm_license_headers','license_url','license_headers','keys','key','kid'].includes(lk))continue;if(v===undefined||v===null||typeof v==='object')continue;const sv=String(v).trim();if(sv)out[k]=sv;}};merge(primary);if(Array.isArray(legacy))legacy.forEach(merge);else merge(legacy);return out;};
-  const primaryPlaybackHeaders=cleanPlaybackHeadersObj(cur.headers,cur.drm_header||cur.drm_headers);
+  const existingHeaders=Object.entries(mergeHeaders(cur.drm_header,cur.drm_headers,cur.headers)).map(([k,v])=>`${k}: ${v}`).join('\n');
+  const cleanPlaybackHeadersObj=(primary={},legacy=null)=>{const out={};const forbidden=new Set(['drm_scheme','drm_header','drm_headers','drm_license_url','drm_license_headers','license_url','license_headers','keys','key','kid']);const merge=o=>{for(const [k,v] of Object.entries(parseHeadersFlexible(o))){if(forbidden.has(String(k).toLowerCase()))continue;const sv=String(v).trim();if(sv)out[canonicalHeaderName(k)]=sv;}};merge(legacy);merge(primary);return out;};
+  const primaryPlaybackHeaders=cleanPlaybackHeadersObj(cur.headers,[cur.drm_header,cur.drm_headers]);
   const legacyBackups=Array.isArray(cur.backupUris)?cur.backupUris.map(x=>String(x||'').trim()).filter(Boolean):[];
-  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>{const sourceDrm=String(x?.drm_scheme||'').toLowerCase();const sourceKeys=normalizeStoredKeys(x?.keys);if(!sourceKeys.length&&sourceDrm==='clearkey')sourceKeys.push(...normalizeStoredKeys(x?.drm_license_url));return {url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,x?.drm_header||x?.drm_headers),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:sourceDrm,keys:sourceKeys,drm_license_url:sourceDrm==='widevine'?String(x?.drm_license_url||x?.license_url||'').trim():'',drm_license_headers:(x?.drm_license_headers&&typeof x.drm_license_headers==='object')?x.drm_license_headers:((x?.license_headers&&typeof x.license_headers==='object')?x.license_headers:{}),enabled:x?.enabled===true};}):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:existingKeyPairs.map(x=>({...x})),drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
+  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>{const sourceDrm=String(x?.drm_scheme||'').toLowerCase();const sourceKeys=normalizeStoredKeys(x?.keys);if(!sourceKeys.length&&sourceDrm==='clearkey')sourceKeys.push(...normalizeStoredKeys(x?.drm_license_url));return {url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,[x?.drm_header,x?.drm_headers]),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:sourceDrm,keys:sourceKeys,drm_license_url:sourceDrm==='widevine'?String(x?.drm_license_url||x?.license_url||'').trim():'',drm_license_headers:mergeHeaders(x?.license_headers,x?.drm_license_headers),enabled:x?.enabled===true};}):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:existingKeyPairs.map(x=>({...x})),drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
   let activePlaybackSource=Number.isInteger(cur.activePlaybackSource)?cur.activePlaybackSource:playbackSources.findIndex(x=>x&&x.enabled===true);if(activePlaybackSource<0||activePlaybackSource>=playbackSources.length)activePlaybackSource=0;
+  // Compatibilidad de headers: algunos canales históricos dejaron Referer en la fuente
+  // y Origin/User-Agent a nivel principal (o viceversa). En la fuente activa unimos ambos
+  // sin pisar los valores específicos de esa URL. Al guardar quedan consolidados.
+  if(playbackSources[activePlaybackSource])playbackSources[activePlaybackSource].headers={...primaryPlaybackHeaders,...(playbackSources[activePlaybackSource].headers||{})};
   // Compatibilidad con canales creados antes de playbackSources: si la fuente activa
   // todavía no contiene sus keys pero el canal principal sí, mostrarlas sin alterar nada.
   if(playbackSources[activePlaybackSource]&&String(playbackSources[activePlaybackSource].drm_scheme||'').toLowerCase()==='clearkey'&&!normalizeStoredKeys(playbackSources[activePlaybackSource].keys).length&&existingKeyPairs.length){playbackSources[activePlaybackSource].keys=existingKeyPairs.map(x=>({...x}));}
@@ -1187,7 +1219,7 @@ function editContentItem(groupIndex,itemIndex=null){
   // El cierre del editor se maneja por delegación en #modal; evitamos doble ejecución de closeModal().
   const headerText=o=>Object.entries(o&&typeof o==='object'?o:{}).map(([k,v])=>`${k}: ${v}`).join('\n');
   const sourceKeysText=src=>normalizeStoredKeys(src?.keys).map(x=>`${x.kid}:${x.key}`).join('\n');
-  const looseHeaders=text=>{const raw=String(text||'').trim(),out={};if(!raw)return out;if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}}for(const line0 of raw.split(/\r?\n/)){const line=line0.trim();if(!line||line.startsWith('#'))continue;if(/^https?:\/\//i.test(line)){if(!out.Referer&&!out.referer)out.Referer=line;continue;}let i=line.indexOf(':');if(i<=0){i=line.indexOf('=');if(i<=0)continue;}const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;}return out;};
+  const looseHeaders=parseHeadersFlexible;
   const looseKeys=text=>String(text||'').split(/[\r\n,;]+/).map(x=>x.trim()).filter(Boolean).map(p=>{const i=p.indexOf(':');return i>0?{kid:p.slice(0,i).trim(),key:p.slice(i+1).trim()}:null;}).filter(x=>x&&x.kid&&x.key);
   const syncPlaybackSourcesFromDom=()=>{
     if(!isTv)return;
@@ -1280,20 +1312,8 @@ function editContentItem(groupIndex,itemIndex=null){
   }
   // v0.9.80: parser tolerante y persistente de headers. Acepta JSON, `Nombre: valor` y `Nombre=valor`.
   // Importante: una URL sola NO se interpreta como nombre de header (antes `https://...` podía quedar como `https: //...`).
-  const parseHeaderLines=text=>{
-    const raw=String(text||'').trim(),out={};if(!raw)return out;
-    if(raw.startsWith('{')){try{const j=JSON.parse(raw);if(j&&typeof j==='object'&&!Array.isArray(j)){for(const [k,v] of Object.entries(j)){if(v!==undefined&&v!==null&&String(k).trim()&&String(v).trim())out[String(k).trim()]=String(v).trim();}return out;}}catch{}
-    }
-    for(const line0 of raw.split(/\r?\n/)){
-      const line=line0.trim();if(!line||line.startsWith('#'))continue;
-      let i=line.indexOf(':');
-      // Si el usuario pega una URL sola en Headers, se interpreta como Referer y se conserva.
-      if(/^https?:\/\//i.test(line)){if(!out.Referer&&!out.referer)out.Referer=line;continue;}
-      if(i<=0){i=line.indexOf('=');if(i<=0)continue;}
-      const k=line.slice(0,i).trim(),v=line.slice(i+1).trim();if(k&&v)out[k]=v;
-    }
-    return out;
-  };
+  const parseHeaderLines=parseHeadersFlexible;
+  const assertHeaderRoundTrip=(raw,parsed,label)=>{const text=String(raw||'');for(const [needle,key] of [['Referer','Referer'],['Referrer','Referer'],['Origin','Origin'],['User-Agent','User-Agent']]){if(new RegExp(`(?:^|\\s|[;,|])${needle.replace('-','\\-')}(?:\\s|:|=)`,'i').test(text)&&!Object.keys(parsed||{}).some(k=>canonicalHeaderName(k)===key))throw new Error(`${label}: se detectó ${needle}, pero no pudo interpretarse. Revisá el formato del header.`);}};
   const parseKeyLines=text=>{const out=[];for(const line of String(text||'').split(/[\r\n,;]+/)){const p=line.trim();if(!p)continue;const i=p.indexOf(':');if(i<=0||i>=p.length-1)throw new Error('Clave inválida. Usá KID:KEY, una por línea.');const kid=p.slice(0,i).trim(),key=p.slice(i+1).trim();if(!kid||!key)throw new Error('Clave inválida. Usá KID:KEY.');out.push({kid,key});}return out;};
   $('#contentItemForm').onsubmit=async e=>{
     e.preventDefault();
@@ -1314,7 +1334,8 @@ function editContentItem(groupIndex,itemIndex=null){
         for(const row of sourceRows){
           const originalIndex=Number(row.dataset.playbackSource)||0;
           const u=String(row.querySelector('.ci-playback-url')?.value||'').trim();
-          const h=parseHeaderLines(row.querySelector('.ci-playback-headers')?.value||'');
+          const rawHeaderText=String(row.querySelector('.ci-playback-headers')?.value||'');
+          const h=parseHeaderLines(rawHeaderText);assertHeaderRoundTrip(rawHeaderText,h,`Headers de URL ${originalIndex+1}`);
           const sourceType=String(row.querySelector('.ci-playback-type')?.value||'auto').trim().toLowerCase();
           let sourceDrm=String(row.querySelector('.ci-playback-drm')?.value||'').trim().toLowerCase();
           if(!u)continue;
@@ -1325,7 +1346,7 @@ function editContentItem(groupIndex,itemIndex=null){
             if(!keys.length)throw new Error(`ClearKey en URL ${originalIndex+1}: cargá al menos un par KID:KEY.`);
             src.keys=keys;
           }else if(sourceDrm==='widevine'){
-            const licenseUrl=String(row.querySelector('.ci-playback-license-url')?.value||'').trim(),licenseHeaders=parseHeaderLines(row.querySelector('.ci-playback-license-headers')?.value||'');
+            const licenseUrl=String(row.querySelector('.ci-playback-license-url')?.value||'').trim(),rawLicenseHeaders=String(row.querySelector('.ci-playback-license-headers')?.value||''),licenseHeaders=parseHeaderLines(rawLicenseHeaders);assertHeaderRoundTrip(rawLicenseHeaders,licenseHeaders,`Headers de licencia Widevine de URL ${originalIndex+1}`);
             if(!/^https?:\/\//i.test(licenseUrl))throw new Error(`Widevine en URL ${originalIndex+1}: cargá una URL de licencia HTTP/HTTPS válida.`);
             src.drm_license_url=licenseUrl;if(Object.keys(licenseHeaders).length)src.drm_license_headers=licenseHeaders;
           }
