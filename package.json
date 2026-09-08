@@ -1,16 +1,9 @@
 {
-  "name": "co-chi-panel",
-  "version": "0.9.95",
+  "name": "cochi-rescue-service",
+  "version": "1.0.0",
   "private": true,
-  "description": "CO-CHI PANEL + backend central listo para HTTPS y PWA móvil",
+  "description": "Motor independiente de resolución de redirecciones para fuentes autorizadas de CO-CHI",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=22.5.0"
-  },
-  "dependencies": {
-    "puppeteer-core": "^24.16.0"
-  }
+  "scripts": {"start": "node server.js"},
+  "engines": {"node": ">=20.0.0"}
 }
