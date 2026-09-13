@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.105';
+const VERSION = '0.9.106';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -691,6 +691,9 @@ function sendJson(res, status, payload, extra={}) {
     'X-Frame-Options':'DENY',
     'Referrer-Policy':'no-referrer',
     'Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy':'same-origin',
+    'Cross-Origin-Resource-Policy':'same-origin',
+    'X-Permitted-Cross-Domain-Policies':'none',
     ...(TRUST_PROXY_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{}),
     ...extra,
   });
@@ -1282,10 +1285,12 @@ function rootAdminId(){
 }
 function isRootAdminAccount(a){return Boolean(a&&Number(a.id)===rootAdminId());}
 
-function accountPublic(a){
+function accountPublic(a,opts={}){
   a=refreshInactivity({...a});
   const nextBlock=a.role_level===1?null:addMonths(a.last_credit_received_at||a.created_at,2);
-  return {...a,role_name:roles[a.role_level],active:Boolean(a.active),inactivity_blocked:Boolean(a.inactivity_blocked),manual_blocked:Boolean(a.manual_blocked),block_reason:a.block_reason||'',deleted:Boolean(a.deleted_at),next_inactivity_block_at:nextBlock,is_root_admin:isRootAdminAccount(a),credits_unlimited:Number(a.role_level)===1};
+  const out={...a,role_name:roles[a.role_level],active:Boolean(a.active),inactivity_blocked:Boolean(a.inactivity_blocked),manual_blocked:Boolean(a.manual_blocked),block_reason:a.block_reason||'',deleted:Boolean(a.deleted_at),next_inactivity_block_at:nextBlock,is_root_admin:isRootAdminAccount(a),credits_unlimited:Number(a.role_level)===1};
+  if(!opts.includeActivationCode)delete out.activation_code;
+  return out;
 }
 function canEditAccount(actor,target){
   if(!actor||!target)return false;
@@ -1367,11 +1372,17 @@ function createPanelSession(panelDeviceId){
 }
 function panelSessionFromReq(req){
   const t=parseCookies(req).cochi_panel_session || bearer(req); if(!t)return null;
-  const row=db.prepare(`SELECT ps.id session_id,ps.expires_at,pd.id panel_device_id,pd.device_uid,pd.active device_active,
+  const row=db.prepare(`SELECT ps.id session_id,ps.expires_at,pd.id panel_device_id,pd.device_uid,pd.secret_hash device_secret_hash,pd.active device_active,
     a.* FROM panel_sessions ps JOIN panel_devices pd ON pd.id=ps.panel_device_id JOIN accounts a ON a.id=pd.account_id WHERE ps.token_hash=?`).get(sha(t));
   if(!row)return null;
   if(Date.parse(row.expires_at)<=Date.now()){db.prepare('DELETE FROM panel_sessions WHERE id=?').run(row.session_id);return null;}
   if(!row.device_active)return null;
+  // v0.9.106 — doble comprobación del PANEL: cookie HttpOnly + secreto del dispositivo.
+  // Un token de sesión robado por sí solo ya no permite reutilizar la sesión en otro navegador/equipo.
+  const proof=String(req.headers['x-cochi-panel-device-secret']||'');
+  const proofUid=String(req.headers['x-cochi-panel-device-uid']||'');
+  if(!proof||sha(proof)!==String(row.device_secret_hash||''))return null;
+  if(proofUid&&proofUid!==String(row.device_uid||''))return null;
   const a=accountPublic(row); const st=accountAccessState(a); if(!st.ok)return {blocked:true,reason:st.reason,account:a};
   db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),row.panel_device_id);
   return {blocked:false,account:a,panelDeviceId:row.panel_device_id};
@@ -1928,7 +1939,7 @@ function serveStatic(res,urlObj){
   const fp=path.join(PUBLIC_DIR,path.normalize(rel).replace(/^(\.\.[/\\])+/,''));
   if(!fp.startsWith(PUBLIC_DIR)||!fs.existsSync(fp)||!fs.statSync(fp).isFile())return sendText(res,404,'No encontrado');
   const csp="default-src 'self'; img-src 'self' data: blob: https: http:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
-  res.writeHead(200,{'Content-Type':mime(fp),'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','Content-Security-Policy':csp,'X-Frame-Options':'DENY','X-Content-Type-Options':'nosniff','Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()',...(TRUST_PROXY_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{})});
+  res.writeHead(200,{'Content-Type':mime(fp),'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0','Pragma':'no-cache','Expires':'0','Content-Security-Policy':csp,'X-Frame-Options':'DENY','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()','Cross-Origin-Opener-Policy':'same-origin','Cross-Origin-Resource-Policy':'same-origin','X-Permitted-Cross-Domain-Policies':'none',...(TRUST_PROXY_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{})});
   res.end(fs.readFileSync(fp));
 }
 
@@ -2347,7 +2358,7 @@ function sniffImageMime(buffer,declared=''){
 async function route(req,res){
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const p=u.pathname,m=req.method||'GET';
   if(m==='POST'&&['/api/setup','/api/panel/activate','/api/panel/session','/api/client-device/register','/api/client-device/status','/api/client-device/session','/api/client-device/adult/verify'].includes(p)){
-    const strict=p==='/api/client-device/status'?600:30;
+    const strict=p==='/api/client-device/status'?600:p==='/api/setup'?5:p==='/api/panel/activate'?12:p==='/api/panel/session'?30:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
   if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v6',mediaDetection:'media-adapters-v3-cochi-encrypted',mediaAdapters:['generic-json-flex','m3u-text-html','cochi-aes256-ecb'],mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
@@ -2835,7 +2846,7 @@ async function route(req,res){
 
     if(p==='/api/admin/accounts'&&m==='GET'){
       let rows=actor.role_level===1?db.prepare('SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY role_level,id').all():db.prepare('SELECT * FROM accounts WHERE parent_id=? AND deleted_at IS NULL ORDER BY role_level,id').all(actor.id);
-      rows=rows.filter(x=>x.id!==actor.id || actor.role_level===1).map(accountPublic);
+      rows=rows.filter(x=>x.id!==actor.id || actor.role_level===1).map(x=>accountPublic(x,{includeActivationCode:true}));
       for(const x of rows){
         x.panel_device_count=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(x.id).n);
         x.parent_name=x.parent_id?(accountRaw(x.parent_id)?.name||null):null;
@@ -3172,7 +3183,7 @@ async function route(req,res){
     }
 
     if(p==='/api/admin/client-devices'&&m==='GET'){
-      let rows;if(actor.role_level===1)rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd LEFT JOIN clients c ON c.id=cd.client_id LEFT JOIN accounts a ON a.id=c.owner_account_id ORDER BY CASE cd.status WHEN 'pending' THEN 0 ELSE 1 END,cd.id DESC`).all();else rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd JOIN clients c ON c.id=cd.client_id JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY cd.id DESC`).all(actor.id);rows=rows.map(x=>{const r=refreshDeviceState(x),c=r.client_id?clientRow(r.client_id):null,access=deviceAccessState(r,c),di=demoInfo(r.id);return {...r,demo:di,access_mode:access.ok?access.mode:null,effective_status:r.status==='blocked'?'BLOQUEADO':access.ok?(access.mode==='demo'?'DEMO ACTIVO':'ACTIVO'):(di.used?'DEMO VENCIDO':'PENDIENTE')};});return sendJson(res,200,{devices:rows});
+      let rows;if(actor.role_level===1)rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd LEFT JOIN clients c ON c.id=cd.client_id LEFT JOIN accounts a ON a.id=c.owner_account_id ORDER BY CASE cd.status WHEN 'pending' THEN 0 ELSE 1 END,cd.id DESC`).all();else rows=db.prepare(`SELECT cd.*,c.name client_name,a.name owner_name,c.owner_account_id FROM client_devices cd JOIN clients c ON c.id=cd.client_id JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY cd.id DESC`).all(actor.id);rows=rows.map(x=>{const r=refreshDeviceState(x),c=r.client_id?clientRow(r.client_id):null,access=deviceAccessState(r,c),di=demoInfo(r.id);const out={...r,demo:di,access_mode:access.ok?access.mode:null,effective_status:r.status==='blocked'?'BLOQUEADO':access.ok?(access.mode==='demo'?'DEMO ACTIVO':'ACTIVO'):(di.used?'DEMO VENCIDO':'PENDIENTE')};delete out.secret_hash;return out;});return sendJson(res,200,{devices:rows});
     }
     if(p==='/api/admin/client-devices/manual'&&m==='POST'){
       const b=await readJson(req),uid=`manual-${crypto.randomUUID()}`,code=generateCode('client_devices'),secret=randomToken(),t=nowIso();const r=db.prepare("INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)").run(uid,String(b.deviceName||'Dispositivo de prueba').trim(), 'android',code,sha(secret),t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),activationCode:code,deviceUid:uid,deviceSecret:secret});

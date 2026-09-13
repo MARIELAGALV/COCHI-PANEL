@@ -54,6 +54,8 @@ function blockedPanelMessage(err){
 
 async function api(url,opt={}){
   const o={credentials:'same-origin',...opt};
+  const panelSecret=secret();
+  if(panelSecret)o.headers={...(o.headers||{}),'X-COCHI-Panel-Device-Secret':panelSecret,'X-COCHI-Panel-Device-Uid':uid()};
   if(o.body&&typeof o.body!=='string'){o.headers={...(o.headers||{}),'Content-Type':'application/json'};o.body=JSON.stringify(o.body);}
   const r=await fetch(url,o);let d={};try{d=await r.json()}catch{}
   if(!r.ok){const e=new Error(d.error||`Error ${r.status}`);e.status=r.status;e.data=d;throw e;}return d;
