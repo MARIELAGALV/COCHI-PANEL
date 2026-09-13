@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.104</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v0.9.105</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -76,23 +76,12 @@
     <main class="main">
       <header class="topbar">
         <div><p id="roleEyebrow" class="eyebrow">PANEL</p><h2 id="pageTitle">Inicio</h2></div>
-        <div class="top-actions"><span id="meCredits" class="admin-pill"></span><span id="meName" class="admin-pill"></span><button id="refreshBtn" class="ghost">Actualizar</button></div>
+        <div class="top-actions"><button id="rulesBtn" class="rules-corner-btn" type="button" title="Ver reglas comerciales">☰ <span>Reglas</span></button><span id="meCredits" class="admin-pill"></span><span id="meName" class="admin-pill"></span><button id="refreshBtn" class="ghost refresh-compact" type="button">↻ <span>Actualizar</span></button></div>
       </header>
 
       <section id="view-dashboard" class="view active">
         <div id="promoBanner" class="promo-banner hidden"></div>
         <div class="cards" id="dashboardCards"></div>
-        <div class="neon-card panel-card">
-          <div class="card-head"><div><h3>Reglas activas</h3><p class="muted">Base comercial de CO-CHI PANEL.</p></div></div>
-          <div class="rule-grid rule-grid-compact">
-            <div class="rule-card"><b>Servicio del cliente</b><span>El bloque base de dispositivos se define globalmente por ADMINISTRACIÓN. Cada bloque comercial consume 1 crédito al activar o renovar.</span></div>
-            <div class="rule-card"><b>Dispositivos adicionales</b><span>Cada ampliación consume 1 crédito y agrega al mismo cliente un bloque completo del tamaño global vigente. Si el bloque global cambia, las ampliaciones nuevas usan el nuevo tamaño.</span></div>
-            <div class="rule-card"><b>Cambios de dispositivo</b><span>Máximo 2 eliminaciones/reemplazos por cliente cada mes. Cambiar o eliminar códigos no reinicia el derecho a demo.</span></div>
-            <div class="rule-card"><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los días restantes se conservan y se suman 30 días.</span></div>
-            <div class="rule-card"><b>Paneles y cargas</b><span>Cada ficha PANEL admite hasta 2 dispositivos. La carga mínima es de 10 créditos.</span></div>
-            <div class="rule-card"><b>Demos</b><span>Los demos usan la duración definida globalmente por ADMINISTRACIÓN.</span></div>
-          </div>
-        </div>
         <div class="neon-card panel-card control-card admin-only" id="globalCommercialSettingsCard">
           <div class="card-head"><div><h3>Configuración global comercial</h3><p class="muted">Solo ADMINISTRACIÓN. Estos cambios impactan globalmente en CO-CHI.</p></div></div>
           <div class="rule-grid">

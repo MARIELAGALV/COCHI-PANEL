@@ -460,3 +460,53 @@ body{min-height:100dvh}
 .banner-crop-modal{width:min(1040px,100%)}.banner-crop-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.banner-crop-head h3{margin-bottom:4px}.banner-crop-stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;border:1px solid rgba(52,180,255,.45);background:#08111d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.025)}.banner-crop-stage canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}.banner-crop-stage canvas:active{cursor:grabbing}.banner-crop-loading{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,13,23,.76);font-weight:900;color:#8edcff;letter-spacing:.05em}.banner-crop-loading[hidden]{display:none}.banner-crop-controls{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:14px;margin-top:14px;align-items:end}.banner-crop-controls>label{display:grid;grid-template-columns:auto minmax(140px,1fr) auto;gap:10px;align-items:center;margin:0}.banner-crop-controls input[type=range]{width:100%;margin:0}.banner-crop-quick{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:900px){.home-banner-live-preview{grid-template-columns:88px minmax(0,1fr);min-height:250px}.home-banner-live-side{padding:10px 7px}.home-banner-live-side b{font-size:16px}.home-banner-live-side i{font-size:9px;padding:5px}.home-banner-live-copy{padding:12px;max-width:78%}.home-banner-live-copy>strong{font-size:16px}.home-banner-preview-head{align-items:flex-start;flex-direction:column}.home-banner-preview-slots{justify-content:flex-start}.banner-url-edit-row,.home-banner-extra-row{grid-template-columns:1fr auto}.banner-url-edit-row .badge,.home-banner-extra-row .badge{grid-column:2}.banner-crop-controls{grid-template-columns:1fr}.banner-crop-quick{justify-content:flex-start}.banner-crop-modal{width:100%}}
 @media(max-width:600px){.home-banner-live-preview{grid-template-columns:1fr}.home-banner-live-side{display:none}.home-banner-live-hero{min-height:170px}.home-banner-live-copy{max-width:86%}.banner-url-edit-row,.home-banner-extra-row{grid-template-columns:1fr}.banner-url-edit-row .badge,.home-banner-extra-row .badge{grid-column:auto}.banner-adjust-btn{width:100%}}
+
+
+/* v0.9.105 — Inicio Android más limpio + Reglas en ventana compacta */
+.rules-corner-btn{
+  display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:999px;
+  border:1px solid rgba(89,220,255,.32);background:rgba(7,73,105,.34);color:#dff8ff;
+  font-size:12px;font-weight:900;letter-spacing:.02em;box-shadow:0 8px 24px rgba(0,156,220,.08)
+}
+.rules-corner-btn:hover{border-color:rgba(104,233,255,.62);background:rgba(10,102,142,.42)}
+.refresh-compact{display:inline-flex;align-items:center;gap:6px}
+#dashboardCards{align-items:stretch}
+.dashboard-metric{position:relative;overflow:hidden;min-height:122px;display:flex;flex-direction:column;justify-content:flex-start}
+.dashboard-metric::after{content:"";position:absolute;width:92px;height:92px;border-radius:50%;right:-35px;top:-35px;background:rgba(55,211,255,.055);pointer-events:none}
+.metric-top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.metric-icon{display:grid;place-items:center;width:29px;height:29px;flex:0 0 29px;border-radius:10px;border:1px solid rgba(88,222,255,.2);background:rgba(26,133,177,.12);color:#8deaff;font-size:14px;font-weight:950}
+.metric-label{font-size:11px;text-transform:uppercase;letter-spacing:.075em;color:#8fb9ce;font-weight:850}
+.dashboard-metric .value{margin-top:2px;line-height:1.08}
+.metric-subtitle{margin-top:auto;padding-top:8px;color:#718fa2;font-size:11px;font-weight:700}
+.rules-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.rules-modal-head h3{font-size:23px;margin:0 0 5px}.rules-modal-head p{margin-top:0}
+.icon-close-btn{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border-radius:12px;border:1px solid rgba(104,203,239,.2);background:rgba(6,28,44,.55);color:#dff6ff;font-size:25px;line-height:1}
+.rules-modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rules-modal-card{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:flex-start;padding:13px}
+.rules-modal-card b{margin-bottom:4px}.rules-modal-card>div>span{display:block;line-height:1.48}
+.rule-icon{display:grid!important;place-items:center;width:30px;height:30px;border-radius:9px;background:rgba(24,166,212,.12);border:1px solid rgba(80,210,246,.18);color:#69ddff!important;font-size:10px!important;font-weight:950}
+@media(max-width:660px){
+  .main{padding:18px 13px 104px}
+  .topbar{margin-bottom:17px;gap:10px;flex-direction:column;align-items:stretch}
+  .topbar h2{font-size:25px}
+  .top-actions{width:100%;justify-content:flex-start;display:grid;grid-template-columns:auto 1fr auto;gap:7px}
+  .top-actions #meCredits:empty{display:none}
+  .top-actions #meCredits{grid-column:auto}.top-actions #meName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+  .rules-corner-btn{padding:9px 11px}.rules-corner-btn span{display:inline}
+  .refresh-compact{padding:9px 11px}.refresh-compact span{display:none}
+  #dashboardCards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  #dashboardCards .dashboard-metric{min-height:112px;padding:14px;border-radius:16px}
+  #dashboardCards .metric-category{grid-column:1/-1;min-height:100px}
+  #dashboardCards .metric-category .value{font-size:26px;white-space:normal}
+  #dashboardCards .dashboard-metric:not(.metric-category) .value{font-size:28px}
+  .metric-label{font-size:10px}.metric-subtitle{font-size:10px}
+  .panel-card{padding:15px;border-radius:16px}.card-head{align-items:flex-start}
+  .rules-modal-grid{grid-template-columns:1fr}.rules-modal-card{padding:12px}
+  .modal-backdrop{padding:10px;align-items:end}.modal{width:100%;max-height:88vh;border-radius:20px 20px 14px 14px;padding:18px}
+}
+@media(max-width:390px){
+  #dashboardCards{grid-template-columns:1fr 1fr}
+  #dashboardCards .dashboard-metric{padding:12px;min-height:106px}
+  .admin-pill{padding:8px 9px;font-size:11px}
+  .rules-corner-btn,.refresh-compact{padding:8px 9px}
+}

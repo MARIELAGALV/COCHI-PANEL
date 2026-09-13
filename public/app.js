@@ -128,6 +128,18 @@ $('#contentToolsToggle')?.addEventListener('click',()=>{
   $('#contentToolsToggle').setAttribute('aria-expanded',collapsed?'false':'true');
 });
 $('#refreshBtn').addEventListener('click',refreshCurrent);
+$('#rulesBtn')?.addEventListener('click',()=>{
+  openModal(`<div class="rules-modal-head"><div><p class="eyebrow">CO-CHI PANEL</p><h3>Reglas comerciales</h3><p class="muted">Las reglas principales quedan reunidas acá para no ocupar la pantalla de Inicio.</p></div><button class="icon-close-btn" type="button" data-close aria-label="Cerrar">×</button></div>
+    <div class="rules-modal-grid">
+      <div class="rule-card rules-modal-card"><span class="rule-icon">01</span><div><b>Servicio del cliente</b><span>El bloque base de dispositivos se define globalmente por ADMINISTRACIÓN. Cada bloque comercial consume 1 crédito al activar o renovar.</span></div></div>
+      <div class="rule-card rules-modal-card"><span class="rule-icon">02</span><div><b>Dispositivos adicionales</b><span>Cada ampliación consume 1 crédito y agrega al mismo cliente un bloque completo del tamaño global vigente. Las ampliaciones nuevas usan el tamaño global actual.</span></div></div>
+      <div class="rule-card rules-modal-card"><span class="rule-icon">03</span><div><b>Cambios de dispositivo</b><span>Máximo 2 eliminaciones o reemplazos por cliente cada mes. Cambiar o eliminar códigos no reinicia el derecho a demo.</span></div></div>
+      <div class="rule-card rules-modal-card"><span class="rule-icon">04</span><div><b>Renovación</b><span>Se habilita cuando faltan 10 días o menos. Los días restantes se conservan y se suman 30 días.</span></div></div>
+      <div class="rule-card rules-modal-card"><span class="rule-icon">05</span><div><b>Paneles y cargas</b><span>Cada ficha PANEL admite hasta 2 dispositivos. La carga mínima es de 10 créditos.</span></div></div>
+      <div class="rule-card rules-modal-card"><span class="rule-icon">06</span><div><b>Demos</b><span>Los demos usan la duración definida globalmente por ADMINISTRACIÓN y no reemplazan el vencimiento comercial del cliente.</span></div></div>
+    </div>
+    <div class="modal-actions"><button class="primary" type="button" data-close>ENTENDIDO</button></div>`);
+});
 function switchView(name){
   $$('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
   const contentGroup=$('#contentToolsGroup');
@@ -160,12 +172,12 @@ async function refreshCurrent(){
 async function loadDashboard(){
   const d=await api('/api/admin/dashboard');
   const cards=[
-    ['category','Categoría',d.role,''],
-    ['credits','Créditos',d.creditsUnlimited?'—':d.credits,d.creditsUnlimited?'':'saldo actual'],
-    ['accounts','Fichas PANEL',d.directAccounts,state.me.role_level===1?'total visible':'directas'],
-    ['clients','Clientes finales',d.directClients,state.me.role_level===1?'total visible':'directos']
+    ['category','◈','Categoría',d.role,'Tu nivel dentro de CO-CHI'],
+    ['credits','¤','Créditos',d.creditsUnlimited?'—':d.credits,d.creditsUnlimited?'Sin límite':'Saldo disponible'],
+    ['accounts','◇','Fichas PANEL',d.directAccounts,state.me.role_level===1?'Total visible':'Directas'],
+    ['clients','👤','Clientes',d.directClients,state.me.role_level===1?'Total visible':'Directos']
   ];
-  $('#dashboardCards').innerHTML=cards.map(([key,l,v,s])=>`<div class="metric metric-${key}${key==='credits'||key==='accounts'?' metric-compact':''}"><div class="label">${esc(l)}</div><div class="value">${esc(v)}</div><div class="muted small">${esc(s)}</div></div>`).join('');
+  $('#dashboardCards').innerHTML=cards.map(([key,icon,l,v,s])=>`<div class="metric dashboard-metric metric-${key}${key==='credits'||key==='accounts'?' metric-compact':''}"><div class="metric-top"><span class="metric-icon">${esc(icon)}</span><span class="metric-label">${esc(l)}</span></div><div class="value">${esc(v)}</div><div class="metric-subtitle">${esc(s)}</div></div>`).join('');
   if(d.activePromotion){$('#promoBanner').classList.remove('hidden');$('#promoBanner').innerHTML=`🎁 <b>${esc(d.activePromotion.name)}</b> — +${d.activePromotion.percent}% en cargas recibidas hasta ${esc(fmt(d.activePromotion.endsAt))}. El bonus lo paga el sistema.`;}else $('#promoBanner').classList.add('hidden');
 }
 
