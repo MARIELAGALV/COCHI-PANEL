@@ -1,11 +1,21 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{} };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{}, serverClockOffsetMs:0 };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
-function fmt(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString();}
-function days(v){if(!v)return null;return (new Date(v).getTime()-Date.now())/86400000;}
+function fmt(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString('es-AR');}
+function syncServerClock(v){const ms=Date.parse(v||'');if(Number.isFinite(ms))state.serverClockOffsetMs=ms-Date.now();}
+function panelNowMs(){return Date.now()+Number(state.serverClockOffsetMs||0);}
+function days(v){if(!v)return null;return (new Date(v).getTime()-panelNowMs())/86400000;}
+function clientDaysRemainingNow(c){if(!c?.expires_at)return null;const ms=Date.parse(c.expires_at);return Number.isFinite(ms)?(ms-panelNowMs())/86400000:null;}
+function clientRenewAvailableNow(c){const rem=clientDaysRemainingNow(c);return !c?.expires_at||Number.isFinite(rem)&&rem<=10;}
+function clientRemainingBadge(expiry){
+  if(!expiry)return '<span class="badge off">SIN ACTIVAR</span>';
+  const ms=Date.parse(expiry);if(!Number.isFinite(ms))return '<span class="badge off">FECHA INVÁLIDA</span>';
+  const whole=Math.ceil((ms-panelNowMs())/86400000);
+  return whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:'<span class="badge blocked">VENCIDO</span>';
+}
 function uid(){let x=localStorage.getItem('cochi_panel_device_uid');if(!x){x='web-'+crypto.randomUUID();localStorage.setItem('cochi_panel_device_uid',x);}return x;}
 function deviceName(){return localStorage.getItem('cochi_panel_device_name') || `Navegador ${navigator.platform||''}`.trim();}
 function secret(){return localStorage.getItem('cochi_panel_device_secret')||'';}
@@ -392,6 +402,8 @@ async function openPanelDevices(a){
 }
 
 function clientStatusBadge(c){
+  const expired=Boolean(c?.expires_at)&&Number.isFinite(Date.parse(c.expires_at))&&Date.parse(c.expires_at)<=panelNowMs();
+  if(expired&&!Number(c?.demo_active_count||0))return '<span class="badge blocked">VENCIDO</span>';
   const code=c.display_status_code||'no_service';
   const cls=['active','demo_active'].includes(code)?'active':['blocked','expired','demo_expired'].includes(code)?'blocked':'pending';
   return `<span class="badge ${cls}">${esc(c.display_status||'SIN SERVICIO')}</span>`;
@@ -424,28 +436,28 @@ function renderClients(){
   const q=($('#clientSearch')?.value||'').trim().toLowerCase();
   const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.display_status,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));
   $('#clientsBody').innerHTML=rows.length?rows.map(c=>{
-    const rem=c.days_remaining;
-    let remainingLabel='<span class="badge off">SIN ACTIVAR</span>';
-    if(c.expires_at&&Number.isFinite(Number(rem))){
-      const whole=Math.ceil(Number(rem));
-      remainingLabel=whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:`<span class="badge blocked">VENCIDO</span>`;
-    }
+    const remainingLabel=clientRemainingBadge(c.expires_at);
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
     return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
-async function loadClients(render=true){const d=await api('/api/admin/clients');state.clients=d.clients;if(render)renderClients();}
+async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
+// v0.9.103: el reloj de vencimientos se actualiza localmente usando la hora del servidor.
+// No hace consultas nuevas: solo vuelve a dibujar la tabla para que VENCIDO / días restantes no queden congelados.
+setInterval(()=>{if(state.clients.length&&$('#clientsBody'))renderClients();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.clients.length)renderClients();});
 $('#newClientBtn').addEventListener('click',()=>openClientModal());
 
 function openClientModal(c=null){
   const admin=state.me.role_level===1;
   const owners=admin?state.accounts.filter(x=>x.role_level<=4):[];
-  const rem=c?.expires_at&&Number.isFinite(Number(c.days_remaining))?Math.max(0,Math.ceil(Number(c.days_remaining))):null;
-  const remainingText=c?.expires_at?(rem>0?`${rem} día${rem===1?'':'s'}`:'Vencido'):'Sin activar';
-  const renewDisabled=Boolean(c&&!c.renew_available);
+  const rem=clientDaysRemainingNow(c);
+  const wholeRem=Number.isFinite(rem)?Math.max(0,Math.ceil(rem)):null;
+  const remainingText=c?.expires_at?(wholeRem>0?`${wholeRem} día${wholeRem===1?'':'s'}`:'Vencido'):'Sin activar';
+  const renewDisabled=Boolean(c&&!clientRenewAvailableNow(c));
   const renewTitle=renewDisabled?'Se habilita cuando queden 10 días o menos':'Activar o sumar 30 días';
   const clientSummary=c?`
     <div class="edit-summary-grid">

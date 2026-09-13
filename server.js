@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.102';
+const VERSION = '0.9.103';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -2640,14 +2640,16 @@ async function route(req,res){
   if(p==='/api/client-device/status'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
     const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||null,sharedExpiry:true,serverTime:nowIso(),allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
   }
   if(p==='/api/client-device/session'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
     const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
     db.prepare('DELETE FROM client_sessions WHERE device_id=? OR expires_at<=?').run(d.id,nowIso());const token=randomToken();let exp=addDays(nowIso(),1);if(st.expiresAt&&Date.parse(st.expiresAt)<Date.parse(exp))exp=st.expiresAt;
     db.prepare('INSERT INTO client_sessions(device_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)').run(d.id,sha(token),exp,nowIso());
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,token,expiresAt:exp,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,clientId:c.id,clientName:c.name,clientExpiresAt:c.expires_at||null,...capacity});
+    // `expiresAt` se conserva por compatibilidad y SIEMPRE significa vencimiento de la sesión/token.
+    // El vencimiento comercial compartido del cliente está en `clientExpiresAt` / `serviceExpiresAt`.
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,token,expiresAt:exp,sessionExpiresAt:exp,expiresAtKind:'session',accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientId:c.id,clientName:c.name,clientExpiresAt:c.expires_at||null,sharedExpiry:true,serverTime:nowIso(),...capacity});
   }
   if(p==='/api/client-device/config'&&m==='GET'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -2657,7 +2659,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,client:{name:c.name,expiresAt:c.expires_at,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -2963,8 +2965,8 @@ async function route(req,res){
 
     if(p==='/api/admin/clients'&&m==='GET'){
       let rows=actor.role_level===1?db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id ORDER BY c.id DESC`).all():db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY c.id DESC`).all(actor.id);
-      rows=rows.map(c=>({...c,active:Boolean(c.active),days_remaining:daysRemaining(c.expires_at),renew_available:!c.expires_at||daysRemaining(c.expires_at)<=RENEW_WINDOW_DAYS,...clientStatusSummary(c)}));
-      return sendJson(res,200,{clients:rows});
+      rows=rows.map(c=>({...c,active:Boolean(c.active),days_remaining:daysRemaining(c.expires_at),renew_available:!c.expires_at||daysRemaining(c.expires_at)<=RENEW_WINDOW_DAYS,shared_expiry:true,...clientStatusSummary(c)}));
+      return sendJson(res,200,{clients:rows,serverTime:nowIso(),sharedExpiry:true});
     }
     if(p==='/api/admin/clients'&&m==='POST'){
       const b=await readJson(req),name=String(b.name||'').trim();if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});let owner=actor.id;
@@ -3041,7 +3043,7 @@ async function route(req,res){
     }
     const cdev=p.match(/^\/api\/admin\/clients\/(\d+)\/devices$/);
     if(cdev&&m==='GET'){
-      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),deviceLimit:clientDeviceLimit(c),deviceBlockSize:globalClientDeviceBlockSize(),extraDeviceBlocks:clientExtraDeviceBlocks(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
+      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),clientExpiresAt:c.expires_at||null,sharedExpiry:true,serverTime:nowIso(),deviceLimit:clientDeviceLimit(c),deviceBlockSize:globalClientDeviceBlockSize(),extraDeviceBlocks:clientExtraDeviceBlocks(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
     }
     // v0.9.69: ampliar un cliente consume 1 crédito y suma exactamente el bloque global vigente.
     const extraDevices=p.match(/^\/api\/admin\/clients\/(\d+)\/extra-devices$/);
