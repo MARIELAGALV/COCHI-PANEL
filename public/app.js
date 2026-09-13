@@ -10,11 +10,29 @@ function panelNowMs(){return Date.now()+Number(state.serverClockOffsetMs||0);}
 function days(v){if(!v)return null;return (new Date(v).getTime()-panelNowMs())/86400000;}
 function clientDaysRemainingNow(c){if(!c?.expires_at)return null;const ms=Date.parse(c.expires_at);return Number.isFinite(ms)?(ms-panelNowMs())/86400000:null;}
 function clientRenewAvailableNow(c){const rem=clientDaysRemainingNow(c);return !c?.expires_at||Number.isFinite(rem)&&rem<=10;}
+function clientRemainingText(expiry){
+  if(!expiry)return 'SIN ACTIVAR';
+  const ms=Date.parse(expiry);if(!Number.isFinite(ms))return 'FECHA INVÁLIDA';
+  let sec=Math.max(0,Math.ceil((ms-panelNowMs())/1000));
+  if(sec<=0)return 'VENCIDO';
+  const d=Math.floor(sec/86400);sec-=d*86400;const h=Math.floor(sec/3600);sec-=h*3600;const m=Math.floor(sec/60);const ss=sec-m*60;
+  if(d>0)return `${d}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`;
+  return `${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`;
+}
 function clientRemainingBadge(expiry){
   if(!expiry)return '<span class="badge off">SIN ACTIVAR</span>';
   const ms=Date.parse(expiry);if(!Number.isFinite(ms))return '<span class="badge off">FECHA INVÁLIDA</span>';
-  const whole=Math.ceil((ms-panelNowMs())/86400000);
-  return whole>0?`<span class="badge active">Vence en ${whole} día${whole===1?'':'s'}</span>`:'<span class="badge blocked">VENCIDO</span>';
+  const expired=ms<=panelNowMs();
+  return `<span class="badge ${expired?'blocked':'active'}" data-client-expiry-live="${esc(expiry)}">${esc(clientRemainingText(expiry))}</span>`;
+}
+function updateClientExpiryCountdowns(){
+  let crossed=false;
+  $$('[data-client-expiry-live]').forEach(el=>{
+    const expiry=el.getAttribute('data-client-expiry-live')||'';const expired=Date.parse(expiry)<=panelNowMs();
+    const wasExpired=el.classList.contains('blocked');el.textContent=clientRemainingText(expiry);el.classList.toggle('active',!expired);el.classList.toggle('blocked',expired);
+    if(expired&&!wasExpired)crossed=true;
+  });
+  if(crossed&&state.clients.length)renderClients();
 }
 function uid(){let x=localStorage.getItem('cochi_panel_device_uid');if(!x){x='web-'+crypto.randomUUID();localStorage.setItem('cochi_panel_device_uid',x);}return x;}
 function deviceName(){return localStorage.getItem('cochi_panel_device_name') || `Navegador ${navigator.platform||''}`.trim();}
@@ -445,10 +463,11 @@ function renderClients(){
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
-// v0.9.103: el reloj de vencimientos se actualiza localmente usando la hora del servidor.
-// No hace consultas nuevas: solo vuelve a dibujar la tabla para que VENCIDO / días restantes no queden congelados.
+// v0.9.104: reloj de vencimientos en tiempo real, calculado localmente con la hora del servidor.
+// No consulta al backend cada segundo: solo actualiza el texto visible.
+setInterval(updateClientExpiryCountdowns,1000);
 setInterval(()=>{if(state.clients.length&&$('#clientsBody'))renderClients();},30000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.clients.length)renderClients();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.clients.length){renderClients();updateClientExpiryCountdowns();}});
 $('#newClientBtn').addEventListener('click',()=>openClientModal());
 
 function openClientModal(c=null){
@@ -463,7 +482,7 @@ function openClientModal(c=null){
     <div class="edit-summary-grid">
       <div class="summary-box"><span>Estado</span><strong>${esc(c.display_status||'—')}</strong></div>
       <div class="summary-box"><span>Vencimiento</span><strong>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</strong></div>
-      <div class="summary-box"><span>Tiempo restante</span><strong>${esc(remainingText)}</strong></div>
+      <div class="summary-box"><span>Tiempo restante</span><strong ${c.expires_at?`data-client-expiry-live="${esc(c.expires_at)}"`:''}>${esc(c.expires_at?clientRemainingText(c.expires_at):remainingText)}</strong></div>
       <div class="summary-box"><span>Dispositivos</span><strong>${esc(String(c.device_count??0))}/${esc(String(c.device_limit||2))}</strong></div>
       <div class="summary-box"><span>Propietario</span><strong>${esc(c.owner_name||'—')}</strong></div>
     </div>
@@ -476,7 +495,8 @@ function openClientModal(c=null){
         <button type="button" class="danger-btn" id="clientDeleteBtn">Eliminar cliente</button>
       </div>
       <p class="muted small">La renovación conserva los días restantes. Los demos se rigen por la configuración global de ADMINISTRACIÓN.</p>
-    </div>`:'';
+    </div>
+    ${admin?`<div class="client-manage-card"><h4>Corregir vencimiento</h4><p class="muted small">Cambia únicamente la fecha/hora guardada. No descuenta créditos y no agrega 30 días.</p><div class="form-row"><label>Fecha y hora exactas<input id="cExpiryFix" type="datetime-local" value="${esc(c.expires_at?localDateTimeValue(new Date(c.expires_at)):'')}"></label><div class="panel-control-actions" style="align-self:end"><button type="button" class="ghost" id="clientExpiryFixBtn">CORREGIR FECHA</button></div></div><div id="expiryFixMsg" class="msg"></div></div>`:''}`:'';
 
   openModal(`<h3>${c?'Editar cliente final':'Nuevo cliente final'}</h3>${clientSummary}
     <form id="clientForm">
@@ -505,6 +525,14 @@ function openClientModal(c=null){
     const cost=Number(c.renew_credit_cost||Math.max(1,Math.ceil(Number(c.device_limit||2)/2)));
     if(!confirm(`¿Convertir ahora el demo de ${c.name} en servicio normal por 30 días?\n\nCosto: ${state.me.role_level===1?'sin descuento para ADMINISTRACIÓN':cost+' crédito(s) al propietario'}.\nEl demo termina ahora y todos los dispositivos del perfil compartirán el mismo vencimiento.`))return;
     try{const r=await api(`/api/admin/clients/${c.id}/convert-demo`,{method:'POST'});alert(`Demo convertido a servicio normal. Nuevo vencimiento: ${fmt(r.newExpiry)}.`);closeModal();await refreshMe();await loadClients();}catch(err){msg($('#clientMsg'),err.message);}
+  });
+  $('#clientExpiryFixBtn')?.addEventListener('click',async()=>{
+    try{
+      const raw=$('#cExpiryFix')?.value||'';const d=new Date(raw);if(!raw||!Number.isFinite(d.getTime()))throw new Error('Elegí una fecha y hora válidas.');
+      if(!confirm(`¿Corregir el vencimiento de ${c.name} a ${d.toLocaleString('es-AR')}?\n\nNo se descontarán créditos ni se sumarán 30 días.`))return;
+      const r=await api(`/api/admin/clients/${c.id}/expiry`,{method:'PUT',body:{expiresAt:d.toISOString()}});
+      alert(`Vencimiento corregido: ${fmt(r.newExpiry)}. Créditos descontados: 0.`);closeModal();await loadClients();
+    }catch(err){msg($('#expiryFixMsg')||$('#clientMsg'),err.message);}
   });
   $('#clientDeleteBtn')?.addEventListener('click',()=>openDeleteClientModal(c));
 

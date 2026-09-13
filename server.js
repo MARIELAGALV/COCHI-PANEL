@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.103';
+const VERSION = '0.9.104';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -713,6 +713,7 @@ function bearer(req){const a=req.headers.authorization||'';return a.startsWith('
 function addDays(value,days){const d=new Date(value);d.setUTCDate(d.getUTCDate()+days);return d.toISOString();}
 function addMonths(value,months){const d=new Date(value);d.setUTCMonth(d.getUTCMonth()+months);return d.toISOString();}
 function daysRemaining(expiry){if(!expiry)return null;return (Date.parse(expiry)-Date.now())/(86400*1000);}
+function normalizeClientExpiry(value){const ms=Date.parse(String(value||''));if(!Number.isFinite(ms))return null;const min=Date.UTC(2020,0,1),max=Date.now()+10*365*86400000;if(ms<min||ms>max)return null;return new Date(ms).toISOString();}
 
 function addMinutes(value,minutes){const d=new Date(value);d.setUTCMinutes(d.getUTCMinutes()+minutes);return d.toISOString();}
 function getSetting(key,fallback=''){const r=db.prepare('SELECT setting_value FROM settings WHERE setting_key=?').get(key);return r?r.setting_value:fallback;}
@@ -3006,6 +3007,25 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede ver el historial de eliminados'});
       return sendJson(res,200,{items:db.prepare('SELECT * FROM deleted_clients_history ORDER BY id DESC LIMIT 300').all()});
     }
+    // v0.9.104: corrección administrativa del vencimiento persistido.
+    // No consume créditos ni suma 30 días: solo reemplaza la fecha/hora exacta y
+    // elimina sesiones para que el próximo control de la APK lea el nuevo valor.
+    const expiryFix=p.match(/^\/api\/admin\/clients\/(\d+)\/expiry$/);
+    if(expiryFix&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede corregir vencimientos'});
+      const c=clientRow(Number(expiryFix[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});
+      const b=await readJson(req),fixed=normalizeClientExpiry(b.expiresAt);if(!fixed)return sendJson(res,400,{error:'Fecha de vencimiento inválida'});
+      const previous=c.expires_at||null,t=nowIso();db.exec('BEGIN');
+      try{
+        db.prepare('UPDATE clients SET expires_at=?,active=1,updated_at=? WHERE id=?').run(fixed,t,c.id);
+        db.prepare('DELETE FROM client_sessions WHERE device_id IN (SELECT id FROM client_devices WHERE client_id=?)').run(c.id);
+        audit(actor.id,'client_expiry_corrected','client',c.id,`${previous||'NULL'} -> ${fixed}`);
+        db.exec('COMMIT');
+      }catch(e){db.exec('ROLLBACK');throw e;}
+      refreshClientDevices(c.id);
+      return sendJson(res,200,{ok:true,previousExpiry:previous,newExpiry:fixed,creditsSpent:0,daysAdded:0,sharedExpiry:true,serverTime:nowIso()});
+    }
+
     const renew=p.match(/^\/api\/admin\/clients\/(\d+)\/renew$/);
     if(renew&&m==='POST'){
       const c=clientRow(Number(renew[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés renovar clientes directos'});
