@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.106';
+const VERSION = '0.9.107';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -142,9 +142,16 @@ const COCHI_TV2_GATEWAY_URL = String(process.env.COCHI_TV2_GATEWAY_URL || '').tr
 const COCHI_TV2_GATEWAY_SECRET = String(process.env.COCHI_TV2_GATEWAY_SECRET || '').trim();
 const COCHI_TV_GATEWAY_TTL_SECONDS = Math.max(900, Math.min(86400, Number(process.env.COCHI_TV_GATEWAY_TTL_SECONDS || 21600)));
 
-function sessionCookie(token,maxAge=604800){
+const PANEL_SESSION_SECONDS = 24*60*60;
+const PANEL_DEVICE_COOKIE_SECONDS = 180*24*60*60;
+function sessionCookie(token,maxAge=PANEL_SESSION_SECONDS){
   const secure=TRUST_PROXY_HTTPS?'; Secure':'';
   return `cochi_panel_session=${encodeURIComponent(token||'')}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
+}
+function panelDeviceCookie(panelDeviceId,secret,maxAge=PANEL_DEVICE_COOKIE_SECONDS){
+  const secure=TRUST_PROXY_HTTPS?'; Secure':'';
+  const value=panelDeviceId&&secret?`${Number(panelDeviceId)}.${String(secret)}`:'';
+  return `cochi_panel_device=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
 }
 function requestIp(req){
   const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();
@@ -700,7 +707,11 @@ function sendJson(res, status, payload, extra={}) {
   res.end(body);
 }
 function sendText(res,status,body,type='text/plain; charset=utf-8') {
-  res.writeHead(status, {'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer'});
+  res.writeHead(status, {
+    'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer',
+    'Permissions-Policy':'camera=(), microphone=(), geolocation=(), payment=()','Cross-Origin-Opener-Policy':'same-origin','Cross-Origin-Resource-Policy':'same-origin',
+    'X-Permitted-Cross-Domain-Policies':'none',...(TRUST_PROXY_HTTPS?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{})
+  });
   res.end(body);
 }
 async function readJson(req,limit=1024*1024){
@@ -1366,9 +1377,29 @@ function wouldCycle(accountId,newParentId){
 
 function createPanelSession(panelDeviceId){
   db.prepare('DELETE FROM panel_sessions WHERE panel_device_id=? OR expires_at<=?').run(panelDeviceId,nowIso());
-  const token=randomToken(); const exp=addDays(nowIso(),7);
+  const token=randomToken(); const exp=addDays(nowIso(),1);
   db.prepare('INSERT INTO panel_sessions(panel_device_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)').run(panelDeviceId,sha(token),exp,nowIso());
   return {token,expiresAt:exp};
+}
+function safeSecretMatches(storedHash,secret){
+  try{
+    const a=Buffer.from(String(storedHash||''),'hex'),b=Buffer.from(sha(secret||''),'hex');
+    return a.length===b.length && a.length>0 && crypto.timingSafeEqual(a,b);
+  }catch{return false;}
+}
+function panelDeviceProofFromReq(req){
+  const cookies=parseCookies(req);
+  const raw=String(cookies.cochi_panel_device||'');
+  if(raw){
+    const dot=raw.indexOf('.');
+    const id=Number(dot>0?raw.slice(0,dot):0),secret=dot>0?raw.slice(dot+1):'';
+    if(Number.isInteger(id)&&id>0&&secret)return {kind:'cookie',panelDeviceId:id,secret};
+  }
+  // Compatibilidad temporal con v0.9.106: migra el secreto de localStorage a cookie HttpOnly.
+  const secret=String(req.headers['x-cochi-panel-device-secret']||'');
+  const uid=String(req.headers['x-cochi-panel-device-uid']||'');
+  if(secret)return {kind:'legacy-header',deviceUid:uid,secret};
+  return null;
 }
 function panelSessionFromReq(req){
   const t=parseCookies(req).cochi_panel_session || bearer(req); if(!t)return null;
@@ -1377,15 +1408,17 @@ function panelSessionFromReq(req){
   if(!row)return null;
   if(Date.parse(row.expires_at)<=Date.now()){db.prepare('DELETE FROM panel_sessions WHERE id=?').run(row.session_id);return null;}
   if(!row.device_active)return null;
-  // v0.9.106 — doble comprobación del PANEL: cookie HttpOnly + secreto del dispositivo.
-  // Un token de sesión robado por sí solo ya no permite reutilizar la sesión en otro navegador/equipo.
-  const proof=String(req.headers['x-cochi-panel-device-secret']||'');
-  const proofUid=String(req.headers['x-cochi-panel-device-uid']||'');
-  if(!proof||sha(proof)!==String(row.device_secret_hash||''))return null;
-  if(proofUid&&proofUid!==String(row.device_uid||''))return null;
+  const proof=panelDeviceProofFromReq(req);
+  if(!proof)return null;
+  if(proof.kind==='cookie'){
+    if(Number(proof.panelDeviceId)!==Number(row.panel_device_id)||!safeSecretMatches(row.device_secret_hash,proof.secret))return null;
+  }else{
+    if(proof.deviceUid&&proof.deviceUid!==String(row.device_uid||''))return null;
+    if(!safeSecretMatches(row.device_secret_hash,proof.secret))return null;
+  }
   const a=accountPublic(row); const st=accountAccessState(a); if(!st.ok)return {blocked:true,reason:st.reason,account:a};
   db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),row.panel_device_id);
-  return {blocked:false,account:a,panelDeviceId:row.panel_device_id};
+  return {blocked:false,account:a,panelDeviceId:row.panel_device_id,legacyProof:proof.kind!=='cookie'};
 }
 function blockerInfo(account){
   if(!account?.blocked_by_account_id)return {blockedByName:'',blockedByRole:''};
@@ -2358,10 +2391,10 @@ function sniffImageMime(buffer,declared=''){
 async function route(req,res){
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const p=u.pathname,m=req.method||'GET';
   if(m==='POST'&&['/api/setup','/api/panel/activate','/api/panel/session','/api/client-device/register','/api/client-device/status','/api/client-device/session','/api/client-device/adult/verify'].includes(p)){
-    const strict=p==='/api/client-device/status'?600:p==='/api/setup'?5:p==='/api/panel/activate'?12:p==='/api/panel/session'?30:30;
+    const strict=p==='/api/client-device/status'?600:p==='/api/setup'?5:p==='/api/panel/activate'?8:p==='/api/panel/session'?30:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
-  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,mode:IS_PRODUCTION?'production':'development',mediaSearchConfigured:true,tmdbConfigured:Boolean(TMDB_API_KEY||TMDB_READ_TOKEN),mediaProvidersConfigured:MEDIA_PROVIDERS.length,mediaCatalogProviders:MEDIA_PROVIDERS.filter(providerLooksLikeCatalog).length,mediaProviderModes:MEDIA_PROVIDERS.map(x=>({name:x.name,mode:x.mode,catalog:providerLooksLikeCatalog(x)})),mediaEngine:'remote-v6',mediaDetection:'media-adapters-v3-cochi-encrypted',mediaAdapters:['generic-json-flex','m3u-text-html','cochi-aes256-ecb'],mediaExtensions:PROVIDER_MEDIA_EXTENSIONS,serverTime:nowIso()});
+  if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,serverTime:nowIso()});
   if(p==='/api/public/info'&&m==='GET')return sendJson(res,200,{service:'CO-CHI',version:VERSION,clientRegistration:true,panelWeb:true,pwa:true,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES,clientDevices:globalClientDeviceBlockSize(),clientDevicesDefault:globalClientDeviceBlockSize(),clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX});
   if(p==='/api/setup/status'&&m==='GET')return sendJson(res,200,{needsSetup:Number(db.prepare('SELECT COUNT(*) n FROM accounts WHERE role_level=1').get().n)===0});
   if(p==='/api/setup'&&m==='POST'){
@@ -2599,38 +2632,51 @@ async function route(req,res){
   }
 
   // Activación del PANEL por código. Máximo 2 dispositivos por ficha.
+  // v0.9.107: la credencial persistente queda en cookie HttpOnly; ya no se expone a JavaScript/localStorage.
   if(p==='/api/panel/activate'&&m==='POST'){
     const b=await readJson(req),code=String(b.code||'').trim().toUpperCase(),uid=String(b.deviceUid||'').trim(),name=String(b.deviceName||'Dispositivo').trim().slice(0,120);
     if(uid.length<8)return sendJson(res,400,{error:'Identificador de dispositivo inválido'});
     let a=db.prepare('SELECT * FROM accounts WHERE activation_code=?').get(code); if(!a)return sendJson(res,404,{error:'Código de activación inválido'});
     a=accountPublic(a);const state=accountAccessState(a);if(!state.ok){const bi=blockerInfo(a);return sendJson(res,423,{error:'Ficha bloqueada',reason:state.reason,blockReason:a.block_reason||'',...bi});}
     let pd=db.prepare('SELECT * FROM panel_devices WHERE account_id=? AND device_uid=?').get(a.id,uid);
-    let secret=null;
+    const t=nowIso();let secret=randomToken();
     if(!pd){
       const n=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(a.id).n);
       if(n>=PANEL_DEVICE_LIMIT)return sendJson(res,409,{error:'Esta ficha ya tiene 2 dispositivos de PANEL autorizados'});
-      secret=randomToken(); const t=nowIso();
       const rr=db.prepare('INSERT INTO panel_devices(account_id,device_uid,device_name,secret_hash,active,last_seen_at,created_at,updated_at) VALUES (?,?,?,?,1,?,?,?)')
         .run(a.id,uid,name,sha(secret),t,t,t);
       pd={id:Number(rr.lastInsertRowid)};
     } else {
-      if(pd.active)return sendJson(res,409,{error:'Este dispositivo ya está activado. Usá el acceso guardado en este navegador.'});
-      const n=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(a.id).n);
-      if(n>=PANEL_DEVICE_LIMIT)return sendJson(res,409,{error:'Esta ficha ya tiene 2 dispositivos de PANEL autorizados'});
-      secret=randomToken(); const t=nowIso();
+      if(!pd.active){
+        const n=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(a.id).n);
+        if(n>=PANEL_DEVICE_LIMIT)return sendJson(res,409,{error:'Esta ficha ya tiene 2 dispositivos de PANEL autorizados'});
+      }
+      // Si el mismo dispositivo vuelve a ingresar el código correcto, rota la credencial sin ocupar otro cupo.
       db.prepare('UPDATE panel_devices SET device_name=?,secret_hash=?,active=1,last_seen_at=?,updated_at=? WHERE id=?').run(name,sha(secret),t,t,pd.id);
+      db.prepare('DELETE FROM panel_sessions WHERE panel_device_id=?').run(pd.id);
     }
     const s=createPanelSession(pd.id);
-    return sendJson(res,200,{ok:true,deviceSecret:secret,account:accountPublic(a),expiresAt:s.expiresAt},{'Set-Cookie':sessionCookie(s.token)});
+    return sendJson(res,200,{ok:true,account:accountPublic(a),expiresAt:s.expiresAt,deviceCredential:'httpOnly-cookie'},
+      {'Set-Cookie':[sessionCookie(s.token),panelDeviceCookie(pd.id,secret)]});
   }
   if(p==='/api/panel/session'&&m==='POST'){
-    const b=await readJson(req),uid=String(b.deviceUid||''),secret=String(b.deviceSecret||'');
-    const pd=db.prepare(`SELECT pd.id panel_device_id,pd.account_id panel_account_id,pd.device_uid,pd.device_name,pd.secret_hash,pd.active device_active,a.* FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.device_uid=? AND pd.active=1`).get(uid);
+    const b=await readJson(req);
+    let pd=null,secret='',usedLegacy=false;
+    const cookieProof=panelDeviceProofFromReq(req);
+    if(cookieProof?.kind==='cookie'){
+      pd=db.prepare(`SELECT pd.id panel_device_id,pd.account_id panel_account_id,pd.device_uid,pd.device_name,pd.secret_hash,pd.active device_active,a.* FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.id=? AND pd.active=1`).get(cookieProof.panelDeviceId);
+      secret=cookieProof.secret;
+    }else{
+      const uid=String(b.deviceUid||''),bodySecret=String(b.deviceSecret||'');
+      pd=db.prepare(`SELECT pd.id panel_device_id,pd.account_id panel_account_id,pd.device_uid,pd.device_name,pd.secret_hash,pd.active device_active,a.* FROM panel_devices pd JOIN accounts a ON a.id=pd.account_id WHERE pd.device_uid=? AND pd.active=1`).get(uid);
+      secret=bodySecret;usedLegacy=Boolean(bodySecret);
+    }
     if(!pd)return sendJson(res,401,{error:'Dispositivo PANEL no reconocido'});
-    const a=Buffer.from(pd.secret_hash,'hex'),bb=Buffer.from(sha(secret),'hex'); if(a.length!==bb.length||!crypto.timingSafeEqual(a,bb))return sendJson(res,401,{error:'Credencial de dispositivo inválida'});
+    if(!safeSecretMatches(pd.secret_hash,secret))return sendJson(res,401,{error:'Credencial de dispositivo inválida'});
     const acc=accountPublic(accountRaw(pd.panel_account_id));const st=accountAccessState(acc);if(!st.ok){const bi=blockerInfo(acc);return sendJson(res,423,{error:'Ficha bloqueada',reason:st.reason,blockReason:acc.block_reason||'',...bi});}
     const s=createPanelSession(pd.panel_device_id);db.prepare('UPDATE panel_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),pd.panel_device_id);
-    return sendJson(res,200,{ok:true,account:acc,expiresAt:s.expiresAt},{'Set-Cookie':sessionCookie(s.token)});
+    return sendJson(res,200,{ok:true,account:acc,expiresAt:s.expiresAt,deviceCredential:'httpOnly-cookie',migratedLegacySecret:usedLegacy},
+      {'Set-Cookie':[sessionCookie(s.token),panelDeviceCookie(pd.panel_device_id,secret)]});
   }
   if(p==='/api/panel/me'&&m==='GET'){
     const s=requirePanel(req,res);if(!s)return;return sendJson(res,200,{account:accountPublic(accountRaw(s.account.id)),limits:{panelDevices:2,clientDevices:globalClientDeviceBlockSize(),clientDevicesDefault:globalClientDeviceBlockSize(),clientDevicesMin:CLIENT_DEVICE_LIMIT_MIN,clientDevicesMax:CLIENT_DEVICE_LIMIT_MAX,clientDays:30,renewWindowDays:10,minCreditTransfer:MIN_CREDIT_TRANSFER,demoMinutes:DEMO_DURATION_MINUTES,demoDurations:DEMO_ALLOWED_MINUTES},features:{demosEnabled:boolSetting('demos_enabled',false),playbackSecurityEnabled:boolSetting('playback_security_enabled',false)}});
@@ -2951,7 +2997,9 @@ async function route(req,res){
         const activeCount=Number(db.prepare('SELECT COUNT(*) n FROM panel_devices WHERE account_id=? AND active=1').get(d.account_id).n);
         if(activeCount<=1)return sendJson(res,409,{error:'La ADMINISTRACIÓN principal debe conservar al menos 1 dispositivo activo. Activá el reemplazo antes de liberar este equipo.'});
       }
-      db.prepare('UPDATE panel_devices SET active=0,updated_at=? WHERE id=?').run(nowIso(),d.id);db.prepare('DELETE FROM panel_sessions WHERE panel_device_id=?').run(d.id);return sendJson(res,200,{ok:true});
+      db.prepare('UPDATE panel_devices SET active=0,updated_at=? WHERE id=?').run(nowIso(),d.id);db.prepare('DELETE FROM panel_sessions WHERE panel_device_id=?').run(d.id);
+      const self=Number(d.id)===Number(s.panelDeviceId);
+      return sendJson(res,200,{ok:true,selfReleased:self},self?{'Set-Cookie':[sessionCookie('',0),panelDeviceCookie(0,'',0)]}:{});
     }
 
     const credit=p.match(/^\/api\/admin\/accounts\/(\d+)\/credits$/);

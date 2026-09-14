@@ -36,9 +36,11 @@ function updateClientExpiryCountdowns(){
 }
 function uid(){let x=localStorage.getItem('cochi_panel_device_uid');if(!x){x='web-'+crypto.randomUUID();localStorage.setItem('cochi_panel_device_uid',x);}return x;}
 function deviceName(){return localStorage.getItem('cochi_panel_device_name') || `Navegador ${navigator.platform||''}`.trim();}
-function secret(){return localStorage.getItem('cochi_panel_device_secret')||'';}
-function setSecret(v){localStorage.setItem('cochi_panel_device_secret',v);}
+function legacySecret(){return localStorage.getItem('cochi_panel_device_secret')||'';}
+function clearLegacySecret(){localStorage.removeItem('cochi_panel_device_secret');}
 function setDeviceName(v){localStorage.setItem('cochi_panel_device_name',v);}
+function panelSignedOut(){return localStorage.getItem('cochi_panel_signed_out')==='1';}
+function setPanelSignedOut(v){if(v)localStorage.setItem('cochi_panel_signed_out','1');else localStorage.removeItem('cochi_panel_signed_out');}
 
 function blockedPanelMessage(err){
   const d=err?.data||{};
@@ -54,8 +56,8 @@ function blockedPanelMessage(err){
 
 async function api(url,opt={}){
   const o={credentials:'same-origin',...opt};
-  const panelSecret=secret();
-  if(panelSecret)o.headers={...(o.headers||{}),'X-COCHI-Panel-Device-Secret':panelSecret,'X-COCHI-Panel-Device-Uid':uid()};
+  // v0.9.107: la credencial persistente del dispositivo viaja en cookie HttpOnly.
+  // Ya no se adjunta un secreto legible por JavaScript en cada petición.
   if(o.body&&typeof o.body!=='string'){o.headers={...(o.headers||{}),'Content-Type':'application/json'};o.body=JSON.stringify(o.body);}
   const r=await fetch(url,o);let d={};try{d=await r.json()}catch{}
   if(!r.ok){const e=new Error(d.error||`Error ${r.status}`);e.status=r.status;e.data=d;throw e;}return d;
@@ -81,11 +83,17 @@ $('#modalBackdrop').addEventListener('click',e=>{if(e.target!==$('#modalBackdrop
 async function bootstrap(){
   const st=await api('/api/setup/status').catch(()=>({needsSetup:false}));
   if(st.needsSetup){show('setupView');return;}
-  try{const me=await api('/api/panel/me');state.me=me.account;enterApp();return;}catch{}
-  if(secret()){
-    try{await loginSaved();return;}catch(e){if(e.status===423){show('activateView');msg($('#activateMsg'),blockedPanelMessage(e));$('#existingDeviceBtn').classList.remove('hidden');return;}}
+  try{const me=await api('/api/panel/me');state.me=me.account;clearLegacySecret();setPanelSignedOut(false);enterApp();return;}catch{}
+  if(panelSignedOut()){
+    show('activateView');$('#existingDeviceBtn').classList.remove('hidden');return;
   }
-  show('activateView');if(secret())$('#existingDeviceBtn').classList.remove('hidden');
+  // Intenta acceso silencioso con la cookie HttpOnly. Si venimos de v0.9.106,
+  // envía una única vez el secreto legado para migrarlo y luego lo borra de localStorage.
+  try{await loginSaved();return;}catch(e){
+    show('activateView');
+    $('#existingDeviceBtn').classList.toggle('hidden',!legacySecret());
+    if(e.status===423){msg($('#activateMsg'),blockedPanelMessage(e));return;}
+  }
 }
 
 $('#setupForm').addEventListener('submit',async e=>{
@@ -101,14 +109,14 @@ $('#activateForm').addEventListener('submit',async e=>{
   try{
     const name=$('#panelDeviceName').value.trim();
     const r=await api('/api/panel/activate',{method:'POST',body:{code:$('#activateCode').value,deviceUid:uid(),deviceName:name}});
-    setSecret(r.deviceSecret);setDeviceName(name);state.me=r.account;enterApp();
+    clearLegacySecret();setPanelSignedOut(false);setDeviceName(name);state.me=r.account;enterApp();
   }catch(e){msg($('#activateMsg'),e.message);}
 });
 $('#existingDeviceBtn').addEventListener('click',()=>loginSaved().catch(e=>msg($('#activateMsg'),e.message)));
 async function loginSaved(){
-  const r=await api('/api/panel/session',{method:'POST',body:{deviceUid:uid(),deviceSecret:secret()}});state.me=r.account;enterApp();
+  const r=await api('/api/panel/session',{method:'POST',body:{deviceUid:uid(),deviceSecret:legacySecret()}});clearLegacySecret();setPanelSignedOut(false);state.me=r.account;enterApp();
 }
-$('#logoutBtn').addEventListener('click',async()=>{await api('/api/panel/logout',{method:'POST'}).catch(()=>{});show('activateView');$('#existingDeviceBtn').classList.toggle('hidden',!secret());});
+$('#logoutBtn').addEventListener('click',async()=>{await api('/api/panel/logout',{method:'POST'}).catch(()=>{});setPanelSignedOut(true);show('activateView');$('#existingDeviceBtn').classList.remove('hidden');});
 
 function applyAccessVisibility(){
   $$('.admin-only').forEach(x=>x.classList.toggle('hidden',state.me?.role_level!==1));
@@ -1553,7 +1561,7 @@ $('#contentApplyBtn')?.addEventListener('click',async()=>{
 
 $('#modal').addEventListener('click',async e=>{
   if(e.target.closest('[data-close]')){closeModal();return;}
-  const rel=e.target.closest('[data-action="release-panel"]');if(rel){const card=rel.closest('[data-pdev]');const current=card?.dataset.current==='1';const warning=current?'\n\nEste es el dispositivo que estás usando: al liberarlo se cerrará esta sesión.':'';if(!confirm(`¿Liberar este dispositivo del PANEL?${warning}`))return;try{await api(`/api/admin/panel-devices/${Number(card.dataset.pdev)}/release`,{method:'POST'});closeModal();if(current){setSecret('');location.reload();return;}await loadAccounts();}catch(err){alert(err.message);}}
+  const rel=e.target.closest('[data-action="release-panel"]');if(rel){const card=rel.closest('[data-pdev]');const current=card?.dataset.current==='1';const warning=current?'\n\nEste es el dispositivo que estás usando: al liberarlo se cerrará esta sesión.':'';if(!confirm(`¿Liberar este dispositivo del PANEL?${warning}`))return;try{await api(`/api/admin/panel-devices/${Number(card.dataset.pdev)}/release`,{method:'POST'});closeModal();if(current){clearLegacySecret();location.reload();return;}await loadAccounts();}catch(err){alert(err.message);}}
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
