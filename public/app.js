@@ -899,16 +899,41 @@ $('#sourcesList')?.addEventListener('click',async e=>{
   const remove=e.target.closest('.source-remove-private');if(remove){if(!confirm(`¿Quitar la fuente privada de ${label} y volver a depender de una URL externa? La copia gestionada y la publicada en la app no se borrarán.`))return;try{await api(`/api/admin/sources/${key}/private-upload`,{method:'DELETE'});toast(`${label}: fuente privada quitada.`,'ok');await loadSources();}catch(err){toast(err.message,'bad')}return;}
   const b=e.target.closest('.source-save-import');if(!b)return;const url=row.querySelector('.source-url').value.trim(),enabled=row.querySelector('.source-enabled').checked;if(!url){const text='Ingresá una URL externa para importar. Si la lista ya está privada en el panel, no necesitás usar este botón.';status.textContent=text;status.className='source-status msg error';toast(text,'bad');return;}b.disabled=true;const old=b.textContent;b.textContent='IMPORTANDO...';status.textContent='Guardando URL e importando JSON...';status.className='source-status muted small';try{const r=await api(`/api/admin/sources/${key}/save-import`,{method:'POST',body:{url,enabled}});const st=r.stats?`${r.stats.categories} categorías · ${r.stats.items} contenidos${r.stats.nested?` · ${r.stats.nested} capítulos/entradas`:''}`:'contenido actualizado';const text=`${label}: GUARDADO E IMPORTADO CORRECTAMENTE · ${st}`;status.textContent=text;status.className='source-status msg ok';msg($('#sourcesMsg'),text,true);toast(text,'ok');await loadSources();}catch(err){const text=`${label}: NO SE PUDO IMPORTAR · ${err.message}`;status.textContent=text;status.className='source-status msg error';msg($('#sourcesMsg'),text);toast(text,'bad');}finally{b.disabled=false;b.textContent=old;}
 });
-$('#sourcesList')?.addEventListener('change',async e=>{const input=e.target.closest('.private-json-file');if(!input||!input.files?.[0])return;const row=input.closest('.source-row'),key=row.dataset.source,label=(row.querySelector('.source-title')?.textContent||key).trim(),status=row.querySelector('.source-status'),file=input.files[0];if(file.size>25*1024*1024){toast('El JSON supera 25 MB.','bad');return;}if(!confirm(`¿Subir ${file.name} como FUENTE MAESTRA PRIVADA de ${label}?\n\nEl archivo quedará en el almacenamiento privado del PANEL. Se conservarán hasta 5 respaldos anteriores.`))return;status.textContent='Leyendo y validando JSON...';status.className='source-status muted small';try{const raw=await file.text();const json=JSON.parse(raw);if(!Array.isArray(json))throw new Error('El JSON debe ser un arreglo de categorías');const r=await api(`/api/admin/sources/${key}/upload-json`,{method:'POST',body:{fileName:file.name,json}});const text=`${label}: FUENTE PRIVADA GUARDADA · ${r.stats.categories} categorías · ${r.stats.items} contenidos`;toast(text,'ok');msg($('#sourcesMsg'),text,true);await loadSources();}catch(err){const text='NO SE PUDO SUBIR EL JSON · '+err.message;status.textContent=text;status.className='source-status msg error';toast(text,'bad');}});
+$('#sourcesList')?.addEventListener('change',async e=>{const input=e.target.closest('.private-json-file');if(!input||!input.files?.[0])return;const row=input.closest('.source-row'),key=row.dataset.source,label=(row.querySelector('.source-title')?.textContent||key).trim(),status=row.querySelector('.source-status'),file=input.files[0];if(file.size>25*1024*1024){toast('El JSON supera 25 MB.','bad');return;}if(!confirm(`¿Subir ${file.name} como FUENTE MAESTRA PRIVADA de ${label}?\n\nEl archivo quedará en el almacenamiento privado del PANEL. Se conservarán hasta 5 respaldos anteriores.`))return;status.textContent='Leyendo y validando JSON...';status.className='source-status muted small';try{const raw=await file.text();const json=JSON.parse(raw);const r=await api(`/api/admin/sources/${key}/upload-json`,{method:'POST',body:{fileName:file.name,json}});const text=`${label}: FUENTE PRIVADA GUARDADA · ${r.stats.categories} categorías · ${r.stats.items} contenidos`;toast(text,'ok');msg($('#sourcesMsg'),text,true);await loadSources();}catch(err){const text='NO SE PUDO SUBIR EL JSON · '+err.message;status.textContent=text;status.className='source-status msg error';toast(text,'bad');}});
 
 
+function panelJsonChannelLike(x){return !!(x&&typeof x==='object'&&!Array.isArray(x)&&(x.code!==undefined||x.uri!==undefined||x.url!==undefined||x.link!==undefined||x.stream_url!==undefined||x.isTemplate===true||x.template!==undefined));}
+function panelNormalizeJsonItem(x,i=0){
+  if(!x||typeof x!=='object'||Array.isArray(x))return null;
+  const out=structuredClone(x),name=String(x.name??x.title??x.nombre??x.channel_name??x.channel??`Canal ${i+1}`).trim()||`Canal ${i+1}`;
+  const uri=String(x.uri??x.url??x.link??x.stream_url??x.streamUrl??x.src??x.source??'').trim();
+  out.name=name;if(uri&&!String(out.uri??'').trim())out.uri=uri;return out;
+}
+function panelNormalizeJsonInput(input,key='tv1',depth=0){
+  if(depth>5)throw new Error('El JSON tiene demasiados niveles anidados.');
+  if(Array.isArray(input)){
+    const groupish=input.some(g=>g&&typeof g==='object'&&!Array.isArray(g)&&(Array.isArray(g.samples)||Array.isArray(g.channels)||Array.isArray(g.items)||Array.isArray(g.streams)||Array.isArray(g.entries)));
+    if(groupish)return input.map((g,gi)=>{if(!g||typeof g!=='object'||Array.isArray(g))return null;const items=Array.isArray(g.samples)?g.samples:Array.isArray(g.channels)?g.channels:Array.isArray(g.items)?g.items:Array.isArray(g.streams)?g.streams:Array.isArray(g.entries)?g.entries:[];const out={...g,name:String(g.name??g.title??g.category??g.group??`Categoría ${gi+1}`),samples:items.map(panelNormalizeJsonItem).filter(Boolean)};delete out.channels;delete out.items;delete out.streams;delete out.entries;return out;}).filter(Boolean);
+    if(input.length===0)return [];
+    if(input.every(panelJsonChannelLike)){
+      const groups=new Map();input.forEach((x,i)=>{const cat=String(x.category??x.categoria??x.group??x.group_title??x['group-title']??key.toUpperCase()).trim()||key.toUpperCase();if(!groups.has(cat))groups.set(cat,[]);const item=panelNormalizeJsonItem(x,i);if(item)groups.get(cat).push(item);});return [...groups.entries()].map(([name,samples])=>({name,samples}));
+    }
+    return input;
+  }
+  if(!input||typeof input!=='object')throw new Error('El JSON no contiene una lista utilizable.');
+  if(panelJsonChannelLike(input)){const item=panelNormalizeJsonItem(input,0),cat=String(input.category??input.categoria??input.group??input.group_title??input['group-title']??key.toUpperCase()).trim()||key.toUpperCase();return [{name:cat,samples:item?[item]:[]}];}
+  const preferred=['categories','groups','channels','items','data','results','live','streams','tv','content','contents','playlist'];
+  for(const k of preferred){if(input[k]!==undefined){try{const r=panelNormalizeJsonInput(input[k],key,depth+1);if(Array.isArray(r))return r}catch{}}}
+  const vals=Object.values(input);if(vals.length===1)return panelNormalizeJsonInput(vals[0],key,depth+1);
+  throw new Error('Formato JSON no reconocido: no encontré categorías ni canales.');
+}
 function contentPlain(){
   const raw=$('#contentJson').value.trim();if(!raw)return [];
-  const x=JSON.parse(raw);if(!Array.isArray(x))throw new Error('La lista debe ser un arreglo de categorías.');return x;
+  return panelNormalizeJsonInput(JSON.parse(raw),$('#contentKey')?.value||'tv1');
 }
 function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'';renderContentVisual();}
 function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
-function contentItemMeta(x){const bits=[];if(x?.uri)bits.push(x.uri);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
+function contentItemMeta(x){const bits=[];if(x?.uri||x?.url)bits.push(x.uri||x.url);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
 function contentItemHidden(x){return x?._cochiHidden===true;}
 function contentCategoryHidden(x){return x?._cochiHidden===true;}
 function contentAutoHideDate(x){const ms=Date.parse(String(x?._cochiAutoHideAt||''));return Number.isFinite(ms)?new Date(ms):null;}
@@ -1167,7 +1192,7 @@ function editContentItem(groupIndex,itemIndex=null){
   const isQuickEditable=itemIndex!==null&&(isTv||contentKey==='movies');
   const existingFirst=Array.isArray(cur.temp)&&cur.temp.length?cur.temp[0]:{name:'1',icon:cur.icon||'',uri:cur.uri||''};
   const streamType=String(cur.type||cur.tipo||'auto').toLowerCase();
-  const drmScheme=String(cur.drm_scheme||'').toLowerCase();
+  let drmScheme=String(cur.drm_scheme||'').toLowerCase();
   // v0.9.97: recuperar claves ClearKey tanto del formato moderno `keys`
   // como del formato histórico que las guardaba en `drm_license_url`.
   const normalizeStoredKeys=value=>{
@@ -1187,6 +1212,9 @@ function editContentItem(groupIndex,itemIndex=null){
   };
   const existingKeyPairs=normalizeStoredKeys(cur.keys);
   if(!existingKeyPairs.length&&drmScheme==='clearkey')existingKeyPairs.push(...normalizeStoredKeys(cur.drm_license_url));
+  // v1.1.0: el formato directo puede traer keys[] sin drm_scheme. Al editar,
+  // tratarlas como ClearKey para que el PANEL no las oculte ni las pierda.
+  if(!drmScheme&&existingKeyPairs.length)drmScheme='clearkey';
   const existingLicenseUrl=drmScheme==='widevine'?String(cur.drm_license_url||cur.license_url||''):'';
   // v0.9.101: parser único y tolerante de headers. Evita que al guardar/reabrir
   // queden visibles solo Referer u otros headers parciales. Acepta objetos, arrays,
@@ -1222,7 +1250,7 @@ function editContentItem(groupIndex,itemIndex=null){
   const cleanPlaybackHeadersObj=(primary={},legacy=null)=>{const out={};const forbidden=new Set(['drm_scheme','drm_header','drm_headers','drm_license_url','drm_license_headers','license_url','license_headers','keys','key','kid']);const merge=o=>{for(const [k,v] of Object.entries(parseHeadersFlexible(o))){if(forbidden.has(String(k).toLowerCase()))continue;const sv=String(v).trim();if(sv)out[canonicalHeaderName(k)]=sv;}};merge(legacy);merge(primary);return out;};
   const primaryPlaybackHeaders=cleanPlaybackHeadersObj(cur.headers,[cur.drm_header,cur.drm_headers]);
   const legacyBackups=Array.isArray(cur.backupUris)?cur.backupUris.map(x=>String(x||'').trim()).filter(Boolean):[];
-  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>{const sourceDrm=String(x?.drm_scheme||'').toLowerCase();const sourceKeys=normalizeStoredKeys(x?.keys);if(!sourceKeys.length&&sourceDrm==='clearkey')sourceKeys.push(...normalizeStoredKeys(x?.drm_license_url));return {url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,[x?.drm_header,x?.drm_headers]),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:sourceDrm,keys:sourceKeys,drm_license_url:sourceDrm==='widevine'?String(x?.drm_license_url||x?.license_url||'').trim():'',drm_license_headers:mergeHeaders(x?.license_headers,x?.drm_license_headers),enabled:x?.enabled===true};}):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:existingKeyPairs.map(x=>({...x})),drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
+  const playbackSources=(Array.isArray(cur.playbackSources)&&cur.playbackSources.length?cur.playbackSources.map(x=>{let sourceDrm=String(x?.drm_scheme||'').toLowerCase();const sourceKeys=normalizeStoredKeys(x?.keys);if(!sourceKeys.length&&sourceDrm==='clearkey')sourceKeys.push(...normalizeStoredKeys(x?.drm_license_url));if(!sourceDrm&&sourceKeys.length)sourceDrm='clearkey';return {url:String(x?.url||'').trim(),headers:cleanPlaybackHeadersObj(x?.headers,[x?.drm_header,x?.drm_headers]),type:String(x?.type||x?.tipo||'auto').toLowerCase(),drm_scheme:sourceDrm,keys:sourceKeys,drm_license_url:sourceDrm==='widevine'?String(x?.drm_license_url||x?.license_url||'').trim():'',drm_license_headers:mergeHeaders(x?.license_headers,x?.drm_license_headers),enabled:x?.enabled===true};}):[{url:String(cur.uri||'').trim(),headers:primaryPlaybackHeaders,type:streamType,drm_scheme:drmScheme,keys:existingKeyPairs.map(x=>({...x})),drm_license_url:existingLicenseUrl,drm_license_headers:existingLicenseHeaders,enabled:true},...legacyBackups.map(url=>({url,headers:primaryPlaybackHeaders,type:'auto',drm_scheme:'',keys:[],drm_license_url:'',drm_license_headers:{},enabled:false}))]).filter((x,i)=>x.url||i===0);
   let activePlaybackSource=Number.isInteger(cur.activePlaybackSource)?cur.activePlaybackSource:playbackSources.findIndex(x=>x&&x.enabled===true);if(activePlaybackSource<0||activePlaybackSource>=playbackSources.length)activePlaybackSource=0;
   // Compatibilidad de headers: algunos canales históricos dejaron Referer en la fuente
   // y Origin/User-Agent a nivel principal (o viceversa). En la fuente activa unimos ambos
@@ -1236,7 +1264,7 @@ function editContentItem(groupIndex,itemIndex=null){
       <section class="content-editor-column">
         ${isTv?`<div class="content-editor-meta-row"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>URL de imagen / logo<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://.../logo.png"><span class="muted tiny">PNG, JPG/JPEG, WebP, GIF, SVG, BMP, ICO, AVIF/APNG y URLs sin extensión.</span></label></div>`:`<label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>`}
         ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:(isTv?`<div class="source-selector-note"><b>Reproducción TV por fuentes</b><span class="muted tiny">Configurá URL 1, URL 2 y sus datos. Tocá ACTIVAR en la fuente que querés usar; solo una puede quedar EN USO.</span></div>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`)}
-        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div>`:''}
+        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box"><div class="template-config-head"><div><h4>PLANTILLA / REDIRECCIÓN CO-CHI</h4><span class="muted tiny">Compatible con isTemplate, nameRedirect, codeRedirect y template del JSON directo.</span></div><label class="switch-row"><input id="ciIsTemplate" type="checkbox" ${cur.isTemplate===true?'checked':''}> Usar plantilla</label></div><div class="form-row"><label>nameRedirect<input id="ciNameRedirect" value="${esc(cur.nameRedirect||'')}" placeholder="Fox_Sports_Premiun_HD"></label><label>codeRedirect<input id="ciCodeRedirect" value="${esc(cur.codeRedirect||'')}" placeholder="c7eds"></label></div><label>template<textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(cur.template||'')}</textarea></label></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
         ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
       </section>
@@ -1382,7 +1410,7 @@ function editContentItem(groupIndex,itemIndex=null){
     const submitBtn=$('#ciSubmitBtn');
     try{
       if(submitBtn){submitBtn.disabled=true;if(isQuickEditable)submitBtn.textContent='ACTUALIZANDO...';}
-      const managedTvFields=new Set(['name','icon','uri','headers','type','tipo','drm_scheme','keys','drm_license_url','drm_license_headers','license_url','license_headers','backupUris','playbackSources','activePlaybackSource','drm_header','drm_headers','_failover']);
+      const managedTvFields=new Set(['name','icon','uri','url','headers','type','tipo','drm_scheme','keys','drm_license_url','drm_license_headers','license_url','license_headers','backupUris','playbackSources','activePlaybackSource','drm_header','drm_headers','_failover','isTemplate','nameRedirect','codeRedirect','template']);
       const tvExtra=isTv?Object.fromEntries(Object.entries(cur||{}).filter(([k])=>!managedTvFields.has(k))):null;
       const extraText=isTv?'':($('#ciExtras')?.value||'').trim(),extra=isTv?tvExtra:(extraText?JSON.parse(extraText):{});
       const obj={...extra,name:$('#ciName').value.trim()};
@@ -1421,12 +1449,21 @@ function editContentItem(groupIndex,itemIndex=null){
         obj.activePlaybackSource=activePlaybackSource;
         const active=collected[activePlaybackSource];
         obj.uri=active.url;
+        // Si el canal llegó con `url` o usa plantilla, conservar también ese campo
+        // para mantener el formato directo compatible con CO-CHI v0.23.83.
+        if(Object.prototype.hasOwnProperty.call(cur,'url')||cur.isTemplate===true||$('#ciIsTemplate')?.checked)obj.url=active.url;
         if(Object.keys(active.headers).length)obj.headers=active.headers;else delete obj.headers;
         if(active.type&&active.type!=='auto')obj.type=active.type;else delete obj.type;delete obj.tipo;
         delete obj.drm_scheme;delete obj.keys;delete obj.drm_license_url;delete obj.drm_license_headers;delete obj.license_url;delete obj.license_headers;
         if(active.drm_scheme==='clearkey'){obj.drm_scheme='clearkey';obj.keys=active.keys;}
         else if(active.drm_scheme==='widevine'){obj.drm_scheme='widevine';obj.drm_license_url=active.drm_license_url;if(active.drm_license_headers&&Object.keys(active.drm_license_headers).length)obj.drm_license_headers=active.drm_license_headers;}
         delete obj.backupUris;
+        const useTemplate=$('#ciIsTemplate')?.checked===true;
+        if(useTemplate){
+          const nameRedirect=String($('#ciNameRedirect')?.value||'').trim(),codeRedirect=String($('#ciCodeRedirect')?.value||'').trim(),template=String($('#ciTemplate')?.value||'').trim();
+          if(!nameRedirect||!codeRedirect||!template)throw new Error('Plantilla CO-CHI: completá nameRedirect, codeRedirect y template.');
+          obj.isTemplate=true;obj.nameRedirect=nameRedirect;obj.codeRedirect=codeRedirect;obj.template=template;
+        }else{delete obj.isTemplate;delete obj.nameRedirect;delete obj.codeRedirect;delete obj.template;}
       }
       const targetGroup=Number($('#ciCategory').value);
       let pos=Math.max(1,Number($('#ciPosition').value)||1)-1;

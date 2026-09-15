@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '0.9.107';
+const VERSION = '1.1.0';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -486,10 +486,10 @@ function normalizeRemoteItem(x,i=0){
   if(!x||typeof x!=='object'||Array.isArray(x))return null;
   if(x.code)return cloneJson(x);
   const out=cloneJson(x),name=remoteItemName(x,i),uri=remoteItemUri(x),icon=remoteItemIcon(x);
-  out.name=name;if(uri)out.uri=uri;if(icon)out.icon=icon;
-  if(out.url!==undefined&&out.uri!==undefined)delete out.url;
-  if(out.link!==undefined&&out.uri!==undefined)delete out.link;
-  if(out.stream_url!==undefined&&out.uri!==undefined)delete out.stream_url;
+  // v1.1.0: conservar el formato original (url, template, redirects, keys, etc.)
+  // y sumar `uri` solo como alias interno para que el editor histórico del PANEL
+  // pueda mostrar/reproducir el canal sin destruir los campos que CO-CHI v0.23.83 lee.
+  out.name=name;if(uri&&!String(out.uri??'').trim())out.uri=uri;if(icon&&!String(out.icon??'').trim())out.icon=icon;
   return out;
 }
 function normalizeRemoteGroups(arr,defaultName='General'){
@@ -514,6 +514,14 @@ function normalizeRemoteCatalogRoot(input,key='tv1',depth=0){
   if(depth>5)throw new Error('El JSON remoto tiene demasiados niveles anidados');
   if(Array.isArray(input))return normalizeRemoteGroups(input,key.toUpperCase())||input;
   if(!input||typeof input!=='object')throw new Error('El JSON remoto no contiene una lista utilizable');
+  // v1.1.0: aceptar un canal individual tal cual llega en JSON, por ejemplo:
+  // {id,number,name,type,url,isTemplate,nameRedirect,codeRedirect,template,keys:[...]}
+  // El PANEL solo lo envuelve en una categoría interna; no elimina sus campos originales.
+  if(looksLikeRemoteItem(input)){
+    const item=normalizeRemoteItem(input,0);
+    const category=String(input.category??input.categoria??input.group??input.group_title??input['group-title']??key.toUpperCase()).trim()||key.toUpperCase();
+    return [{name:category,samples:item?[item]:[]}];
+  }
   const preferred=['categories','groups','channels','items','data','results','live','streams','tv','content','contents','playlist'];
   for(const k of preferred){if(input[k]!==undefined){try{const r=normalizeRemoteCatalogRoot(input[k],key,depth+1);if(Array.isArray(r)&&r.length)return r}catch{}}}
   const mapped=[];
@@ -3479,7 +3487,7 @@ async function route(req,res){
     if(privateUploadMatch&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede subir la fuente privada'});
       const key=privateUploadMatch[1],b=await readJson(req,30*1024*1024);if(b.json===undefined)return sendJson(res,400,{error:'Seleccioná un archivo JSON'});
-      try{if(!Array.isArray(b.json))throw new Error('El JSON debe ser un arreglo de categorías');const stats=contentStats(b.json);if(!stats.categories)throw new Error('El JSON no contiene categorías');const fileName=String(b.fileName||`${key}.json`).slice(0,255);const saved=savePrivateSourceMaster(key,b.json,fileName);db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,nowIso(),key);db.prepare('UPDATE sources SET updated_at=? WHERE source_key=?').run(nowIso(),key);audit(actor.id,'private_source_json_uploaded','content',null,`${key}; ${fileName}; ${stats.items} contenidos`);return sendJson(res,200,{ok:true,key,fileName,stats,bytes:saved.bytes,uploadedAt:saved.updatedAt,private:true,backupsKept:5});}catch(e){return sendJson(res,400,{error:'No se pudo guardar el JSON privado: '+e.message});}
+      try{const normalized=prepareRemoteCatalog(b.json,key);const stats=contentStats(normalized);if(!stats.categories||!stats.items)throw new Error('El JSON no contiene canales/contenidos utilizables');const fileName=String(b.fileName||`${key}.json`).slice(0,255);const saved=savePrivateSourceMaster(key,normalized,fileName);db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,nowIso(),key);db.prepare('UPDATE sources SET updated_at=? WHERE source_key=?').run(nowIso(),key);audit(actor.id,'private_source_json_uploaded','content',null,`${key}; ${fileName}; ${stats.items} contenidos`);return sendJson(res,200,{ok:true,key,fileName,stats,bytes:saved.bytes,uploadedAt:saved.updatedAt,private:true,backupsKept:5});}catch(e){return sendJson(res,400,{error:'No se pudo guardar el JSON privado: '+e.message});}
     }
     const privateRemoveMatch=p.match(/^\/api\/admin\/sources\/(tv1|tv2|movies|series)\/private-upload$/);
     if(privateRemoveMatch&&m==='DELETE'){
@@ -3499,7 +3507,7 @@ async function route(req,res){
       try{
         const rr=await fetch(url,{headers:{'User-Agent':'CO-CHI-PANEL/0.9.85'},signal:AbortSignal.timeout(20000)});if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
         const raw=await rr.text();if(Buffer.byteLength(raw,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');
-        const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new Error('El JSON debe ser un arreglo de categorías');
+        const parsed=JSON.parse(raw);
         const imported=decryptManagedContent(prepareRemoteCatalog(parsed,key));const json=mergeImportedWithManaged(imported,loadManagedEditable(key));
         const fileName=String(b.fileName||`${key}.json`).slice(0,255);const saved=savePrivateSourceMaster(key,json,fileName);const t=nowIso();
         db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,t,key);db.prepare('UPDATE sources SET url=?,updated_at=? WHERE source_key=?').run('',t,key);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}

@@ -510,3 +510,8 @@ body{min-height:100dvh}
   .admin-pill{padding:8px 9px;font-size:11px}
   .rules-corner-btn,.refresh-compact{padding:8px 9px}
 }
+
+/* v1.1.0 · plantilla/redirección CO-CHI */
+.template-config-box{margin-top:12px;padding:14px;border:1px solid rgba(104,203,239,.18);border-radius:14px;background:rgba(6,28,44,.38)}
+.template-config-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px}.template-config-head h4{margin:0 0 4px}.template-config-box textarea{width:100%}
+@media(max-width:720px){.template-config-head{flex-direction:column}.template-config-head .switch-row{align-self:flex-start}}
