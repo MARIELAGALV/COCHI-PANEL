@@ -1,6 +1,6 @@
 {
   "name": "co-chi-panel",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "private": true,
   "description": "CO-CHI PANEL + backend central listo para HTTPS y PWA móvil",
   "main": "server.js",

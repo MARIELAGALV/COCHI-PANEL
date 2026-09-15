@@ -1212,7 +1212,7 @@ function editContentItem(groupIndex,itemIndex=null){
   };
   const existingKeyPairs=normalizeStoredKeys(cur.keys);
   if(!existingKeyPairs.length&&drmScheme==='clearkey')existingKeyPairs.push(...normalizeStoredKeys(cur.drm_license_url));
-  // v1.1.0: el formato directo puede traer keys[] sin drm_scheme. Al editar,
+  // v1.1.1: el formato directo puede traer keys[] sin drm_scheme. Al editar,
   // tratarlas como ClearKey para que el PANEL no las oculte ni las pierda.
   if(!drmScheme&&existingKeyPairs.length)drmScheme='clearkey';
   const existingLicenseUrl=drmScheme==='widevine'?String(cur.drm_license_url||cur.license_url||''):'';
@@ -1259,12 +1259,38 @@ function editContentItem(groupIndex,itemIndex=null){
   // Compatibilidad con canales creados antes de playbackSources: si la fuente activa
   // todavía no contiene sus keys pero el canal principal sí, mostrarlas sin alterar nada.
   if(playbackSources[activePlaybackSource]&&String(playbackSources[activePlaybackSource].drm_scheme||'').toLowerCase()==='clearkey'&&!normalizeStoredKeys(playbackSources[activePlaybackSource].keys).length&&existingKeyPairs.length){playbackSources[activePlaybackSource].keys=existingKeyPairs.map(x=>({...x}));}
+
+  // v1.1.2: precarga robusta de los 4 campos de redirección.
+  // Primero respeta los valores exactos del JSON. Si un canal histórico todavía
+  // no los tiene, intenta obtener codeRedirect/nameRedirect de su URL /live/...
+  // para que el usuario no confunda los placeholders con valores guardados.
+  const templateCandidates=[
+    cur,
+    cur?.templateConfig,cur?.template_config,cur?.redirect,cur?.redirection,cur?.motorPrivado,cur?.motor_privado,
+    playbackSources[activePlaybackSource],
+    ...(Array.isArray(cur?.playbackSources)?cur.playbackSources:[])
+  ].filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
+  const templatePick=(...keys)=>{for(const obj0 of templateCandidates){for(const key0 of keys){const v=obj0?.[key0];if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;}}return '';};
+  const templateBool=value=>value===true||value===1||['true','1','yes','si','sí','on'].includes(String(value??'').trim().toLowerCase());
+  let templateIsTemplate=templateBool(templatePick('isTemplate','is_template','templateEnabled','template_enabled'));
+  let templateNameRedirect=String(templatePick('nameRedirect','name_redirect','redirectName','redirect_name')||'').trim();
+  let templateCodeRedirect=String(templatePick('codeRedirect','code_redirect','redirectCode','redirect_code')||'').trim();
+  let templateValue=String(templatePick('template','urlTemplate','url_template','redirectTemplate','redirect_template')||'').trim();
+  const templateSourceUrl=String(templatePick('redirectUrl','redirect_url','resolverUrl','resolver_url')||cur?.url||cur?.uri||playbackSources[activePlaybackSource]?.url||'').trim();
+  const templateUrlMatch=templateSourceUrl.match(/\/live\/([^/?#]+)\/([^/?#]+)\/(?:SA_Live_dash_(?:cenc|enc))\//i);
+  if(templateUrlMatch){
+    try{if(!templateCodeRedirect)templateCodeRedirect=decodeURIComponent(templateUrlMatch[1]);}catch{if(!templateCodeRedirect)templateCodeRedirect=templateUrlMatch[1];}
+    try{if(!templateNameRedirect)templateNameRedirect=decodeURIComponent(templateUrlMatch[2]);}catch{if(!templateNameRedirect)templateNameRedirect=templateUrlMatch[2];}
+  }
+  if(!templateValue&&(templateIsTemplate||templateNameRedirect||templateCodeRedirect))templateValue='{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd';
+  const templatePrefill={isTemplate:templateIsTemplate,nameRedirect:templateNameRedirect,codeRedirect:templateCodeRedirect,template:templateValue};
+
   openModal(`<div class="content-editor-head"><div class="content-editor-title"><h3>${itemIndex===null?'Agregar':'Editar'} contenido</h3><p class="muted small">Edición ampliada: cada fuente de TV conserva su URL, headers, formato y DRM de forma independiente.</p></div><div class="content-editor-head-actions">${isTv?`<div class="content-editor-head-logo" title="Logo actual del canal"><img id="ciIconPreview" ${cur.icon?`src="${esc(cur.icon)}"`:''} alt="Logo del canal" referrerpolicy="no-referrer" decoding="async" ${cur.icon?'':'hidden'}><span id="ciIconPreviewEmpty" class="muted tiny" ${cur.icon?'hidden':''}>SIN IMAGEN</span></div>`:''}<button type="button" class="ghost compact-close" data-close>✕</button></div></div><form id="contentItemForm" class="content-editor-form">
     <div class="content-editor-grid">
       <section class="content-editor-column">
         ${isTv?`<div class="content-editor-meta-row"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>URL de imagen / logo<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://.../logo.png"><span class="muted tiny">PNG, JPG/JPEG, WebP, GIF, SVG, BMP, ICO, AVIF/APNG y URLs sin extensión.</span></label></div>`:`<label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>`}
         ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:(isTv?`<div class="source-selector-note"><b>Reproducción TV por fuentes</b><span class="muted tiny">Configurá URL 1, URL 2 y sus datos. Tocá ACTIVAR en la fuente que querés usar; solo una puede quedar EN USO.</span></div>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`)}
-        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box"><div class="template-config-head"><div><h4>PLANTILLA / REDIRECCIÓN CO-CHI</h4><span class="muted tiny">Compatible con isTemplate, nameRedirect, codeRedirect y template del JSON directo.</span></div><label class="switch-row"><input id="ciIsTemplate" type="checkbox" ${cur.isTemplate===true?'checked':''}> Usar plantilla</label></div><div class="form-row"><label>nameRedirect<input id="ciNameRedirect" value="${esc(cur.nameRedirect||'')}" placeholder="Fox_Sports_Premiun_HD"></label><label>codeRedirect<input id="ciCodeRedirect" value="${esc(cur.codeRedirect||'')}" placeholder="c7eds"></label></div><label>template<textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(cur.template||'')}</textarea></label></div>`:''}
+        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box template-config-box-v111"><div class="template-config-head"><div><h4>REDIRECCIÓN / TEMPLATE CO-CHI <span class="template-new-badge">v1.1.2</span></h4><span class="muted tiny">Valores reales precargados desde el JSON; si faltan, nombre/código se detectan desde una URL compatible.</span></div></div><div class="template-field-grid"><label class="template-boolean-field"><span><b>isTemplate</b> <small>(boolean)</small></span><span class="template-checkbox-line"><input id="ciIsTemplate" type="checkbox" ${templatePrefill.isTemplate?'checked':''}> <b>true / false</b> · activar redirección por plantilla</span></label><label><span><b>nameRedirect</b> <small>(string)</small></span><input id="ciNameRedirect" value="${esc(templatePrefill.nameRedirect)}" placeholder="AmericaTV"></label><label><span><b>codeRedirect</b> <small>(string)</small></span><input id="ciCodeRedirect" value="${esc(templatePrefill.codeRedirect)}" placeholder="c7eds"></label><label class="template-full-field"><span><b>template</b> <small>(string)</small></span><textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(templatePrefill.template)}</textarea></label></div><div class="muted tiny template-help-v111">Si el JSON ya contiene isTemplate/nameRedirect/codeRedirect/template, se muestran exactamente aquí. Los textos grises son solo ejemplos cuando no existe un valor.</div></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
         ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
       </section>
@@ -1602,7 +1628,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.2').catch(()=>{}));
 }
 bootstrap();
 

@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.2';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -486,7 +486,7 @@ function normalizeRemoteItem(x,i=0){
   if(!x||typeof x!=='object'||Array.isArray(x))return null;
   if(x.code)return cloneJson(x);
   const out=cloneJson(x),name=remoteItemName(x,i),uri=remoteItemUri(x),icon=remoteItemIcon(x);
-  // v1.1.0: conservar el formato original (url, template, redirects, keys, etc.)
+  // v1.1.1: conservar el formato original (url, template, redirects, keys, etc.)
   // y sumar `uri` solo como alias interno para que el editor histórico del PANEL
   // pueda mostrar/reproducir el canal sin destruir los campos que CO-CHI v0.23.83 lee.
   out.name=name;if(uri&&!String(out.uri??'').trim())out.uri=uri;if(icon&&!String(out.icon??'').trim())out.icon=icon;
@@ -514,7 +514,7 @@ function normalizeRemoteCatalogRoot(input,key='tv1',depth=0){
   if(depth>5)throw new Error('El JSON remoto tiene demasiados niveles anidados');
   if(Array.isArray(input))return normalizeRemoteGroups(input,key.toUpperCase())||input;
   if(!input||typeof input!=='object')throw new Error('El JSON remoto no contiene una lista utilizable');
-  // v1.1.0: aceptar un canal individual tal cual llega en JSON, por ejemplo:
+  // v1.1.1: aceptar un canal individual tal cual llega en JSON, por ejemplo:
   // {id,number,name,type,url,isTemplate,nameRedirect,codeRedirect,template,keys:[...]}
   // El PANEL solo lo envuelve en una categoría interna; no elimina sus campos originales.
   if(looksLikeRemoteItem(input)){
