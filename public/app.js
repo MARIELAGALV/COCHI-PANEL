@@ -3,6 +3,23 @@ const $$ = s => [...document.querySelectorAll(s)];
 const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{}, serverClockOffsetMs:0 };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
+
+// v1.1.4: algunos APK/WebView mantienen un viewport lógico ancho (tipo escritorio).
+// Detectamos el dispositivo móvil también por UA/puntero/pantalla y forzamos la vista
+// de tarjetas de Clientes finales sin afectar la tabla de PC.
+function applyMobileDeviceClass(){
+  const ua=String(navigator.userAgent||'');
+  const uaMobile=/Android|iPhone|iPad|iPod|Mobile|; wv\)/i.test(ua);
+  const uaDataMobile=Boolean(navigator.userAgentData&&navigator.userAgentData.mobile===true);
+  let coarse=false;try{coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;}catch{}
+  const sw=Math.min(Number(window.screen?.width)||9999,Number(window.screen?.height)||9999);
+  const narrowTouch=coarse&&sw<=900;
+  document.documentElement.classList.toggle('cochi-mobile-device',uaMobile||uaDataMobile||narrowTouch);
+}
+applyMobileDeviceClass();
+window.addEventListener('orientationchange',applyMobileDeviceClass);
+window.addEventListener('resize',applyMobileDeviceClass);
+
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
 function fmt(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString('es-AR');}
 function syncServerClock(v){const ms=Date.parse(v||'');if(Number.isFinite(ms))state.serverClockOffsetMs=ms-Date.now();}
@@ -1661,7 +1678,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.3').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.4').catch(()=>{}));
 }
 bootstrap();
 
