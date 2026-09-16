@@ -522,10 +522,17 @@ body{min-height:100dvh}
 .template-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}.template-field-grid label{margin:0}.template-field-grid label>span:first-child{display:block;margin-bottom:5px}.template-field-grid small{font-weight:600;color:#8fa7ba}.template-boolean-field{grid-column:1/-1;padding:10px 12px;border:1px solid rgba(0,207,255,.18);border-radius:10px;background:rgba(0,0,0,.12)}.template-checkbox-line{display:flex!important;align-items:center;gap:8px;margin:0!important}.template-checkbox-line input{width:auto!important;margin:0!important}.template-full-field{grid-column:1/-1}.template-help-v111{margin-top:9px;padding-top:8px;border-top:1px dashed rgba(0,207,255,.18)}
 @media(max-width:720px){.template-field-grid{grid-template-columns:1fr}.template-boolean-field,.template-full-field{grid-column:auto}}
 
-/* v1.1.4 · Clientes finales en tarjetas para móvil / APK.
-   Además del ancho de viewport, JS marca dispositivos Android/iOS para cubrir WebView
-   que reportan un viewport de escritorio. */
-.clients-mobile-grid{display:none}
+/* v1.1.5 · Clientes finales: tarjetas por defecto y tabla SOLO en escritorio real.
+   Motivo: algunos WebView/APK anuncian viewport y/o User-Agent de escritorio.
+   Para evitar que el celular vuelva a la tabla horizontal, la vista segura es tarjetas.
+   Únicamente un equipo ancho con mouse/puntero fino + hover recibe la tabla de PC. */
+#view-clients .clients-desktop-table{display:none!important}
+#view-clients .clients-mobile-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#view-clients .clients-toolbar{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}
+#view-clients .clients-toolbar .primary{width:100%;min-height:48px}
+#view-clients .clients-toolbar .table-search{order:2;min-width:0;width:100%;margin:0}
+#view-clients .clients-toolbar-help{display:none}
+
 .client-mobile-card{min-width:0;min-height:186px;display:flex;flex-direction:column;padding:13px;border-radius:18px;border:1px solid rgba(74,177,226,.22);background:linear-gradient(150deg,rgba(12,35,57,.97),rgba(6,21,37,.97));box-shadow:0 10px 28px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.025);overflow:hidden;position:relative}
 .client-mobile-card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:rgba(135,166,189,.5)}
 .client-mobile-card.expiry-success::before{background:var(--success)}
@@ -547,25 +554,18 @@ body{min-height:100dvh}
 .client-mobile-edit{padding:8px 9px;border-radius:10px;font-size:11px;white-space:nowrap}
 .client-mobile-empty{grid-column:1/-1;padding:28px 14px;text-align:center;color:var(--muted);border:1px dashed rgba(74,177,226,.22);border-radius:16px;background:rgba(5,17,31,.5)}
 
-/* Modo móvil normal por ancho */
-@media(max-width:760px){
-  #view-clients .clients-desktop-table{display:none!important}
-  #view-clients .clients-toolbar{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}
-  #view-clients .clients-toolbar .primary{width:100%;min-height:48px}
-  #view-clients .clients-toolbar .table-search{order:2;min-width:0;width:100%;margin:0}
-  #view-clients .clients-toolbar-help{display:none}
-  .clients-mobile-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+/* PC real: ancho suficiente + mouse/puntero fino + hover. */
+@media (min-width:761px) and (hover:hover) and (pointer:fine){
+  #view-clients .clients-desktop-table{display:block!important}
+  #view-clients .clients-mobile-grid{display:none!important}
+  #view-clients .clients-toolbar{display:flex!important;grid-template-columns:none!important;gap:10px;margin-bottom:14px}
+  #view-clients .clients-toolbar .primary{width:auto!important;min-height:0}
+  #view-clients .clients-toolbar .table-search{order:initial!important;min-width:260px;width:auto!important;margin:0!important}
+  #view-clients .clients-toolbar-help{display:inline!important}
 }
 
-/* Modo móvil forzado: APK/WebView puede anunciar un viewport ancho aunque esté en teléfono */
-html.cochi-mobile-device #view-clients .clients-desktop-table{display:none!important}
-html.cochi-mobile-device #view-clients .clients-toolbar{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;margin-bottom:12px!important}
-html.cochi-mobile-device #view-clients .clients-toolbar .primary{width:100%!important;min-height:48px}
-html.cochi-mobile-device #view-clients .clients-toolbar .table-search{order:2!important;min-width:0!important;width:100%!important;margin:0!important}
-html.cochi-mobile-device #view-clients .clients-toolbar-help{display:none!important}
-html.cochi-mobile-device #view-clients .clients-mobile-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
-
+/* Teléfonos muy angostos: una sola tarjeta por fila. */
 @media(max-width:340px){
-  .clients-mobile-grid{grid-template-columns:1fr!important}
+  #view-clients .clients-mobile-grid{grid-template-columns:1fr!important}
   .client-mobile-card{min-height:172px}
 }

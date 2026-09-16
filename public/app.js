@@ -4,7 +4,7 @@ const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 
-// v1.1.4: algunos APK/WebView mantienen un viewport lógico ancho (tipo escritorio).
+// v1.1.5: algunos APK/WebView mantienen un viewport lógico ancho (tipo escritorio).
 // Detectamos el dispositivo móvil también por UA/puntero/pantalla y forzamos la vista
 // de tarjetas de Clientes finales sin afectar la tabla de PC.
 function applyMobileDeviceClass(){
@@ -1678,7 +1678,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.4').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.5').catch(()=>{}));
 }
 bootstrap();
 
