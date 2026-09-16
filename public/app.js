@@ -472,16 +472,46 @@ function updateLiveDemoCountdowns(){
 setInterval(updateLiveDemoCountdowns,1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateLiveDemoCountdowns();});
 
+function clientExpiryTone(expiry){
+  if(!expiry)return 'off';
+  const ms=Date.parse(expiry);if(!Number.isFinite(ms))return 'off';
+  const rem=(ms-panelNowMs())/86400000;
+  if(rem<=2)return 'danger';
+  if(rem<=7)return 'warning';
+  return 'success';
+}
+function clientExpiryDateLabel(expiry){
+  if(!expiry)return 'Sin activar';
+  const d=new Date(expiry);
+  return Number.isNaN(d.getTime())?'Fecha inválida':d.toLocaleDateString('es-AR');
+}
 function renderClients(){
   const q=($('#clientSearch')?.value||'').trim().toLowerCase();
   const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.display_status,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));
-  $('#clientsBody').innerHTML=rows.length?rows.map(c=>{
+  const desktop=$('#clientsBody');
+  if(desktop)desktop.innerHTML=rows.length?rows.map(c=>{
     const remainingLabel=clientRemainingBadge(c.expires_at);
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
     return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
+
+  const mobile=$('#clientsMobileCards');
+  if(mobile)mobile.innerHTML=rows.length?rows.map(c=>{
+    const tone=clientExpiryTone(c.expires_at);
+    const stat=clientStatusBadge(c);
+    const linked=c.linked_device_count??c.device_count;
+    const limit=c.device_limit||2;
+    return `<article class="client-mobile-card expiry-${tone}" data-client="${c.id}">
+      <div class="client-mobile-head"><b class="client-mobile-name">${esc(c.name)}</b>${stat}</div>
+      <div class="client-mobile-expiry"><span>Vencimiento</span><strong>${esc(clientExpiryDateLabel(c.expires_at))}</strong></div>
+      <div class="client-mobile-bottom">
+        <div class="client-mobile-devices"><span>Dispositivos</span><b>${c.device_count}/${limit}</b><small>${linked}/${limit} vinculados</small></div>
+        <button class="ghost client-mobile-edit" data-action="client-edit" type="button" aria-label="Editar ${esc(c.name)}">✎ Editar</button>
+      </div>
+    </article>`;
+  }).join(''):`<div class="client-mobile-empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</div>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
@@ -574,11 +604,14 @@ function openClientModal(c=null){
     }catch(err){msg($('#clientMsg'),err.message);}
   });
 }
-$('#clientsBody').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;
-  const c=state.clients.find(x=>x.id===Number(b.closest('tr')?.dataset.client));if(!c)return;
-  if(b.dataset.action==='client-edit')openClientModal(c);
-});
+function handleClientEditClick(e){
+  const b=e.target.closest('button[data-action="client-edit"]');if(!b)return;
+  const holder=b.closest('[data-client]');
+  const c=state.clients.find(x=>x.id===Number(holder?.dataset.client));if(!c)return;
+  openClientModal(c);
+}
+$('#clientsBody')?.addEventListener('click',handleClientEditClick);
+$('#clientsMobileCards')?.addEventListener('click',handleClientEditClick);
 
 function openDeleteClientModal(c){
   openModal(`<h3>Eliminar cliente</h3><div class="danger-card"><b>Vas a eliminar a ${esc(c.name)}</b><p>Se eliminarán también sus dispositivos y sesiones vinculadas. Esta acción no se puede deshacer desde esta pantalla.</p></div><label>Motivo (opcional)<textarea id="deleteClientReason" rows="2" placeholder="Ej.: cliente dado de baja"></textarea></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button type="button" class="danger" id="confirmDeleteClientBtn">CONFIRMAR ELIMINACIÓN</button></div><div id="deleteClientMsg" class="msg"></div>`);
@@ -1628,7 +1661,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.2').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.3').catch(()=>{}));
 }
 bootstrap();
 

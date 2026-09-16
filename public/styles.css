@@ -521,3 +521,38 @@ body{min-height:100dvh}
 .template-new-badge{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:rgba(0,207,255,.15);border:1px solid rgba(0,207,255,.45);font-size:10px;vertical-align:middle}
 .template-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}.template-field-grid label{margin:0}.template-field-grid label>span:first-child{display:block;margin-bottom:5px}.template-field-grid small{font-weight:600;color:#8fa7ba}.template-boolean-field{grid-column:1/-1;padding:10px 12px;border:1px solid rgba(0,207,255,.18);border-radius:10px;background:rgba(0,0,0,.12)}.template-checkbox-line{display:flex!important;align-items:center;gap:8px;margin:0!important}.template-checkbox-line input{width:auto!important;margin:0!important}.template-full-field{grid-column:1/-1}.template-help-v111{margin-top:9px;padding-top:8px;border-top:1px dashed rgba(0,207,255,.18)}
 @media(max-width:720px){.template-field-grid{grid-template-columns:1fr}.template-boolean-field,.template-full-field{grid-column:auto}}
+
+/* v1.1.3 · Clientes finales en tarjetas responsive para celular / APK */
+.clients-mobile-grid{display:none}
+@media(max-width:760px){
+  #view-clients .clients-desktop-table{display:none}
+  #view-clients .clients-toolbar{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}
+  #view-clients .clients-toolbar .primary{width:100%;min-height:48px}
+  #view-clients .clients-toolbar .table-search{order:2;min-width:0;width:100%;margin:0}
+  #view-clients .clients-toolbar-help{display:none}
+  .clients-mobile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .client-mobile-card{min-width:0;min-height:186px;display:flex;flex-direction:column;padding:13px;border-radius:18px;border:1px solid rgba(74,177,226,.22);background:linear-gradient(150deg,rgba(12,35,57,.97),rgba(6,21,37,.97));box-shadow:0 10px 28px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.025);overflow:hidden;position:relative}
+  .client-mobile-card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:rgba(135,166,189,.5)}
+  .client-mobile-card.expiry-success::before{background:var(--success)}
+  .client-mobile-card.expiry-warning::before{background:var(--warning)}
+  .client-mobile-card.expiry-danger::before{background:var(--danger)}
+  .client-mobile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;min-width:0}
+  .client-mobile-name{min-width:0;max-width:100%;font-size:15px;line-height:1.2;color:#f2fbff;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .client-mobile-head .badge{flex:0 0 auto;padding:4px 6px;font-size:8px;letter-spacing:.02em}
+  .client-mobile-expiry{display:grid;gap:3px;margin-top:15px}
+  .client-mobile-expiry span,.client-mobile-devices span{font-size:9px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:#7899ae}
+  .client-mobile-expiry strong{font-size:17px;line-height:1.15;color:#aabcca}
+  .expiry-success .client-mobile-expiry strong{color:var(--success)}
+  .expiry-warning .client-mobile-expiry strong{color:var(--warning)}
+  .expiry-danger .client-mobile-expiry strong{color:var(--danger)}
+  .client-mobile-bottom{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin-top:auto;padding-top:14px}
+  .client-mobile-devices{display:grid;gap:2px;min-width:0}
+  .client-mobile-devices b{font-size:16px;color:#e8f7ff}
+  .client-mobile-devices small{font-size:9px;color:#7899ae;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .client-mobile-edit{padding:8px 9px;border-radius:10px;font-size:11px;white-space:nowrap}
+  .client-mobile-empty{grid-column:1/-1;padding:28px 14px;text-align:center;color:var(--muted);border:1px dashed rgba(74,177,226,.22);border-radius:16px;background:rgba(5,17,31,.5)}
+}
+@media(max-width:340px){
+  .clients-mobile-grid{grid-template-columns:1fr}
+  .client-mobile-card{min-height:172px}
+}
