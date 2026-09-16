@@ -3,23 +3,6 @@ const $$ = s => [...document.querySelectorAll(s)];
 const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{}, serverClockOffsetMs:0 };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
-
-// v1.1.5: algunos APK/WebView mantienen un viewport lógico ancho (tipo escritorio).
-// Detectamos el dispositivo móvil también por UA/puntero/pantalla y forzamos la vista
-// de tarjetas de Clientes finales sin afectar la tabla de PC.
-function applyMobileDeviceClass(){
-  const ua=String(navigator.userAgent||'');
-  const uaMobile=/Android|iPhone|iPad|iPod|Mobile|; wv\)/i.test(ua);
-  const uaDataMobile=Boolean(navigator.userAgentData&&navigator.userAgentData.mobile===true);
-  let coarse=false;try{coarse=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;}catch{}
-  const sw=Math.min(Number(window.screen?.width)||9999,Number(window.screen?.height)||9999);
-  const narrowTouch=coarse&&sw<=900;
-  document.documentElement.classList.toggle('cochi-mobile-device',uaMobile||uaDataMobile||narrowTouch);
-}
-applyMobileDeviceClass();
-window.addEventListener('orientationchange',applyMobileDeviceClass);
-window.addEventListener('resize',applyMobileDeviceClass);
-
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
 function fmt(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString('es-AR');}
 function syncServerClock(v){const ms=Date.parse(v||'');if(Number.isFinite(ms))state.serverClockOffsetMs=ms-Date.now();}
@@ -489,46 +472,16 @@ function updateLiveDemoCountdowns(){
 setInterval(updateLiveDemoCountdowns,1000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateLiveDemoCountdowns();});
 
-function clientExpiryTone(expiry){
-  if(!expiry)return 'off';
-  const ms=Date.parse(expiry);if(!Number.isFinite(ms))return 'off';
-  const rem=(ms-panelNowMs())/86400000;
-  if(rem<=2)return 'danger';
-  if(rem<=7)return 'warning';
-  return 'success';
-}
-function clientExpiryDateLabel(expiry){
-  if(!expiry)return 'Sin activar';
-  const d=new Date(expiry);
-  return Number.isNaN(d.getTime())?'Fecha inválida':d.toLocaleDateString('es-AR');
-}
 function renderClients(){
   const q=($('#clientSearch')?.value||'').trim().toLowerCase();
   const rows=state.clients.filter(c=>!q||[c.name,c.owner_name,c.display_status,c.active?'activo':'inactivo',c.expires_at?'activado':'sin activar'].some(v=>String(v||'').toLowerCase().includes(q)));
-  const desktop=$('#clientsBody');
-  if(desktop)desktop.innerHTML=rows.length?rows.map(c=>{
+  $('#clientsBody').innerHTML=rows.length?rows.map(c=>{
     const remainingLabel=clientRemainingBadge(c.expires_at);
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
     return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
-
-  const mobile=$('#clientsMobileCards');
-  if(mobile)mobile.innerHTML=rows.length?rows.map(c=>{
-    const tone=clientExpiryTone(c.expires_at);
-    const stat=clientStatusBadge(c);
-    const linked=c.linked_device_count??c.device_count;
-    const limit=c.device_limit||2;
-    return `<article class="client-mobile-card expiry-${tone}" data-client="${c.id}">
-      <div class="client-mobile-head"><b class="client-mobile-name">${esc(c.name)}</b>${stat}</div>
-      <div class="client-mobile-expiry"><span>Vencimiento</span><strong>${esc(clientExpiryDateLabel(c.expires_at))}</strong></div>
-      <div class="client-mobile-bottom">
-        <div class="client-mobile-devices"><span>Dispositivos</span><b>${c.device_count}/${limit}</b><small>${linked}/${limit} vinculados</small></div>
-        <button class="ghost client-mobile-edit" data-action="client-edit" type="button" aria-label="Editar ${esc(c.name)}">✎ Editar</button>
-      </div>
-    </article>`;
-  }).join(''):`<div class="client-mobile-empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</div>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
 $('#clientSearch')?.addEventListener('input',renderClients);
@@ -621,14 +574,11 @@ function openClientModal(c=null){
     }catch(err){msg($('#clientMsg'),err.message);}
   });
 }
-function handleClientEditClick(e){
-  const b=e.target.closest('button[data-action="client-edit"]');if(!b)return;
-  const holder=b.closest('[data-client]');
-  const c=state.clients.find(x=>x.id===Number(holder?.dataset.client));if(!c)return;
-  openClientModal(c);
-}
-$('#clientsBody')?.addEventListener('click',handleClientEditClick);
-$('#clientsMobileCards')?.addEventListener('click',handleClientEditClick);
+$('#clientsBody').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const c=state.clients.find(x=>x.id===Number(b.closest('tr')?.dataset.client));if(!c)return;
+  if(b.dataset.action==='client-edit')openClientModal(c);
+});
 
 function openDeleteClientModal(c){
   openModal(`<h3>Eliminar cliente</h3><div class="danger-card"><b>Vas a eliminar a ${esc(c.name)}</b><p>Se eliminarán también sus dispositivos y sesiones vinculadas. Esta acción no se puede deshacer desde esta pantalla.</p></div><label>Motivo (opcional)<textarea id="deleteClientReason" rows="2" placeholder="Ej.: cliente dado de baja"></textarea></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button type="button" class="danger" id="confirmDeleteClientBtn">CONFIRMAR ELIMINACIÓN</button></div><div id="deleteClientMsg" class="msg"></div>`);
@@ -1310,7 +1260,7 @@ function editContentItem(groupIndex,itemIndex=null){
   // todavía no contiene sus keys pero el canal principal sí, mostrarlas sin alterar nada.
   if(playbackSources[activePlaybackSource]&&String(playbackSources[activePlaybackSource].drm_scheme||'').toLowerCase()==='clearkey'&&!normalizeStoredKeys(playbackSources[activePlaybackSource].keys).length&&existingKeyPairs.length){playbackSources[activePlaybackSource].keys=existingKeyPairs.map(x=>({...x}));}
 
-  // v1.1.2: precarga robusta de los 4 campos de redirección.
+  // v1.1.6: precarga robusta de los 4 campos de redirección.
   // Primero respeta los valores exactos del JSON. Si un canal histórico todavía
   // no los tiene, intenta obtener codeRedirect/nameRedirect de su URL /live/...
   // para que el usuario no confunda los placeholders con valores guardados.
@@ -1340,7 +1290,7 @@ function editContentItem(groupIndex,itemIndex=null){
       <section class="content-editor-column">
         ${isTv?`<div class="content-editor-meta-row"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>URL de imagen / logo<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://.../logo.png"><span class="muted tiny">PNG, JPG/JPEG, WebP, GIF, SVG, BMP, ICO, AVIF/APNG y URLs sin extensión.</span></label></div>`:`<label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>`}
         ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:(isTv?`<div class="source-selector-note"><b>Reproducción TV por fuentes</b><span class="muted tiny">Configurá URL 1, URL 2 y sus datos. Tocá ACTIVAR en la fuente que querés usar; solo una puede quedar EN USO.</span></div>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`)}
-        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box template-config-box-v111"><div class="template-config-head"><div><h4>REDIRECCIÓN / TEMPLATE CO-CHI <span class="template-new-badge">v1.1.2</span></h4><span class="muted tiny">Valores reales precargados desde el JSON; si faltan, nombre/código se detectan desde una URL compatible.</span></div></div><div class="template-field-grid"><label class="template-boolean-field"><span><b>isTemplate</b> <small>(boolean)</small></span><span class="template-checkbox-line"><input id="ciIsTemplate" type="checkbox" ${templatePrefill.isTemplate?'checked':''}> <b>true / false</b> · activar redirección por plantilla</span></label><label><span><b>nameRedirect</b> <small>(string)</small></span><input id="ciNameRedirect" value="${esc(templatePrefill.nameRedirect)}" placeholder="AmericaTV"></label><label><span><b>codeRedirect</b> <small>(string)</small></span><input id="ciCodeRedirect" value="${esc(templatePrefill.codeRedirect)}" placeholder="c7eds"></label><label class="template-full-field"><span><b>template</b> <small>(string)</small></span><textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(templatePrefill.template)}</textarea></label></div><div class="muted tiny template-help-v111">Si el JSON ya contiene isTemplate/nameRedirect/codeRedirect/template, se muestran exactamente aquí. Los textos grises son solo ejemplos cuando no existe un valor.</div></div>`:''}
+        ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box template-config-box-v111"><div class="template-config-head"><div><h4>REDIRECCIÓN / TEMPLATE CO-CHI <span class="template-new-badge">v1.1.6</span></h4><span class="muted tiny">Valores reales precargados desde el JSON; si faltan, nombre/código se detectan desde una URL compatible.</span></div></div><div class="template-field-grid"><label class="template-boolean-field"><span><b>isTemplate</b> <small>(boolean)</small></span><span class="template-checkbox-line"><input id="ciIsTemplate" type="checkbox" ${templatePrefill.isTemplate?'checked':''}> <b>true / false</b> · activar redirección por plantilla</span></label><label><span><b>nameRedirect</b> <small>(string)</small></span><input id="ciNameRedirect" value="${esc(templatePrefill.nameRedirect)}" placeholder="AmericaTV"></label><label><span><b>codeRedirect</b> <small>(string)</small></span><input id="ciCodeRedirect" value="${esc(templatePrefill.codeRedirect)}" placeholder="c7eds"></label><label class="template-full-field"><span><b>template</b> <small>(string)</small></span><textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(templatePrefill.template)}</textarea></label></div><div class="muted tiny template-help-v111">Si el JSON ya contiene isTemplate/nameRedirect/codeRedirect/template, se muestran exactamente aquí. Los textos grises son solo ejemplos cuando no existe un valor.</div></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
         ${itemIndex!==null&&!isQuickEditable?`<div class="reorder-actions"><button type="button" class="ghost" data-item-move="first">Primero</button><button type="button" class="ghost" data-item-move="up">↑ Subir</button><button type="button" class="ghost" data-item-move="down">↓ Bajar</button><button type="button" class="ghost" data-item-move="last">Último</button></div>`:''}
       </section>
@@ -1678,7 +1628,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.5').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.6').catch(()=>{}));
 }
 bootstrap();
 
