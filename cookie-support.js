@@ -15,6 +15,7 @@ const DB_PATH = path.join(DATA_DIR, 'cochi-panel.db');
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 const COOKIE_ROUTE = '/api/admin/cookie-fetch';
 const UI_SCRIPT = '/cookie-ui.js?v=1';
+const UI_CSS = '/cookie-ui.css?v=1';
 const MAX_BODY = 64 * 1024;
 const MAX_REDIRECTS = 6;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -197,6 +198,7 @@ function serveInjectedIndex(res){
   const fp=path.join(PUBLIC_DIR,'index.html');
   if(!fs.existsSync(fp))return sendJson(res,500,{error:'index.html no encontrado'});
   let html=fs.readFileSync(fp,'utf8');
+  if(!html.includes(UI_CSS))html=html.replace(/<\/head>/i,`  <link rel="stylesheet" href="${UI_CSS}">\n</head>`);
   if(!html.includes(UI_SCRIPT))html=html.replace(/<\/body>/i,`  <script src="${UI_SCRIPT}"></script>\n</body>`);
   const body=Buffer.from(html,'utf8');
   const csp="default-src 'self'; img-src 'self' data: blob: https: http:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
