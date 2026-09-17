@@ -5,7 +5,7 @@
   "description": "CO-CHI PANEL + backend central listo para HTTPS y PWA móvil",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node -r ./cookie-support.js server.js"
   },
   "engines": {
     "node": ">=22.5.0"
