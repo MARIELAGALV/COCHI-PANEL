@@ -2,18 +2,6 @@
 
 (() => {
   const ROOT_CLASS='cochi-cookie-tools';
-  const style=document.createElement('style');
-  style.textContent=`
-    .${ROOT_CLASS}{margin-top:12px;padding:12px;border:1px solid rgba(74,209,255,.28);border-radius:12px;background:rgba(5,31,48,.44)}
-    .${ROOT_CLASS} .cochi-cookie-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .${ROOT_CLASS} .cochi-cookie-head b{color:#dff8ff}.cochi-cookie-note{font-size:11px;color:#87a6bd;line-height:1.35}
-    .${ROOT_CLASS} label{margin:9px 0}.cochi-cookie-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-    .${ROOT_CLASS} .cochi-cookie-status{font-size:11px;color:#87a6bd;min-height:16px;flex:1 1 180px}
-    .${ROOT_CLASS} .cochi-cookie-status.ok{color:#64e9b3}.cochi-cookie-status.bad{color:#ff8d9d}
-    .${ROOT_CLASS} textarea,.${ROOT_CLASS} input{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
-    @media(max-width:700px){.${ROOT_CLASS} .cochi-cookie-actions button{width:100%}}
-  `;
-  document.head.appendChild(style);
 
   function parseHeaders(text){
     const out={},raw=String(text||'').trim();
