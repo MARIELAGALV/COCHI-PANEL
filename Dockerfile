@@ -11,4 +11,4 @@ ENV PORT=8787
 ENV COCHI_HTTPS=1
 ENV COCHI_DATA_DIR=/data
 EXPOSE 8787
-CMD ["node","server.js"]
+CMD ["node","-r","./cookie-support.js","server.js"]
