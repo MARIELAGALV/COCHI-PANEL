@@ -311,3 +311,36 @@ body[data-view="devices"] #view-devices .actions button{
     font-size:9px;
   }
 }
+
+
+/* Clientes finales — mejora SOLO celular: nombres completos y fecha compacta. */
+@media (max-width:660px){
+  #view-clients #clientsBody td:nth-child(1){
+    grid-column:1 / -1;
+    padding-right:70px;
+  }
+  #view-clients #clientsBody td:nth-child(1) b{
+    font-size:13px;
+    line-height:1.08;
+    white-space:normal;
+    overflow-wrap:break-word;
+    word-break:normal;
+    hyphens:none;
+  }
+  #view-clients #clientsBody td:nth-child(6){
+    position:absolute;
+    top:16px;
+    right:12px;
+    z-index:1;
+    padding-top:0;
+  }
+  #view-clients #clientsBody td:nth-child(3){
+    width:auto;
+    max-width:none;
+    margin-top:18px;
+    overflow:visible;
+    white-space:nowrap;
+    font-size:15px;
+    line-height:1.08;
+  }
+}
