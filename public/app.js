@@ -5,6 +5,13 @@ const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDED
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
 function fmt(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString('es-AR');}
+function clientExpiryCardText(v){
+  if(!v)return 'Sin activar';
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime()))return String(v);
+  const mobile=window.matchMedia&&window.matchMedia('(max-width:660px)').matches;
+  return mobile?d.toLocaleDateString('es-AR'):d.toLocaleString('es-AR');
+}
 function syncServerClock(v){const ms=Date.parse(v||'');if(Number.isFinite(ms))state.serverClockOffsetMs=ms-Date.now();}
 function panelNowMs(){return Date.now()+Number(state.serverClockOffsetMs||0);}
 function days(v){if(!v)return null;return (new Date(v).getTime()-panelNowMs())/86400000;}
@@ -480,7 +487,7 @@ function renderClients(){
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(c.expires_at?fmt(c.expires_at):'Sin activar')}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
