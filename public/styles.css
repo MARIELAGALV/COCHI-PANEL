@@ -344,3 +344,115 @@ body[data-view="devices"] #view-devices .actions button{
     line-height:1.08;
   }
 }
+
+
+/* Todos los dispositivos — corrección SOLO celular. PC/tablet conservan la tabla actual. */
+@media (max-width:660px){
+  body[data-view="devices"] .main{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  body[data-view="devices"] #view-devices .table-card,
+  body[data-view="devices"] #view-devices .table-wrap{
+    overflow:visible;
+    border:0;
+    background:transparent;
+    box-shadow:none;
+  }
+  body[data-view="devices"] #view-devices table{
+    display:block;
+    width:100%;
+    min-width:0;
+    table-layout:auto;
+  }
+  body[data-view="devices"] #view-devices thead{
+    display:none;
+  }
+  body[data-view="devices"] #view-devices tbody{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+    width:100%;
+  }
+  body[data-view="devices"] #view-devices tbody tr{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:10px 12px;
+    width:100%;
+    min-width:0;
+    padding:15px 14px;
+    border:1px solid rgba(70,188,232,.28);
+    border-radius:16px;
+    background:linear-gradient(155deg,rgba(8,31,52,.98),rgba(5,22,39,.98));
+    box-shadow:0 8px 24px rgba(0,0,0,.2);
+  }
+  body[data-view="devices"] #view-devices tbody td{
+    display:block;
+    width:auto !important;
+    min-width:0;
+    padding:0;
+    border:0;
+    background:transparent;
+    overflow-wrap:normal;
+    word-break:normal;
+  }
+  body[data-view="devices"] #view-devices tbody td::before{
+    display:block;
+    margin-bottom:4px;
+    color:#7892a5;
+    font-size:9px;
+    font-weight:850;
+    letter-spacing:.08em;
+    line-height:1.1;
+  }
+  body[data-view="devices"] #view-devices tbody td:nth-child(1)::before{content:"CÓDIGO"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(2)::before{content:"DISPOSITIVO"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(3)::before{content:"VENDEDOR"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(4)::before{content:"PANEL"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(5)::before{content:"ESTADO"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(6)::before{content:"ÚLTIMA ACTIVIDAD"}
+  body[data-view="devices"] #view-devices tbody td:nth-child(7)::before{content:"ACCIONES"}
+
+  body[data-view="devices"] #view-devices tbody td:nth-child(1),
+  body[data-view="devices"] #view-devices tbody td:nth-child(2),
+  body[data-view="devices"] #view-devices tbody td:nth-child(3),
+  body[data-view="devices"] #view-devices tbody td:nth-child(4),
+  body[data-view="devices"] #view-devices tbody td:nth-child(6),
+  body[data-view="devices"] #view-devices tbody td:nth-child(7){
+    grid-column:1 / -1;
+  }
+  body[data-view="devices"] #view-devices tbody td:nth-child(5){
+    grid-column:1 / -1;
+  }
+  body[data-view="devices"] #view-devices tbody td:nth-child(1) code,
+  body[data-view="devices"] #view-devices tbody td:nth-child(2) b,
+  body[data-view="devices"] #view-devices tbody td:nth-child(2) .small{
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  body[data-view="devices"] #view-devices tbody td:nth-child(2) .small{
+    font-size:10px;
+    line-height:1.25;
+  }
+  body[data-view="devices"] #view-devices .badge{
+    display:inline-flex;
+    width:auto;
+    padding:5px 9px;
+    white-space:nowrap;
+  }
+  body[data-view="devices"] #view-devices .actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+  }
+  body[data-view="devices"] #view-devices .actions button{
+    width:100%;
+    min-height:38px;
+    padding:8px 7px;
+    font-size:10px;
+    line-height:1.15;
+    white-space:normal;
+  }
+}
