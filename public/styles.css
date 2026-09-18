@@ -217,3 +217,97 @@
     text-align:center;
   }
 }
+
+
+/* Dispositivos: tabla compacta para tablet/escritorio sin scroll horizontal.
+   Mantiene todas las columnas visibles y permite envolver UID, propietario y fechas. */
+body[data-view="devices"] #view-devices .table-card{
+  overflow:hidden;
+}
+body[data-view="devices"] #view-devices .table-wrap{
+  overflow-x:hidden;
+  overflow-y:visible;
+}
+body[data-view="devices"] #view-devices table{
+  width:100%;
+  min-width:0;
+  table-layout:fixed;
+}
+body[data-view="devices"] #view-devices th,
+body[data-view="devices"] #view-devices td{
+  min-width:0;
+  padding:10px 8px;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+body[data-view="devices"] #view-devices th:nth-child(1),
+body[data-view="devices"] #view-devices td:nth-child(1){width:8%}
+body[data-view="devices"] #view-devices th:nth-child(2),
+body[data-view="devices"] #view-devices td:nth-child(2){width:31%}
+body[data-view="devices"] #view-devices th:nth-child(3),
+body[data-view="devices"] #view-devices td:nth-child(3){width:12%}
+body[data-view="devices"] #view-devices th:nth-child(4),
+body[data-view="devices"] #view-devices td:nth-child(4){width:15%}
+body[data-view="devices"] #view-devices th:nth-child(5),
+body[data-view="devices"] #view-devices td:nth-child(5){width:12%}
+body[data-view="devices"] #view-devices th:nth-child(6),
+body[data-view="devices"] #view-devices td:nth-child(6){width:13%}
+body[data-view="devices"] #view-devices th:nth-child(7),
+body[data-view="devices"] #view-devices td:nth-child(7){width:9%}
+body[data-view="devices"] #view-devices td:nth-child(1) code{
+  white-space:normal;
+  word-break:break-word;
+}
+body[data-view="devices"] #view-devices td:nth-child(2) b{
+  display:block;
+  line-height:1.15;
+}
+body[data-view="devices"] #view-devices td:nth-child(2) .small{
+  display:block;
+  margin-top:3px;
+  font-size:10px;
+  line-height:1.18;
+  overflow-wrap:anywhere;
+  word-break:break-all;
+}
+body[data-view="devices"] #view-devices .actions{
+  width:100%;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:center;
+  gap:5px;
+}
+body[data-view="devices"] #view-devices .actions button{
+  width:100%;
+  min-width:0;
+  padding:6px 4px;
+  font-size:9px;
+  line-height:1.08;
+  white-space:normal;
+}
+@media (max-width:1180px) and (min-width:661px){
+  body[data-view="devices"] .main{
+    padding-left:14px;
+    padding-right:14px;
+  }
+  body[data-view="devices"] #view-devices th{
+    padding:9px 5px;
+    font-size:9px;
+    letter-spacing:.035em;
+  }
+  body[data-view="devices"] #view-devices td{
+    padding:9px 5px;
+    font-size:11px;
+    line-height:1.18;
+  }
+  body[data-view="devices"] #view-devices .badge{
+    padding:4px 6px;
+    font-size:9px;
+    line-height:1.08;
+    white-space:normal;
+    text-align:center;
+  }
+  body[data-view="devices"] #view-devices td:nth-child(2) .small{
+    font-size:9px;
+  }
+}
