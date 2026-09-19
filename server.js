@@ -2399,7 +2399,7 @@ function sniffImageMime(buffer,declared=''){
 async function route(req,res){
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const p=u.pathname,m=req.method||'GET';
   if(m==='POST'&&['/api/setup','/api/panel/activate','/api/panel/session','/api/client-device/register','/api/client-device/status','/api/client-device/session','/api/client-device/adult/verify'].includes(p)){
-    const strict=p==='/api/client-device/status'?600:p==='/api/setup'?5:p==='/api/panel/activate'?8:p==='/api/panel/session'?30:30;
+    const strict=p==='/api/client-device/status'?600:p==='/api/client-device/register'?300:p==='/api/setup'?5:p==='/api/panel/activate'?8:p==='/api/panel/session'?30:30;
     if(!rateLimit(req,res,p,strict,10*60*1000))return;
   }
   if(p==='/api/health'&&m==='GET')return sendJson(res,200,{ok:true,service:'CO-CHI',version:VERSION,serverTime:nowIso()});
