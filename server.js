@@ -307,6 +307,23 @@ CREATE TABLE IF NOT EXISTS rescue_resolver_channels (
   updated_at TEXT NOT NULL
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS remote_m3u_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key TEXT NOT NULL CHECK(source_key IN ('tv1','tv2')),
+  category_name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  interval_minutes INTEGER NOT NULL DEFAULT 30,
+  effective_url TEXT NOT NULL DEFAULT '',
+  last_sync_at TEXT,
+  last_status TEXT NOT NULL DEFAULT 'PENDIENTE',
+  last_error TEXT NOT NULL DEFAULT '',
+  last_channel_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(source_key, category_name)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS private_source_files (
   source_key TEXT PRIMARY KEY,
   file_name TEXT NOT NULL DEFAULT '',
@@ -565,6 +582,9 @@ function encryptManagedContent(input){
   if(!Array.isArray(input))throw new Error('La lista debe ser un arreglo de categorías');
   return input.map((group,gi)=>{
     const out={name:String(group?.name??'')};
+    // Categorías M3U remotas: este ID solo vive en la copia administrable.
+    const remoteM3uId=Number(group?._cochiRemoteM3uId||0);
+    if(Number.isInteger(remoteM3uId)&&remoteM3uId>0)out._cochiRemoteM3uId=remoteM3uId;
     // v0.9.66: estos dos metadatos existen solo en la copia administrable.
     // publishedContentView los elimina antes de generar el catálogo entregado a CO-CHI.
     if(group?._cochiHidden===true)out._cochiHidden=true;
@@ -1941,7 +1961,7 @@ function publishedContentView(key,json){
     if(group._cochiHidden===true)return false;
     const at=validAutoHideAt(group._cochiAutoHideAt);return at===null||at>nowMs;
   }).map(group=>{
-    const out=cloneJson(group||{});delete out._cochiHidden;delete out._cochiAutoHideAt;
+    const out=cloneJson(group||{});delete out._cochiHidden;delete out._cochiAutoHideAt;delete out._cochiRemoteM3uId;
     const samples=Array.isArray(group?.samples)?group.samples:[];
     out.samples=samples.filter(item=>{
       if(item?._cochiHidden===true)return false;
@@ -1972,6 +1992,134 @@ function saveManagedEditable(key,json,actorId,action='managed_content_saved_encr
 function publishEditable(key,json,actorId,action='content_published_to_app'){const managed=encodeEditableContent(json),published=encodePublishedContent(key,json),t=nowIso();db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(managed.text,t,key);db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key}; hidden=${published.hidden}`);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e}return {...managed.stats,publishedItems:published.stats.items,hiddenItems:published.hidden};}
 function publishOnlyEditable(key,json,actorId,action='content_published_to_app_only'){const published=encodePublishedContent(key,json),t=nowIso();db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key}; hidden=${published.hidden}`);return {...published.stats,hiddenItems:published.hidden};}
 async function saveOriginalAndPublish(key,json,actorId,action='content_saved_original_and_published'){const saved=await saveEditableToOriginalSource(key,json);const published=encodePublishedContent(key,json),t=nowIso();db.exec('BEGIN');try{db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(saved.text,t,key);db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,key);audit(actorId,action,'content',null,`${key};${saved.remote.kind};${saved.remote.owner}/${saved.remote.repo}; hidden=${published.hidden}`);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e}return {stats:{...saved.stats,publishedItems:published.stats.items,hiddenItems:published.hidden},remote:saved.remote};}
+
+const remoteM3uSyncRunning=new Set();
+function normalizeRemoteM3uUrl(raw){
+  const value=String(raw||'').trim();
+  if(!/^https?:\/\//i.test(value))throw new Error('La URL M3U debe comenzar con http:// o https://');
+  let u;try{u=new URL(value)}catch{throw new Error('URL M3U inválida')}
+  if(u.hostname.toLowerCase()==='github.com'){
+    const parts=u.pathname.split('/').filter(Boolean);
+    const blobAt=parts.indexOf('blob');
+    if(blobAt===2&&parts.length>=5){
+      u=new URL('https://raw.githubusercontent.com/'+[parts[0],parts[1],...parts.slice(3)].map(encodeURIComponent).join('/'));
+    }
+  }
+  return u.toString();
+}
+function parseRemoteM3uPlaylist(text,baseUrl){
+  const raw=String(text||'').replace(/^\uFEFF/,'');
+  if(!/#EXTM3U|#EXTINF:/i.test(raw))throw new Error('La URL no devolvió una lista M3U válida');
+  const channels=[],seen=new Set();let pending=null;
+  for(const rawLine of raw.split(/\r?\n/)){
+    const line=rawLine.trim();if(!line)continue;
+    if(/^#EXTINF:/i.test(line)){
+      const comma=line.indexOf(',');
+      const meta=comma>=0?line.slice(0,comma):line;
+      const display=comma>=0?line.slice(comma+1).trim():'';
+      const attr=(name)=>{const m=meta.match(new RegExp('(?:^|\\s)'+name+'\\s*=\\s*"([^"]*)"','i'));return m?m[1].trim():'';};
+      pending={name:display||attr('tvg-name')||attr('tvg-id')||'Canal',icon:attr('tvg-logo')};
+      continue;
+    }
+    if(line.startsWith('#'))continue;
+    if(!pending)continue;
+    let stream=line,inlineHeaders={};
+    const pipe=stream.indexOf('|');
+    if(pipe>0){
+      const extras=stream.slice(pipe+1);stream=stream.slice(0,pipe).trim();
+      try{const params=new URLSearchParams(extras);for(const [k,v] of params.entries())if(k&&v)inlineHeaders[k]=v;}catch{}
+    }
+    let resolved;try{resolved=new URL(stream,baseUrl).toString()}catch{pending=null;continue}
+    if(!/^https?:\/\//i.test(resolved)||seen.has(resolved)){pending=null;continue}
+    seen.add(resolved);
+    const item={name:String(pending.name||'Canal').trim()||'Canal',uri:resolved};
+    if(pending.icon)item.icon=pending.icon;
+    if(Object.keys(inlineHeaders).length)item.headers=inlineHeaders;
+    channels.push(item);pending=null;
+  }
+  if(!channels.length)throw new Error('La lista M3U no contiene canales HTTP/HTTPS utilizables');
+  return channels;
+}
+function remoteM3uPublicRow(row){
+  if(!row)return null;
+  let effective=row.effective_url||'';
+  if(!effective){try{effective=normalizeRemoteM3uUrl(row.url)}catch{}}
+  return {...row,enabled:Boolean(row.enabled),last_channel_count:Number(row.last_channel_count||0),interval_minutes:Number(row.interval_minutes||30),effective_url:effective};
+}
+async function downloadRemoteM3u(row){
+  const target=normalizeRemoteM3uUrl(row.url);assertPublicHttpUrl(target);
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
+  try{
+    const r=await fetch(target,{redirect:'follow',signal:ctl.signal,headers:{'Accept':'application/x-mpegURL,application/vnd.apple.mpegurl,text/plain,*/*','Cache-Control':'no-cache','User-Agent':'CO-CHI-PANEL/'+VERSION}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const len=Number(r.headers.get('content-length')||0);if(len>10*1024*1024)throw new Error('La lista M3U supera 10 MB');
+    const text=await r.text();if(Buffer.byteLength(text,'utf8')>10*1024*1024)throw new Error('La lista M3U supera 10 MB');
+    const effective=String(r.url||target);
+    return {channels:parseRemoteM3uPlaylist(text,effective),effectiveUrl:effective};
+  }finally{clearTimeout(timer)}
+}
+async function syncRemoteM3uSource(id,{actorId=null,force=false}={}){
+  id=Number(id);if(!Number.isInteger(id)||id<=0)throw new Error('Fuente M3U inválida');
+  if(remoteM3uSyncRunning.has(id))throw new Error('La fuente M3U ya se está actualizando');
+  const row=db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id);if(!row)throw new Error('Fuente M3U no encontrada');
+  if(!row.enabled&&!force)return remoteM3uPublicRow(row);
+  remoteM3uSyncRunning.add(id);
+  try{
+    const downloaded=await downloadRemoteM3u(row),channels=downloaded.channels,t=nowIso();
+    let json=loadManagedEditable(row.source_key);if(!Array.isArray(json))json=[];
+    let idx=json.findIndex(g=>Number(g?._cochiRemoteM3uId||0)===id);
+    if(idx<0)idx=json.findIndex(g=>String(g?.name||'').trim().toLowerCase()===String(row.category_name||'').trim().toLowerCase());
+    const previous=idx>=0&&json[idx]&&typeof json[idx]==='object'?json[idx]:{};
+    const group={...previous,name:String(row.category_name||'').trim(),samples:channels,_cochiRemoteM3uId:id};
+    if(idx>=0)json[idx]=group;else json.push(group);
+    const managed=encodeEditableContent(json),published=encodePublishedContent(row.source_key,json);
+    db.exec('BEGIN');
+    try{
+      db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(managed.text,t,row.source_key);
+      db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,row.source_key);
+      db.prepare("UPDATE remote_m3u_categories SET effective_url=?,last_sync_at=?,last_status='OK',last_error='',last_channel_count=?,updated_at=? WHERE id=?").run(downloaded.effectiveUrl,t,channels.length,t,id);
+      if(actorId)audit(actorId,'remote_m3u_synced','content',null,row.source_key+'; '+row.category_name+'; '+channels.length+' canales');
+      db.exec('COMMIT');
+    }catch(e){db.exec('ROLLBACK');throw e}
+    return remoteM3uPublicRow(db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id));
+  }catch(e){
+    const message=String(e?.message||e).slice(0,500),t=nowIso();
+    db.prepare("UPDATE remote_m3u_categories SET last_status='ERROR',last_error=?,updated_at=? WHERE id=?").run(message,t,id);
+    throw e;
+  }finally{remoteM3uSyncRunning.delete(id)}
+}
+function detachRemoteM3uSource(id,actorId=null){
+  id=Number(id);const row=db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id);if(!row)return false;
+  let json=loadManagedEditable(row.source_key);if(!Array.isArray(json))json=[];
+  let changed=false;
+  json=json.map(g=>{if(Number(g?._cochiRemoteM3uId||0)!==id)return g;const out={...g};delete out._cochiRemoteM3uId;changed=true;return out;});
+  db.exec('BEGIN');
+  try{
+    if(changed){
+      const managed=encodeEditableContent(json),published=encodePublishedContent(row.source_key,json),t=nowIso();
+      db.prepare('UPDATE managed_content SET json_text=?,updated_at=? WHERE source_key=?').run(managed.text,t,row.source_key);
+      db.prepare('UPDATE published_content SET json_text=?,updated_at=? WHERE source_key=?').run(published.text,t,row.source_key);
+    }
+    db.prepare('DELETE FROM remote_m3u_categories WHERE id=?').run(id);
+    if(actorId)audit(actorId,'remote_m3u_deleted','content',null,row.source_key+'; '+row.category_name+'; canales conservados');
+    db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e}
+  return true;
+}
+let remoteM3uSchedulerBusy=false;
+async function processRemoteM3uSources(){
+  if(remoteM3uSchedulerBusy)return;remoteM3uSchedulerBusy=true;
+  try{
+    const now=Date.now(),rows=db.prepare('SELECT * FROM remote_m3u_categories WHERE enabled=1 ORDER BY id').all();
+    for(const row of rows){
+      const last=Date.parse(row.last_sync_at||'');
+      const due=!Number.isFinite(last)||now-last>=Math.max(5,Number(row.interval_minutes||30))*60000;
+      if(!due||remoteM3uSyncRunning.has(Number(row.id)))continue;
+      try{await syncRemoteM3uSource(row.id)}catch(e){console.warn('[REMOTE-M3U]',row.id,row.category_name,String(e?.message||e))}
+    }
+  }finally{remoteM3uSchedulerBusy=false}
+}
+
 function resolverPublishedEntries(){const out=[];for(const key of ['tv1','tv2']){let json=[];try{json=loadManagedEditable(key)}catch{}json.forEach((g,gi)=>(Array.isArray(g?.samples)?g.samples:[]).forEach((x,si)=>{if(x?._resolverId)out.push({id:x._resolverId,destination:key,category:g.name||'',name:x.name||'',uri:x.uri||'',type:x._resolverType||'',pageUrl:x._resolverPage||'',groupIndex:gi,itemIndex:si})}));}return out;}
 
 function mime(fp){return ({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.apng':'image/apng','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.bmp':'image/bmp','.ico':'image/x-icon','.avif':'image/avif','.webmanifest':'application/manifest+json; charset=utf-8'})[path.extname(fp).toLowerCase()]||'application/octet-stream';}
@@ -3545,6 +3693,59 @@ async function route(req,res){
       return sendJson(res,200,{ok:true,key,sourceUrl:url,stats,updatedAt:t});
     }
 
+
+    if(p==='/api/admin/remote-m3u'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
+      return sendJson(res,200,{sources:db.prepare('SELECT * FROM remote_m3u_categories ORDER BY source_key,category_name,id').all().map(remoteM3uPublicRow)});
+    }
+    if(p==='/api/admin/remote-m3u'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
+      const b=await readJson(req),sourceKey=String(b.sourceKey||'').toLowerCase(),categoryName=String(b.categoryName||'').trim().slice(0,120),url=String(b.url||'').trim();
+      const intervalMinutes=Math.max(5,Math.min(1440,Number(b.intervalMinutes||30)||30));
+      if(!['tv1','tv2'].includes(sourceKey))return sendJson(res,400,{error:'Elegí TV1 o TV2'});
+      if(!categoryName)return sendJson(res,400,{error:'Ingresá el nombre de la categoría'});
+      try{normalizeRemoteM3uUrl(url)}catch(e){return sendJson(res,400,{error:e.message})}
+      const t=nowIso();let id;
+      try{
+        const rr=db.prepare('INSERT INTO remote_m3u_categories(source_key,category_name,url,enabled,interval_minutes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(sourceKey,categoryName,url,b.enabled===false?0:1,intervalMinutes,t,t);
+        id=Number(rr.lastInsertRowid);
+      }catch(e){
+        if(String(e?.message||'').includes('UNIQUE'))return sendJson(res,409,{error:'Ya existe una fuente M3U con ese nombre de categoría en '+sourceKey.toUpperCase()});
+        return sendJson(res,400,{error:e.message});
+      }
+      let syncError='';
+      try{await syncRemoteM3uSource(id,{actorId:actor.id,force:true})}catch(e){syncError=String(e?.message||e)}
+      const row=remoteM3uPublicRow(db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id));
+      return sendJson(res,syncError?202:201,{ok:!syncError,source:row,syncError});
+    }
+    const remoteM3uItem=p.match(/^\/api\/admin\/remote-m3u\/(\d+)$/);
+    if(remoteM3uItem&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
+      const id=Number(remoteM3uItem[1]),row=db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id);if(!row)return sendJson(res,404,{error:'Fuente M3U no encontrada'});
+      const b=await readJson(req),enabled=b.enabled===undefined?Boolean(row.enabled):Boolean(b.enabled);
+      const categoryName=b.categoryName===undefined?row.category_name:String(b.categoryName||'').trim().slice(0,120);
+      const url=b.url===undefined?row.url:String(b.url||'').trim();
+      const intervalMinutes=b.intervalMinutes===undefined?Number(row.interval_minutes||30):Math.max(5,Math.min(1440,Number(b.intervalMinutes)||30));
+      if(!categoryName)return sendJson(res,400,{error:'Ingresá el nombre de la categoría'});
+      try{normalizeRemoteM3uUrl(url)}catch(e){return sendJson(res,400,{error:e.message})}
+      try{db.prepare('UPDATE remote_m3u_categories SET category_name=?,url=?,enabled=?,interval_minutes=?,updated_at=? WHERE id=?').run(categoryName,url,enabled?1:0,intervalMinutes,nowIso(),id)}
+      catch(e){if(String(e?.message||'').includes('UNIQUE'))return sendJson(res,409,{error:'Ya existe una fuente M3U con ese nombre de categoría'});throw e}
+      return sendJson(res,200,{ok:true,source:remoteM3uPublicRow(db.prepare('SELECT * FROM remote_m3u_categories WHERE id=?').get(id))});
+    }
+    const remoteM3uSync=p.match(/^\/api\/admin\/remote-m3u\/(\d+)\/sync$/);
+    if(remoteM3uSync&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
+      try{return sendJson(res,200,{ok:true,source:await syncRemoteM3uSource(Number(remoteM3uSync[1]),{actorId:actor.id,force:true})})}
+      catch(e){return sendJson(res,502,{error:'No se pudo actualizar la lista M3U: '+String(e?.message||e)})}
+    }
+    if(remoteM3uItem&&m==='DELETE'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
+      try{
+        if(!detachRemoteM3uSource(Number(remoteM3uItem[1]),actor.id))return sendJson(res,404,{error:'Fuente M3U no encontrada'});
+        return sendJson(res,200,{ok:true,channelsPreserved:true});
+      }catch(e){return sendJson(res,500,{error:'No se pudo quitar la fuente M3U: '+String(e?.message||e)})}
+    }
+
     if(p==='/api/admin/sources'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las fuentes'});
       const base=`${TRUST_PROXY_HTTPS?'https':'http'}://${req.headers.host||`localhost:${PORT}`}`;
@@ -3573,6 +3774,10 @@ const pendingDeviceCleanupTimer=setInterval(cleanupOldPendingDevices,6*60*60*100
 // También se verifica al pedir TV1/TV2, así el vencimiento no depende del intervalo.
 processAutoHideTimers();
 const autoHideTimer=setInterval(processAutoHideTimers,10*1000);autoHideTimer.unref?.();
+
+// Categorías remotas M3U: se refrescan aunque el navegador del panel esté cerrado.
+const remoteM3uStartupTimer=setTimeout(()=>processRemoteM3uSources().catch(e=>console.warn('[REMOTE-M3U] inicio',e.message)),3000);remoteM3uStartupTimer.unref?.();
+const remoteM3uTimer=setInterval(()=>processRemoteM3uSources().catch(e=>console.warn('[REMOTE-M3U] ciclo',e.message)),60*1000);remoteM3uTimer.unref?.();
 
 const server=http.createServer((req,res)=>route(req,res).catch(err=>{console.error(err);if(!res.headersSent)sendJson(res,500,{error:'Error interno',detail:process.env.DEBUG?' '+err.message:undefined});else res.end();}));
 server.listen(PORT,HOST,()=>{console.log(`\nCO-CHI v${VERSION} · ${IS_PRODUCTION?'ONLINE':'LOCAL'}\nEscuchando en ${HOST}:${PORT}\nDatos: ${DB_PATH}\n`);});
