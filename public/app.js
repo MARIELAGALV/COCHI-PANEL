@@ -1124,7 +1124,11 @@ function inferSeasonEpisodeFromTemplate(value){
   ];
   for(const re of patterns){const m=text.match(re);if(m)return {season:Number(m[1])||1,episode:Number(m[2])||1};}
   const ep=text.match(/(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i);
-  return {season:1,episode:ep?(Number(ep[1])||1):1};
+  if(ep)return {season:1,episode:Number(ep[1])||1};
+  // Archivos simples como PY01.mp4 / EP09.mkv: tomamos solo el número final
+  // inmediatamente anterior a la extensión, sin tocar IDs numéricos del path.
+  const fileEp=text.match(/[A-Za-z_-]+0?(\d+)(?=\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))/i);
+  return {season:1,episode:fileEp?(Number(fileEp[1])||1):1};
 }
 function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeason=1,sourceEpisode=1){
   if(Array.isArray(value))return value.map(v=>replaceEpisodeSequenceDeep(v,targetSeason,targetEpisode,sourceSeason,sourceEpisode));
@@ -1141,6 +1145,12 @@ function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeaso
   // Si el texto solo trae capítulo/episodio, actualizamos el episodio.
   out=out.replace(new RegExp(`(cap(?:í|i)?tulo\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
   out=out.replace(new RegExp(`(episodio\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
+  // URLs/archivos simples: PY01.mp4 -> PY09.mp4. Solo cambia el número final
+  // si coincide con el capítulo origen y está justo antes de una extensión de video/stream.
+  out=out.replace(new RegExp(`([A-Za-z_-]+)0?${se}(?=\\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))`,'gi'),(_,pre)=>{
+    const width=String(sourceEpisode).length<2?2:String(sourceEpisode).length;
+    return pre+String(targetEpisode).padStart(width,'0');
+  });
   return out;
 }
 function buildSeasonFromTemplate(template,season,count,firstEpisode=1){
@@ -1170,6 +1180,20 @@ function inferSeasonFromEpisodeEntry(ep){
   m=text.match(/(?:^|[^0-9])0?(\d+)[xX]0?\d+(?=[^0-9]|$)/);if(m)return Number(m[1])||1;
   // En el formato histórico, capítulos con nombre simple pertenecen a Temporada 1.
   if(/^\d+$/.test(name))return 1;
+  return null;
+}
+
+function inferEpisodeFromEpisodeEntry(ep){
+  if(!ep||typeof ep!=='object')return null;
+  const n=Number(ep.number);if(Number.isInteger(n)&&n>0)return n;
+  const name=String(ep.name||'').trim();
+  let m=name.match(/^\d+\s*[-x]\s*(\d+)$/i);if(m)return Number(m[1])||null;
+  m=name.match(/^Temporada\s*\d+\s*[-–—:]?\s*(?:Cap(?:í|i)?tulo|Episodio)\s*(\d+)/i);if(m)return Number(m[1])||null;
+  if(/^\d+$/.test(name))return Number(name)||null;
+  const text=(()=>{try{return JSON.stringify(ep)}catch{return ''}})();
+  m=text.match(/S0?\d+E0?(\d+)/i);if(m)return Number(m[1])||null;
+  m=text.match(/(?:^|[^0-9])0?\d+[xX]0?(\d+)(?=[^0-9]|$)/);if(m)return Number(m[1])||null;
+  m=text.match(/(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i);if(m)return Number(m[1])||null;
   return null;
 }
 
@@ -1343,7 +1367,7 @@ function editContentItem(groupIndex,itemIndex=null){
     </div>
     ${isSeries?`<div class="content-editor-series-grid"><div class="series-bulk-box">
       <h4>CARGA RÁPIDA DE TEMPORADA</h4>
-      <p class="muted small">Pegá o revisá el JSON del primer capítulo. El PANEL conserva la estructura que CO-CHI ya interpreta correctamente: <b>T1 = 1, 2, 3...</b>; <b>T2 = 2-1, 2-2...</b>; <b>T3 = 3-1, 3-2...</b>. También avanza patrones de URL como <b>01x01</b> y <b>S01E01</b>, conservando claves, headers e iconos de la plantilla.</p>
+      <p class="muted small">Pegá o revisá el JSON del primer capítulo que querés agregar. Podés sumar capítulos a una temporada existente: el PANEL propone automáticamente el capítulo siguiente y <b>nunca reemplaza los ya cargados</b>. Mantiene T1 = 1, 2, 3...; T2 = 2-1, 2-2...; T3 = 3-1, 3-2... y avanza URLs como <b>01x01</b>, <b>S01E01</b> y archivos simples como <b>PY01.mp4</b>.</p>
       <div class="form-row"><label>Temporada<input id="ciSeasonNumber" type="number" min="1" value="1"></label><label>Cantidad de capítulos<input id="ciSeasonCount" type="number" min="1" value="${Array.isArray(cur.temp)&&cur.temp.length?cur.temp.length:1}"></label><label>Primer capítulo<input id="ciFirstEpisode" type="number" min="1" value="1"></label></div>
       <label>Plantilla del primer capítulo<textarea id="ciSeasonTemplate" class="content-item-json" spellcheck="false">${esc(JSON.stringify(existingFirst,null,2))}</textarea></label>
       <div class="reorder-actions"><button id="ciGenerateSeason" type="button" class="primary">GENERAR TEMPORADA</button></div>
@@ -1404,28 +1428,55 @@ function editContentItem(groupIndex,itemIndex=null){
     if(b.dataset.itemMove==='last')to=sourceItems.length-1;
     moveArrayItem(sourceItems,itemIndex,to);d[groupIndex].samples=sourceItems;state.contentOpen.add(groupIndex);setContentPlain(d);closeModal();
   });
-  if(isSeries&&$('#ciGenerateSeason'))$('#ciGenerateSeason').onclick=()=>{
-    try{
-      const season=Math.max(1,Number($('#ciSeasonNumber').value)||1);
-      const count=Math.max(1,Number($('#ciSeasonCount').value)||1);
-      const firstEpisode=Math.max(1,Number($('#ciFirstEpisode').value)||1);
-      const template=JSON.parse($('#ciSeasonTemplate').value.trim()||'{}');
-      const generated=buildSeasonFromTemplate(template,season,count,firstEpisode);
-      const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
-      const existing=Array.isArray(extra.temp)?extra.temp:[];
-      // Las temporadas se acumulan. Detectamos el número con la misma convención histórica de SILO.
-      const seasonExists=existing.some(ep=>inferSeasonFromEpisodeEntry(ep)===season);
-      if(seasonExists){
-        const text=`LA TEMPORADA ${season} YA EXISTE. No se modificó ni reemplazó ningún capítulo.`;
-        msg($('#ciSeasonMsg'),text);toast(text,'error');return;
-      }
-      extra.temp=[...existing,...generated];$('#ciExtras').value=JSON.stringify(extra,null,2);
-      const totalSeasons=new Set(extra.temp.map(inferSeasonFromEpisodeEntry).filter(Boolean)).size;
-      const text=`TEMPORADA ${season} AGREGADA · ${count} capítulos · ${totalSeasons} temporada${totalSeasons===1?'':'s'} en la serie`;
-
-      msg($('#ciSeasonMsg'),text,true);toast(text,'ok');
-    }catch(err){msg($('#ciSeasonMsg'),'No se pudo generar la temporada: '+err.message);}
-  };
+  if(isSeries&&$('#ciGenerateSeason')){
+    const suggestNextEpisode=()=>{
+      try{
+        const season=Math.max(1,Number($('#ciSeasonNumber').value)||1);
+        const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
+        const existing=Array.isArray(extra.temp)?extra.temp:[];
+        const nums=existing.filter(ep=>inferSeasonFromEpisodeEntry(ep)===season).map(inferEpisodeFromEpisodeEntry).filter(n=>Number.isInteger(n)&&n>0);
+        if(nums.length)$('#ciFirstEpisode').value=String(Math.max(...nums)+1);
+        else $('#ciFirstEpisode').value='1';
+      }catch{}
+    };
+    $('#ciSeasonNumber').addEventListener('change',suggestNextEpisode);
+    // Si ya existe T1, al abrir el editor proponemos automáticamente el capítulo siguiente.
+    suggestNextEpisode();
+    $('#ciGenerateSeason').onclick=()=>{
+      try{
+        const season=Math.max(1,Number($('#ciSeasonNumber').value)||1);
+        const count=Math.max(1,Number($('#ciSeasonCount').value)||1);
+        const firstEpisode=Math.max(1,Number($('#ciFirstEpisode').value)||1);
+        const template=JSON.parse($('#ciSeasonTemplate').value.trim()||'{}');
+        const generated=buildSeasonFromTemplate(template,season,count,firstEpisode);
+        const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
+        const existing=Array.isArray(extra.temp)?extra.temp:[];
+        const existingEpisodes=new Set(
+          existing
+            .filter(ep=>inferSeasonFromEpisodeEntry(ep)===season)
+            .map(inferEpisodeFromEpisodeEntry)
+            .filter(n=>Number.isInteger(n)&&n>0)
+        );
+        const toAdd=[],skipped=[];
+        generated.forEach((item,i)=>{
+          const ep=firstEpisode+i;
+          if(existingEpisodes.has(ep))skipped.push(ep);
+          else{toAdd.push(item);existingEpisodes.add(ep);}
+        });
+        if(!toAdd.length){
+          const text=`ESOS CAPÍTULOS YA EXISTEN EN LA TEMPORADA ${season}. Cambiá “Primer capítulo” para agregar los nuevos.`;
+          msg($('#ciSeasonMsg'),text);toast(text,'error');return;
+        }
+        // Nunca reemplazamos capítulos existentes: solamente anexamos los nuevos.
+        extra.temp=[...existing,...toAdd];$('#ciExtras').value=JSON.stringify(extra,null,2);
+        const totalSeasons=new Set(extra.temp.map(inferSeasonFromEpisodeEntry).filter(Boolean)).size;
+        const range=toAdd.length===1?String(firstEpisode):`${firstEpisode}–${firstEpisode+count-1}`;
+        const skippedText=skipped.length?` · ${skipped.length} duplicado${skipped.length===1?'':'s'} omitido${skipped.length===1?'':'s'}`:'';
+        const text=`TEMPORADA ${season} ACTUALIZADA · ${toAdd.length} capítulo${toAdd.length===1?'':'s'} agregado${toAdd.length===1?'':'s'} (${range})${skippedText} · ${totalSeasons} temporada${totalSeasons===1?'':'s'} en la serie`;
+        msg($('#ciSeasonMsg'),text,true);toast(text,'ok');
+      }catch(err){msg($('#ciSeasonMsg'),'No se pudo generar la temporada: '+err.message);}
+    };
+  }
   if(isSeries&&$('#ciLoadMarkers')){
     const markerFields=()=>({season:Math.max(1,Number($('#ciMarkerSeason').value)||1),episode:Math.max(0,Number($('#ciMarkerEpisode').value)||0)});
     const readExtra=()=>{const t=$('#ciExtras').value.trim();return t?JSON.parse(t):{};};
