@@ -711,9 +711,44 @@ $('#newCreditBtn')?.addEventListener('click',openCreditChooser);
 
 async function loadCredits(){const d=await api('/api/admin/credit-history');$('#creditsBody').innerHTML=d.movements.length?d.movements.map(x=>`<tr><td>${esc(fmt(x.created_at))}</td><td>${esc(x.kind)}</td><td>${esc(x.from_name||'SISTEMA')}</td><td>${esc(x.to_name)}</td><td class="credit-number">+${x.amount}</td><td>${esc(x.note||'')}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">Sin movimientos.</td></tr>`;}
 
-async function loadPromos(){const d=await api('/api/admin/promotions');state.promos=d.promotions;$('#promotionsBody').innerHTML=state.promos.length?state.promos.map(x=>`<tr data-promo="${x.id}"><td><b>${esc(x.name)}</b></td><td>+${x.percent_bonus}%</td><td>${x.targetLevels.map(l=>roleNames[l]).join(', ')}</td><td>${esc(fmt(x.starts_at))}</td><td>${esc(fmt(x.ends_at))}</td><td><span class="badge ${x.active?'active':'off'}">${x.active?'ACTIVA':'INACTIVA'}</span></td><td><button class="ghost" data-action="promo-toggle">${x.active?'Desactivar':'Activar'}</button></td></tr>`).join(''):`<tr><td colspan="7" class="empty">Sin promociones.</td></tr>`;}
+function promoLocalDateTime(value){const d=new Date(value);if(!Number.isFinite(d.getTime()))return '';return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+async function loadPromos(){
+  const d=await api('/api/admin/promotions');state.promos=d.promotions||[];
+  $('#promotionsBody').innerHTML=state.promos.length?state.promos.map(x=>{
+    const status=x.expired?'VENCIDA':x.active?'ACTIVA':x.upcoming?'PROGRAMADA':'INACTIVA';
+    const badge=x.expired?'off':x.active?'active':'off';
+    const actions=x.expired
+      ? '<button class="ghost" data-action="promo-edit">Editar</button> <button class="danger small-btn" data-action="promo-delete">Eliminar</button>'
+      : '<button class="ghost" data-action="promo-toggle">'+(x.active?'Desactivar':'Activar')+'</button>';
+    return `<tr data-promo="${x.id}"><td><b>${esc(x.name)}</b></td><td>+${x.percent_bonus}%</td><td>${x.targetLevels.map(l=>roleNames[l]).join(', ')}</td><td>${esc(fmt(x.starts_at))}</td><td>${esc(fmt(x.ends_at))}</td><td><span class="badge ${badge}">${status}</span></td><td>${actions}</td></tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">Sin promociones.</td></tr>`;
+}
+function openPromoEditor(p){
+  const checked=l=>p.targetLevels.includes(l)?'checked':'';
+  openModal(`<h3>Editar promoción</h3><form id="promoEditForm"><label>Nombre<input id="pEditName" value="${esc(p.name)}" required></label><label>Porcentaje extra<input id="pEditPct" type="number" min="1" value="${Number(p.percent_bonus)}" required></label><div class="form-row"><label>Inicio<input id="pEditStart" type="datetime-local" value="${promoLocalDateTime(p.starts_at)}" required></label><label>Fin<input id="pEditEnd" type="datetime-local" value="${promoLocalDateTime(p.ends_at)}" required></label></div><label>Categorías</label><div class="rule-grid"><label class="switch-row"><input type="checkbox" class="pEditLevel" value="2" ${checked(2)}> Distribuidor</label><label class="switch-row"><input type="checkbox" class="pEditLevel" value="3" ${checked(3)}> Revendedor</label><label class="switch-row"><input type="checkbox" class="pEditLevel" value="4" ${checked(4)}> Vendedor</label></div><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar cambios</button></div><div id="promoEditMsg" class="msg"></div></form>`);
+  $('#promoEditForm').addEventListener('submit',async e=>{e.preventDefault();try{
+    await api(`/api/admin/promotions/${p.id}`,{method:'PUT',body:{name:$('#pEditName').value,percentBonus:Number($('#pEditPct').value),startsAt:new Date($('#pEditStart').value).toISOString(),endsAt:new Date($('#pEditEnd').value).toISOString(),targetLevels:$$('.pEditLevel:checked').map(x=>Number(x.value)),active:false}});
+    closeModal();await loadPromos();toast('Promoción actualizada.','ok');
+  }catch(err){msg($('#promoEditMsg'),err.message);}});
+}
 $('#newPromoBtn').addEventListener('click',()=>{const d=new Date(),e=new Date(Date.now()+86400000);const local=x=>new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,16);openModal(`<h3>Nueva promoción de créditos</h3><form id="promoForm"><label>Nombre<input id="pName" value="Promo +10%" required></label><label>Porcentaje extra<input id="pPct" type="number" min="1" value="10" required></label><div class="form-row"><label>Inicio<input id="pStart" type="datetime-local" value="${local(d)}" required></label><label>Fin<input id="pEnd" type="datetime-local" value="${local(e)}" required></label></div><label>Categorías</label><div class="rule-grid"><label class="switch-row"><input type="checkbox" class="pLevel" value="2" checked> Distribuidor</label><label class="switch-row"><input type="checkbox" class="pLevel" value="3" checked> Revendedor</label><label class="switch-row"><input type="checkbox" class="pLevel" value="4" checked> Vendedor</label></div><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Crear promo</button></div><div id="promoMsg" class="msg"></div></form>`);$('#promoForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/promotions',{method:'POST',body:{name:$('#pName').value,percentBonus:Number($('#pPct').value),startsAt:new Date($('#pStart').value).toISOString(),endsAt:new Date($('#pEnd').value).toISOString(),targetLevels:$$('.pLevel:checked').map(x=>Number(x.value))}});closeModal();await loadPromos();}catch(err){msg($('#promoMsg'),err.message);}});});
-$('#promotionsBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const p=state.promos.find(x=>x.id===Number(b.closest('tr').dataset.promo));if(!p)return;try{await api(`/api/admin/promotions/${p.id}`,{method:'PUT',body:{active:!p.active}});await loadPromos();}catch(err){alert(err.message);}});
+$('#promotionsBody').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const p=state.promos.find(x=>x.id===Number(b.closest('tr').dataset.promo));if(!p)return;
+  const action=b.dataset.action;
+  try{
+    if(action==='promo-edit'){openPromoEditor(p);return;}
+    if(action==='promo-delete'){
+      if(!confirm('¿Eliminar definitivamente esta promoción vencida?'))return;
+      await api(`/api/admin/promotions/${p.id}`,{method:'DELETE'});
+      await loadPromos();toast('Promoción eliminada.','ok');return;
+    }
+    if(action==='promo-toggle'){
+      await api(`/api/admin/promotions/${p.id}`,{method:'PUT',body:{active:!p.active}});
+      await loadPromos();return;
+    }
+  }catch(err){alert(err.message);}
+});
 
 
 async function loadPlaybackSecurity(){
