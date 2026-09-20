@@ -3526,7 +3526,14 @@ async function route(req,res){
     }
 
     if(p==='/api/admin/promotions'&&m==='GET'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});return sendJson(res,200,{promotions:db.prepare('SELECT * FROM promotions ORDER BY id DESC').all().map(x=>({...x,active:Boolean(x.active),targetLevels:String(x.target_levels).split(',').map(Number)}))});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});
+      const now=Date.now();
+      const promotions=db.prepare('SELECT * FROM promotions ORDER BY id DESC').all().map(x=>{
+        const expired=Number.isFinite(Date.parse(x.ends_at))&&Date.parse(x.ends_at)<now;
+        const upcoming=Number.isFinite(Date.parse(x.starts_at))&&Date.parse(x.starts_at)>now;
+        return {...x,active:Boolean(x.active)&&!expired,expired,upcoming,targetLevels:String(x.target_levels).split(',').map(Number)};
+      });
+      return sendJson(res,200,{promotions});
     }
     if(p==='/api/admin/promotions'&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});const b=await readJson(req),name=String(b.name||'').trim(),pct=Number(b.percentBonus),start=String(b.startsAt||''),end=String(b.endsAt||''),levels=[...new Set((Array.isArray(b.targetLevels)?b.targetLevels:[]).map(Number).filter(x=>x>=2&&x<=4))];if(name.length<2||!Number.isInteger(pct)||pct<=0||!levels.length||!Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end))||Date.parse(end)<=Date.parse(start))return sendJson(res,400,{error:'Datos de promoción inválidos'});
@@ -3535,7 +3542,39 @@ async function route(req,res){
     }
     const pm=p.match(/^\/api\/admin\/promotions\/(\d+)$/);
     if(pm&&m==='PUT'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});const x=db.prepare('SELECT * FROM promotions WHERE id=?').get(Number(pm[1]));if(!x)return sendJson(res,404,{error:'Promoción no encontrada'});const b=await readJson(req);db.prepare('UPDATE promotions SET name=?,percent_bonus=?,active=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():x.name,b.percentBonus!==undefined?Number(b.percentBonus):x.percent_bonus,b.active!==undefined?(b.active?1:0):x.active,nowIso(),x.id);return sendJson(res,200,{ok:true});
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});
+      const x=db.prepare('SELECT * FROM promotions WHERE id=?').get(Number(pm[1]));if(!x)return sendJson(res,404,{error:'Promoción no encontrada'});
+      const b=await readJson(req);
+      const name=b.name!==undefined?String(b.name).trim():x.name;
+      const pct=b.percentBonus!==undefined?Number(b.percentBonus):Number(x.percent_bonus);
+      const start=b.startsAt!==undefined?String(b.startsAt):x.starts_at;
+      const end=b.endsAt!==undefined?String(b.endsAt):x.ends_at;
+      const levels=b.targetLevels!==undefined?[...new Set((Array.isArray(b.targetLevels)?b.targetLevels:[]).map(Number).filter(v=>v>=2&&v<=4))]:String(x.target_levels).split(',').map(Number);
+      let active=b.active!==undefined?Boolean(b.active):Boolean(x.active);
+      if(name.length<2||!Number.isInteger(pct)||pct<=0||!levels.length||!Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end))||Date.parse(end)<=Date.parse(start))return sendJson(res,400,{error:'Datos de promoción inválidos'});
+      if(active&&Date.parse(end)<Date.now())return sendJson(res,409,{error:'Una promoción vencida no puede volver a activarse. Editá la fecha de fin primero.'});
+      if(active){
+        const existing=db.prepare('SELECT * FROM promotions WHERE active=1 AND id<>?').all(x.id);
+        for(const other of existing){
+          const overlap=Date.parse(start)<=Date.parse(other.ends_at)&&Date.parse(end)>=Date.parse(other.starts_at);
+          const targetOverlap=String(other.target_levels).split(',').map(Number).some(v=>levels.includes(v));
+          if(overlap&&targetOverlap)return sendJson(res,409,{error:'Ya existe una promoción activa que se superpone para alguna de esas categorías'});
+        }
+      }
+      db.prepare('UPDATE promotions SET name=?,percent_bonus=?,target_levels=?,starts_at=?,ends_at=?,active=?,updated_at=? WHERE id=?').run(name,pct,levels.join(','),start,end,active?1:0,nowIso(),x.id);
+      return sendJson(res,200,{ok:true});
+    }
+    if(pm&&m==='DELETE'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona promociones'});
+      const x=db.prepare('SELECT * FROM promotions WHERE id=?').get(Number(pm[1]));if(!x)return sendJson(res,404,{error:'Promoción no encontrada'});
+      db.exec('BEGIN');
+      try{
+        db.prepare('UPDATE credit_movements SET promotion_id=NULL WHERE promotion_id=?').run(x.id);
+        db.prepare('DELETE FROM promotions WHERE id=?').run(x.id);
+        audit(actor.id,'promotion_deleted','promotion',x.id,x.name||'');
+        db.exec('COMMIT');
+      }catch(e){db.exec('ROLLBACK');throw e}
+      return sendJson(res,200,{ok:true});
     }
 
     const contentMatch=p.match(/^\/api\/admin\/content\/(tv1|tv2|movies|series)$/);
