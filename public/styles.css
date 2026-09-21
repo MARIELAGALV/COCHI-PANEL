@@ -553,3 +553,31 @@ body[data-view="devices"] #view-devices .actions button{
     max-width:58px!important;
   }
 }
+
+
+/* v1.1.6 · Revisor JSON/W3U AZPlay */
+.az-review-box{margin-top:14px}
+.az-review-toolbar{display:grid;grid-template-columns:minmax(230px,1.15fr) minmax(180px,1fr) minmax(180px,.8fr) auto;gap:9px;align-items:end}
+.az-file-label{margin:0}
+.az-file-label input[type=file]{margin-top:6px;padding:8px;width:100%}
+.az-review-toolbar>input,.az-review-toolbar>select{margin:0}
+.az-review-stats{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;padding:10px 12px;border:1px solid rgba(70,188,232,.2);border-radius:12px;background:rgba(4,18,31,.28);color:#9db6c7;font-size:12px}
+.az-review-stats b{color:#eaf8ff}.az-stat-ok{color:#58edbd}
+.az-review-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.az-channel-card{min-width:0;padding:12px;border:1px solid rgba(70,188,232,.22);border-radius:14px;background:rgba(5,23,39,.72)}
+.az-channel-head{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;align-items:center}
+.az-channel-head img,.az-logo-empty{width:54px;height:44px;border-radius:9px;border:1px solid rgba(70,188,232,.2);background:#071827;object-fit:contain}
+.az-logo-empty{display:grid;place-items:center;color:#6ea7c3;font-size:11px;font-weight:900}
+.az-channel-title{min-width:0}.az-channel-title strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#effaff}.az-channel-title span{display:block;margin-top:2px;color:#7897aa;font-size:10px}
+.az-channel-status{justify-self:end}
+.az-channel-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:10px}
+.az-channel-grid label{margin:0}.az-channel-grid select,.az-channel-grid input{margin-top:5px}
+.az-source-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:9px;color:#7897aa;font-size:10px}
+.az-source-meta>span:last-child{flex:1 1 100%;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#8da8b9}
+.az-channel-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.az-channel-actions button{flex:1 1 auto}
+.az-channel-msg{margin-top:7px;min-height:15px}
+.az-link-details{margin:8px 0 12px;padding:9px 11px;border:1px solid rgba(70,188,232,.18);border-radius:12px}
+.az-link-row{display:grid;grid-template-columns:160px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid rgba(70,188,232,.12)}
+.az-link-row:first-of-type{margin-top:8px}.az-link-row .resolver-code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:900px){.az-review-toolbar{grid-template-columns:1fr 1fr}.az-review-list{grid-template-columns:1fr}.az-link-row{grid-template-columns:1fr auto}.az-link-row .resolver-code{grid-column:1/-1}}
+@media(max-width:600px){.az-review-toolbar{grid-template-columns:1fr}.az-channel-head{grid-template-columns:46px minmax(0,1fr)}.az-channel-head img,.az-logo-empty{width:46px;height:40px}.az-channel-status{grid-column:1/-1;justify-self:start}.az-channel-grid{grid-template-columns:1fr}.az-channel-actions button{flex:1 1 45%}}
