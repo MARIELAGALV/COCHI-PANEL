@@ -1620,7 +1620,7 @@ async function loadRemoteM3uSources(){
   card.hidden=!isTv;if(!isTv){list.innerHTML='';return;}
   try{
     const d=await api('/api/admin/remote-m3u'),rows=(d.sources||[]).filter(x=>x.source_key===key);
-    if(!rows.length){list.innerHTML='<div class="empty muted">Todavía no hay categorías M3U remotas en '+esc(key.toUpperCase())+'.</div>';return;}
+    if(!rows.length){list.innerHTML='<div class="empty muted">Todavía no hay categorías M3U/W3U remotas en '+esc(key.toUpperCase())+'.</div>';return;}
     list.innerHTML=rows.map(function(r){
       const ok=r.last_status==='OK',paused=!r.enabled,last=r.last_sync_at?fmt(r.last_sync_at):'Nunca';
       const err=r.last_error?'<div class="msg error">'+esc(r.last_error)+'</div>':'';
@@ -1639,17 +1639,17 @@ async function addRemoteM3uSource(){
   const btn=$('#remoteM3uAddBtn');
   try{
     const sourceKey=String($('#contentKey')?.value||'').toLowerCase(),categoryName=String($('#remoteM3uCategory')?.value||'').trim(),url=String($('#remoteM3uUrl')?.value||'').trim(),intervalMinutes=Number($('#remoteM3uInterval')?.value||30);
-    if(!['tv1','tv2'].includes(sourceKey))throw new Error('Las listas M3U remotas se agregan solamente a TV1 o TV2.');
+    if(!['tv1','tv2'].includes(sourceKey))throw new Error('Las listas M3U/W3U remotas se agregan solamente a TV1 o TV2.');
     if(!categoryName)throw new Error('Ingresá el nombre de la categoría.');
-    if(!/^https?:\/\//i.test(url))throw new Error('Pegá la URL HTTP/HTTPS de la lista M3U.');
+    if(!/^https?:\/\//i.test(url))throw new Error('Pegá la URL HTTP/HTTPS de la lista M3U o W3U.');
     if(btn){btn.disabled=true;btn.textContent='AGREGANDO...';}
     const r=await api('/api/admin/remote-m3u',{method:'POST',body:{sourceKey:sourceKey,categoryName:categoryName,url:url,intervalMinutes:intervalMinutes,enabled:true}});
     $('#remoteM3uCategory').value='';$('#remoteM3uUrl').value='';
     await loadContent(true);
-    const text=r.syncError?'FUENTE GUARDADA, PERO LA PRIMERA ACTUALIZACIÓN FALLÓ · '+r.syncError:'CATEGORÍA M3U ACTIVA · '+categoryName+' · '+Number(r.source?.last_channel_count||0)+' canales';
+    const text=r.syncError?'FUENTE GUARDADA, PERO LA PRIMERA ACTUALIZACIÓN FALLÓ · '+r.syncError:'CATEGORÍA REMOTA ACTIVA · '+categoryName+' · '+Number(r.source?.last_channel_count||0)+' canales';
     msg($('#remoteM3uMsg'),text,!r.syncError);toast(text,r.syncError?'bad':'ok');
   }catch(e){msg($('#remoteM3uMsg'),e.message);toast(e.message,'bad');}
-  finally{if(btn){btn.disabled=false;btn.textContent='AGREGAR FUENTE M3U';}}
+  finally{if(btn){btn.disabled=false;btn.textContent='AGREGAR FUENTE M3U / W3U';}}
 }
 $('#remoteM3uAddBtn')?.addEventListener('click',addRemoteM3uSource);
 $('#remoteM3uList')?.addEventListener('click',async e=>{
@@ -1660,7 +1660,7 @@ $('#remoteM3uList')?.addEventListener('click',async e=>{
       sync.disabled=true;sync.textContent='ACTUALIZANDO...';
       const r=await api('/api/admin/remote-m3u/'+id+'/sync',{method:'POST',body:{}});
       await loadContent(true);
-      const text='M3U ACTUALIZADA · '+Number(r.source?.last_channel_count||0)+' canales';msg($('#remoteM3uMsg'),text,true);toast(text,'ok');return;
+      const text='FUENTE M3U/W3U ACTUALIZADA · '+Number(r.source?.last_channel_count||0)+' canales';msg($('#remoteM3uMsg'),text,true);toast(text,'ok');return;
     }
     if(toggle){
       const paused=toggle.textContent.trim().toUpperCase()==='REACTIVAR';
@@ -1668,9 +1668,9 @@ $('#remoteM3uList')?.addEventListener('click',async e=>{
       await loadRemoteM3uSources();toast(paused?'Actualización automática reactivada.':'Actualización automática pausada.','ok');return;
     }
     if(del){
-      if(!confirm('¿Quitar esta FUENTE M3U automática?\n\nLos canales que ya están en la categoría se conservarán tal como están, pero dejarán de autoactualizarse.'))return;
+      if(!confirm('¿Quitar esta FUENTE M3U/W3U automática?\n\nLos canales que ya están en la categoría se conservarán tal como están, pero dejarán de autoactualizarse.'))return;
       await api('/api/admin/remote-m3u/'+id,{method:'DELETE'});
-      await loadContent(true);toast('Fuente M3U quitada. Los canales actuales se conservaron.','ok');return;
+      await loadContent(true);toast('Fuente M3U/W3U quitada. Los canales actuales se conservaron.','ok');return;
     }
   }catch(err){msg($('#remoteM3uMsg'),err.message);toast(err.message,'bad');await loadRemoteM3uSources();}
 });
