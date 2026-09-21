@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
-  <link rel="stylesheet" href="/styles.css?v=1.1.6-banner-horizontal-css-1">
+  <link rel="stylesheet" href="/styles.css?v=1.1.6-az-review-1">
 </head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
@@ -313,6 +313,22 @@
           <div class="resolver-form"><label>URL de la página<input id="resolverUrl" type="url" placeholder="https://www.enlace.org/envivo/"></label><button id="resolverBtn" class="primary" type="button">ANALIZAR PÁGINA</button><button id="resolverDynamicBtn" class="ghost" type="button">ANÁLISIS DINÁMICO</button></div>
           <div class="muted tiny">El modo dinámico abre un navegador limpio por unos segundos y observa solo solicitudes públicas. No inicia sesión ni intenta saltar DRM o controles de acceso.</div>
           <div id="resolverMsg" class="msg"></div><div id="resolverResults" class="resolver-results"></div>
+          <div class="resolver-box az-review-box">
+            <div class="card-head">
+              <div><h4>Revisor JSON / W3U · canales externos</h4><p class="muted small">Cargá una lista con groups / stations / options. El PANEL conserva las fuentes por canal, prueba la reproducción y te deja enviar solo las confirmadas a TV1 o TV2 con la categoría que elijas.</p></div>
+              <span class="badge active">REVISOR</span>
+            </div>
+            <div class="az-review-toolbar">
+              <label class="az-file-label">Archivo JSON / W3U<input id="azReviewFile" type="file" accept=".json,.w3u,.txt,application/json,text/plain"></label>
+              <input id="azReviewSearch" type="search" placeholder="Buscar canal..." autocomplete="off">
+              <select id="azReviewGroup"><option value="">TODAS LAS CATEGORÍAS</option></select>
+              <button id="azReviewClear" class="ghost" type="button">LIMPIAR</button>
+            </div>
+            <div id="azReviewStats" class="az-review-stats">Cargá un archivo JSON/W3U para comenzar.</div>
+            <div id="azReviewMsg" class="msg"></div>
+            <div id="azReviewLinks"></div>
+            <div id="azReviewList" class="az-review-list"><div class="empty muted">Todavía no cargaste una lista para revisar.</div></div>
+          </div>
           <div class="resolver-box rescue-resolver-box"><div class="card-head"><div><h4>COCHI RESCUE · prueba independiente</h4><p class="muted small">Configuración privada del backend. Todos los campos son editables. Esta prueba no modifica TV1/TV2 actuales.</p></div><span class="badge">AISLADO</span></div>
             <div class="rescue-grid">
               <label>Nombre<input id="rescueName" placeholder="AmericaTV"></label><label>Código<input id="rescueCode" placeholder="c3eds"></label><label>Tipo<input id="rescueType" value="MPD con ClearKey"></label>
@@ -375,6 +391,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.6-banner-horizontal-css-1"></script>
+  <script src="/app.js?v=1.1.6-az-review-1"></script>
 </body>
 </html>
