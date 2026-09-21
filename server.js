@@ -3032,7 +3032,42 @@ async function route(req,res){
     }
     if(p==='/api/admin/stream-resolver/published'&&m==='GET'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});return sendJson(res,200,{items:resolverPublishedEntries()});}
     if(p==='/api/admin/stream-resolver/probe'&&m==='POST'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL'});try{return sendJson(res,200,await probePlayableUrl(url,b.headers||{}));}catch(e){return sendJson(res,400,{error:'No se pudo probar la fuente: '+e.message});}}
-    if(p==='/api/admin/stream-resolver/publish'&&m==='POST'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede publicar canales'});const b=await readJson(req),destination=String(b.destination||'').toLowerCase();if(!['tv1','tv2'].includes(destination))return sendJson(res,400,{error:'Destino inválido'});const url=String(b.url||'').trim(),name=String(b.name||'').trim(),category=String(b.category||'RESOLVER WEB').trim()||'RESOLVER WEB';if(!url||!name)return sendJson(res,400,{error:'Faltan nombre o URL'});try{const headers=b.headers&&typeof b.headers==='object'?b.headers:{};const probe=await probePlayableUrl(url,headers);if(!probe.ok)return sendJson(res,400,{error:`La fuente no pasó la prueba de reproducción (HTTP ${probe.status}, ${probe.type}). No se agregó.`});const json=loadManagedEditable(destination);let group=json.find(g=>String(g?.name||'').toLowerCase()===category.toLowerCase());if(!group){group={name:category,samples:[]};json.push(group)}if(!Array.isArray(group.samples))group.samples=[];if(group.samples.some(x=>String(x?.uri||'')===probe.finalUrl))return sendJson(res,409,{error:'Ese stream ya existe en la categoría seleccionada'});const id=randomToken(9),item={name,uri:probe.finalUrl,_resolverId:id,_resolverPage:String(b.pageUrl||''),_resolverType:probe.type,headers};const icon=String(b.icon||'').trim();if(icon)item.icon=icon;group.samples.push(item);const saved=await saveOriginalAndPublish(destination,json,actor.id,'stream_resolver_published_original_and_app');return sendJson(res,201,{ok:true,id,destination,category,name,probe,stats:saved.stats,remote:saved.remote});}catch(e){return sendJson(res,400,{error:'No se pudo publicar: '+e.message});}}
+    if(p==='/api/admin/stream-resolver/publish'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede publicar canales'});
+      const b=await readJson(req),destination=String(b.destination||'').toLowerCase();
+      if(!['tv1','tv2'].includes(destination))return sendJson(res,400,{error:'Destino inválido'});
+      const url=String(b.url||'').trim(),name=String(b.name||'').trim(),category=String(b.category||'RESOLVER WEB').trim()||'RESOLVER WEB';
+      if(!url||!name)return sendJson(res,400,{error:'Faltan nombre o URL'});
+      try{
+        const headers=b.headers&&typeof b.headers==='object'?b.headers:{};
+        const probe=await probePlayableUrl(url,headers);
+        if(!probe.ok)return sendJson(res,400,{error:'La fuente no pasó la prueba de reproducción (HTTP '+probe.status+', '+probe.type+'). No se agregó.'});
+        const json=loadManagedEditable(destination);
+        let group=json.find(g=>String(g?.name||'').toLowerCase()===category.toLowerCase());
+        if(!group){group={name:category,samples:[]};json.push(group)}
+        if(!Array.isArray(group.samples))group.samples=[];
+        if(group.samples.some(x=>String(x?.uri||'')===probe.finalUrl))return sendJson(res,409,{error:'Ese stream ya existe en la categoría seleccionada'});
+        const id=randomToken(9),streamType=String(probe.type||'').toLowerCase();
+        const item={name,uri:probe.finalUrl,_resolverId:id,_resolverPage:String(b.pageUrl||''),_resolverType:probe.type,headers};
+        const icon=String(b.icon||'').trim(),tvgId=String(b.tvgId||'').trim();
+        if(icon)item.icon=icon;if(tvgId)item.tvgId=tvgId;
+        if(['hls','dash','mp4'].includes(streamType))item.type=streamType;
+        let drmScheme=String(b.drmScheme||b.drm_scheme||'').trim().toLowerCase();
+        const playback={url:probe.finalUrl,headers,type:['hls','dash','mp4'].includes(streamType)?streamType:'auto',drm_scheme:'',enabled:true};
+        if(drmScheme==='clearkey'){
+          const keys=(Array.isArray(b.keys)?b.keys:[]).map(x=>({kid:String(x?.kid||'').trim().slice(0,500),key:String(x?.key||x?.k||'').trim().slice(0,500)})).filter(x=>x.kid&&x.key).slice(0,32);
+          if(keys.length){item.drm_scheme='clearkey';item.keys=keys;playback.drm_scheme='clearkey';playback.keys=keys;}else drmScheme='';
+        }else if(drmScheme==='widevine'){
+          const licenseUrl=String(b.drmLicenseUrl||b.drm_license_url||'').trim();
+          const licenseHeaders=b.drmLicenseHeaders&&typeof b.drmLicenseHeaders==='object'?b.drmLicenseHeaders:{};
+          if(/^https?:\/\//i.test(licenseUrl)){item.drm_scheme='widevine';item.drm_license_url=licenseUrl;if(Object.keys(licenseHeaders).length)item.drm_license_headers=licenseHeaders;playback.drm_scheme='widevine';playback.drm_license_url=licenseUrl;if(Object.keys(licenseHeaders).length)playback.drm_license_headers=licenseHeaders;}else drmScheme='';
+        }
+        item.playbackSources=[playback];item.activePlaybackSource=0;
+        group.samples.push(item);
+        const saved=await saveOriginalAndPublish(destination,json,actor.id,'stream_resolver_published_original_and_app');
+        return sendJson(res,201,{ok:true,id,destination,category,name,probe,drmScheme:drmScheme||'',stats:saved.stats,remote:saved.remote});
+      }catch(e){return sendJson(res,400,{error:'No se pudo publicar: '+e.message});}
+    }
     const resolverDelete=p.match(/^\/api\/admin\/stream-resolver\/published\/([^/]+)$/);
     if(resolverDelete&&m==='DELETE'){if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede quitar canales'});const id=decodeURIComponent(resolverDelete[1]);for(const key of ['tv1','tv2']){let json;try{json=loadManagedEditable(key)}catch{continue}let removed=null;for(const g of json){const arr=Array.isArray(g?.samples)?g.samples:[];const i=arr.findIndex(x=>x?._resolverId===id);if(i>=0){removed=arr.splice(i,1)[0];break}}if(removed){const saved=await saveOriginalAndPublish(key,json,actor.id,'stream_resolver_removed_original_and_app');return sendJson(res,200,{ok:true,destination:key,name:removed.name||'',remote:saved.remote});}}return sendJson(res,404,{error:'Canal agregado por Resolver no encontrado'});}
     const resolverMove=p.match(/^\/api\/admin\/stream-resolver\/published\/([^/]+)\/move$/);
