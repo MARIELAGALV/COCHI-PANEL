@@ -456,3 +456,100 @@ body[data-view="devices"] #view-devices .actions button{
     white-space:normal;
   }
 }
+
+
+/* Banner editor horizontal CSP-safe v1 */
+.banner-crop-modal .banner-crop-stage{
+  width:min(100%,900px)!important;
+  margin:0 auto!important;
+}
+.banner-crop-modal .banner-crop-controls{
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:none!important;
+  gap:12px!important;
+  width:100%!important;
+  align-items:stretch!important;
+}
+.banner-crop-modal #bannerCropAxes{
+  display:flex!important;
+  flex-direction:row!important;
+  flex-wrap:nowrap!important;
+  gap:18px!important;
+  align-items:center!important;
+  width:100%!important;
+  min-width:0!important;
+}
+.banner-crop-modal #bannerCropHeightControl,
+.banner-crop-modal #bannerCropWidthControl{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  gap:9px!important;
+  flex:1 1 0!important;
+  min-width:0!important;
+  margin:0!important;
+}
+.banner-crop-modal #bannerCropHeightControl > span,
+.banner-crop-modal #bannerCropWidthControl > span,
+.banner-crop-modal #bannerCropZoomControl > span,
+.banner-crop-modal #bannerCropHeightControl > b,
+.banner-crop-modal #bannerCropWidthControl > b,
+.banner-crop-modal #bannerCropZoomControl > b{
+  display:inline!important;
+  white-space:nowrap!important;
+}
+.banner-crop-modal #bannerCropHeightControl input[type="range"],
+.banner-crop-modal #bannerCropWidthControl input[type="range"]{
+  flex:1 1 auto!important;
+  width:auto!important;
+  min-width:90px!important;
+  margin:0!important;
+}
+.banner-crop-modal #bannerCropZoomControl{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  gap:7px!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+}
+.banner-crop-modal #bannerCropZoom{
+  width:68px!important;
+  min-width:68px!important;
+  max-width:68px!important;
+  margin:0!important;
+  padding:8px 6px!important;
+  text-align:center!important;
+}
+.banner-crop-modal .banner-crop-quick{
+  display:flex!important;
+  flex-direction:row!important;
+  flex-wrap:wrap!important;
+  gap:8px!important;
+  justify-content:center!important;
+  width:100%!important;
+}
+@media(max-width:760px){
+  .banner-crop-modal #bannerCropAxes{
+    gap:10px!important;
+  }
+  .banner-crop-modal #bannerCropHeightControl,
+  .banner-crop-modal #bannerCropWidthControl{
+    gap:5px!important;
+  }
+  .banner-crop-modal #bannerCropHeightControl > span,
+  .banner-crop-modal #bannerCropWidthControl > span,
+  .banner-crop-modal #bannerCropZoomControl > span{
+    font-size:10px!important;
+  }
+  .banner-crop-modal #bannerCropHeightControl input[type="range"],
+  .banner-crop-modal #bannerCropWidthControl input[type="range"]{
+    min-width:55px!important;
+  }
+  .banner-crop-modal #bannerCropZoom{
+    width:58px!important;
+    min-width:58px!important;
+    max-width:58px!important;
+  }
+}
