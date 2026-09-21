@@ -361,10 +361,10 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
           </div>
 
           <div id="remoteM3uCard" class="content-source-card">
-            <div class="content-source-head"><div><h4>Categoría remota M3U autoactualizable</h4><p class="muted small">Guardá una URL .m3u/.m3u8 remota. El PANEL la relee solo y publica sus canales como una categoría normal sin modificar la APK.</p></div><span class="badge active">TV</span></div>
+            <div class="content-source-head"><div><h4>Categoría remota M3U / W3U autoactualizable</h4><p class="muted small">Guardá una URL .m3u/.m3u8 o W3U/AZPlay remota. El PANEL la relee solo, adapta los canales al formato interno y los publica como una categoría normal sin modificar la APK.</p></div><span class="badge active">TV</span></div>
             <div class="form-row">
               <label>Nombre de la categoría<input id="remoteM3uCategory" maxlength="120" placeholder="PLUTO / SAMSUNG"></label>
-              <label>URL remota M3U<input id="remoteM3uUrl" type="url" placeholder="https://github.com/.../blob/main/lista.m3u"></label>
+              <label>URL remota M3U / W3U<input id="remoteM3uUrl" type="url" placeholder="https://github.com/.../blob/main/lista.m3u"></label>
             </div>
             <div class="content-source-actions">
               <label>Actualizar cada
@@ -376,7 +376,7 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
                   <option value="360">6 horas</option>
                 </select>
               </label>
-              <button id="remoteM3uAddBtn" class="primary" type="button">AGREGAR FUENTE M3U</button>
+              <button id="remoteM3uAddBtn" class="primary" type="button">AGREGAR FUENTE M3U / W3U</button>
             </div>
             <div class="muted tiny">También podés pegar un enlace GitHub <b>/blob/</b>: el PANEL lo convierte automáticamente a RAW. Cada actualización reemplaza solo los canales de esta categoría; las demás categorías no se tocan.</div>
             <div id="remoteM3uList" class="mt10"></div>
