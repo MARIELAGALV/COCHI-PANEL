@@ -1795,10 +1795,176 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.6-banner-horizontal-css-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.6-az-review-1').catch(()=>{}));
 }
 bootstrap();
 
+
+const azReviewState={channels:[],links:[],limit:100,fileName:''};
+
+function azCanonicalHeaderName(name){
+  const raw=String(name||'').trim(),k=raw.toLowerCase().replace(/_/g,'-');
+  const known={'user-agent':'User-Agent','referer':'Referer','referrer':'Referer','origin':'Origin','authorization':'Authorization','cookie':'Cookie','accept':'Accept','accept-language':'Accept-Language','accept-encoding':'Accept-Encoding'};
+  return known[k]||raw;
+}
+function azHeaders(value){
+  const out={};
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    for(const [k,v] of Object.entries(value)){const key=azCanonicalHeaderName(k),sv=String(v??'').trim();if(key&&sv)out[key]=sv;}
+  }
+  return out;
+}
+function azKeys(value){
+  const out=[],seen=new Set();
+  const add=(kid,key)=>{kid=String(kid??'').trim();key=String(key??'').trim();if(!kid||!key)return;const sig=kid+':'+key;if(seen.has(sig))return;seen.add(sig);out.push({kid,key});};
+  const walk=v=>{
+    if(v===undefined||v===null)return;
+    if(typeof v==='string'){
+      const s=v.trim();if(!s)return;
+      if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){try{walk(JSON.parse(s));return}catch{}}
+      for(const p of s.split(/[\r\n,;]+/)){const i=p.indexOf(':');if(i>0)add(p.slice(0,i),p.slice(i+1));}
+      return;
+    }
+    if(Array.isArray(v)){v.forEach(walk);return;}
+    if(typeof v==='object'){
+      if(Array.isArray(v.keys))v.keys.forEach(walk);
+      const kid=v.kid??v.KID,key=v.key??v.KEY??v.k;
+      if(kid!==undefined&&key!==undefined)add(kid,key);
+    }
+  };
+  walk(value);return out;
+}
+function azSource(raw,station){
+  raw=raw&&typeof raw==='object'?raw:{};station=station&&typeof station==='object'?station:{};
+  const drm=String(raw.drm_scheme||raw.license_type||station.drm_scheme||station.license_type||'').toLowerCase();
+  const licenseRaw=raw.license_key??station.license_key??'';
+  const url=String(raw.url||station.url||'').trim();
+  const headers={...azHeaders(station.headers),...azHeaders(raw.headers)};
+  const source={
+    name:String(raw.name||station.name||'Fuente').trim(),
+    image:String(raw.image||station.image||'').trim(),
+    url,headers,drm,token:String(raw.token||station.token||'').trim(),
+    tvgId:String(raw.tvgId||station.tvgId||'').trim(),
+    keys:drm==='clearkey'?azKeys(licenseRaw):[],
+    drmLicenseUrl:drm==='widevine'&&/^https?:\/\//i.test(String(licenseRaw||''))?String(licenseRaw).trim():'',
+    drmLicenseHeaders:azHeaders(raw.license_headers||raw.drm_license_headers||station.license_headers||station.drm_license_headers)
+  };
+  source.template=/\{token\}/i.test(url);
+  source.direct=/\.(?:m3u8|mpd|mp4)(?:[?#]|$)/i.test(url)&&!source.template;
+  return source;
+}
+function azParseDocument(doc,fileName=''){
+  if(!doc||typeof doc!=='object'||!Array.isArray(doc.groups))throw new Error('El archivo no tiene la estructura AZPlay esperada: falta groups[].');
+  const channels=[],links=[];
+  for(const g of doc.groups){
+    if(!g||typeof g!=='object')continue;
+    const group=String(g.name||'SIN CATEGORÍA').trim()||'SIN CATEGORÍA';
+    const stations=Array.isArray(g.stations)?g.stations:[];
+    if(!stations.length&&/^https?:\/\//i.test(String(g.url||'')))links.push({name:group,url:String(g.url).trim(),image:String(g.image||'').trim()});
+    for(const st of stations){
+      if(!st||typeof st!=='object')continue;
+      const rawOptions=Array.isArray(st.options)&&st.options.length?st.options:(st.url?[st]:[]);
+      const sources=rawOptions.map(x=>azSource(x,st)).filter(x=>/^https?:\/\//i.test(x.url));
+      if(!sources.length)continue;
+      channels.push({name:String(st.name||sources[0].name||'Canal').trim()||'Canal',image:String(st.image||sources[0].image||'').trim(),group,tvgId:String(st.tvgId||'').trim(),sources,selected:0,probe:null});
+    }
+  }
+  azReviewState.channels=channels;azReviewState.links=links;azReviewState.limit=100;azReviewState.fileName=fileName||'lista';
+  return {channels,links};
+}
+function azSourceBadge(src){
+  if(src.template)return '<span class="badge">TOKEN / TEMPLATE</span>';
+  if(src.drm==='clearkey')return '<span class="badge active">DASH · CLEARKEY</span>';
+  if(src.drm==='widevine')return '<span class="badge active">DASH · WIDEVINE</span>';
+  if(src.direct)return '<span class="badge">DIRECTA</span>';
+  return '<span class="badge off">PÁGINA / EMBED</span>';
+}
+function azVisibleChannels(){
+  const q=String($('#azReviewSearch')?.value||'').trim().toLowerCase(),g=String($('#azReviewGroup')?.value||'');
+  return azReviewState.channels.map((x,i)=>({x,i})).filter(({x})=>(!g||x.group===g)&&(!q||[x.name,x.group,...x.sources.map(s=>s.name)].join(' ').toLowerCase().includes(q)));
+}
+function azRenderStats(){
+  const stats=$('#azReviewStats');if(!stats)return;
+  const total=azReviewState.channels.length,sources=azReviewState.channels.reduce((n,x)=>n+x.sources.length,0);
+  const multi=azReviewState.channels.filter(x=>x.sources.length>1).length;
+  const drm=azReviewState.channels.reduce((n,x)=>n+x.sources.filter(s=>s.drm==='clearkey'||s.drm==='widevine').length,0);
+  const ok=azReviewState.channels.filter(x=>x.probe?.ok).length;
+  stats.innerHTML=total?'<b>'+total+' canales</b><span>'+sources+' fuentes</span><span>'+multi+' con varias opciones</span><span>'+drm+' fuentes DRM</span><span class="az-stat-ok">'+ok+' confirmados</span>':'Cargá un archivo JSON/W3U para comenzar.';
+}
+function azRenderLinks(){
+  const box=$('#azReviewLinks');if(!box)return;
+  if(!azReviewState.links.length){box.innerHTML='';return;}
+  box.innerHTML='<details class="az-link-details"><summary>Listas externas enlazadas ('+azReviewState.links.length+')</summary>'+azReviewState.links.map((x,i)=>'<div class="az-link-row"><b>'+esc(x.name)+'</b><span class="resolver-code">'+esc(x.url)+'</span><button class="ghost mini" type="button" data-az-open-link="'+i+'">REVISAR URL</button></div>').join('')+'</details>';
+  $$('[data-az-open-link]').forEach(b=>b.onclick=()=>{const x=azReviewState.links[Number(b.dataset.azOpenLink)];if(!x)return;$('#resolverUrl').value=x.url;$('#resolverUrl').scrollIntoView({behavior:'smooth',block:'center'});toast('URL copiada al Resolver','ok');});
+}
+function azRenderReview(){
+  const box=$('#azReviewList');if(!box)return;
+  azRenderStats();azRenderLinks();
+  const visible=azVisibleChannels(),shown=visible.slice(0,azReviewState.limit);
+  if(!azReviewState.channels.length){box.innerHTML='<div class="empty muted">Seleccioná el JSON/W3U para revisar sus canales.</div>';return;}
+  if(!shown.length){box.innerHTML='<div class="empty muted">No hay canales con ese filtro.</div>';return;}
+  box.innerHTML=shown.map(({x,i})=>{
+    const src=x.sources[Math.max(0,Math.min(x.selected,x.sources.length-1))]||x.sources[0];
+    const status=x.probe?.ok?'<span class="badge active">CONFIRMADO · '+esc(x.probe.type||'STREAM')+'</span>':x.probe?.tried?'<span class="badge blocked">'+esc(x.probe.label||'NO CONFIRMADO')+'</span>':'<span class="badge off">SIN PROBAR</span>';
+    const opts=x.sources.map((s,j)=>'<option value="'+j+'" '+(j===x.selected?'selected':'')+'>'+esc((j+1)+' · '+(s.name||'Fuente'))+'</option>').join('');
+    return '<div class="az-channel-card" data-az-channel="'+i+'"><div class="az-channel-head">'+(x.image?'<img src="'+esc(x.image)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':'<div class="az-logo-empty">TV</div>')+'<div class="az-channel-title"><strong>'+esc(x.name)+'</strong><span>'+esc(x.group)+'</span></div><div class="az-channel-status">'+status+'</div></div><div class="az-channel-grid"><label>Fuente<select class="az-source-select">'+opts+'</select></label><label>Categoría destino<input class="az-target-category" value="'+esc(x.group)+'"></label></div><div class="az-source-meta">'+azSourceBadge(src)+'<span>'+(src.headers&&Object.keys(src.headers).length?'HEADERS '+Object.keys(src.headers).length:'SIN HEADERS')+'</span><span>'+esc(src.url)+'</span></div><div class="az-channel-actions"><button class="ghost az-probe" type="button">PROBAR CANAL</button><button class="ghost az-open-resolver" type="button">ABRIR EN RESOLVER</button><button class="primary az-publish-tv1" type="button">+ TV1</button><button class="primary az-publish-tv2" type="button">+ TV2</button></div><div class="az-channel-msg muted tiny"></div></div>';
+  }).join('')+(visible.length>shown.length?'<button id="azReviewMore" class="ghost full mt10" type="button">MOSTRAR '+Math.min(100,visible.length-shown.length)+' MÁS</button>':'');
+  $$('.az-channel-card').forEach(card=>{
+    const i=Number(card.dataset.azChannel),channel=azReviewState.channels[i];
+    card.querySelector('.az-source-select')?.addEventListener('change',e=>{channel.selected=Number(e.target.value)||0;channel.probe=null;azRenderReview();});
+    card.querySelector('.az-probe')?.addEventListener('click',()=>azProbeChannel(i,card));
+    card.querySelector('.az-open-resolver')?.addEventListener('click',()=>azOpenInResolver(i));
+    card.querySelector('.az-publish-tv1')?.addEventListener('click',()=>azPublishChannel(i,'tv1',card));
+    card.querySelector('.az-publish-tv2')?.addEventListener('click',()=>azPublishChannel(i,'tv2',card));
+  });
+  $('#azReviewMore')?.addEventListener('click',()=>{azReviewState.limit+=100;azRenderReview();});
+}
+async function azProbeSource(src){
+  if(src.template)return {ok:false,tried:true,label:'REQUIERE TOKEN / RESCUE',template:true};
+  if(src.direct){
+    try{const pr=await api('/api/admin/stream-resolver/probe',{method:'POST',body:{url:src.url,headers:src.headers||{}}});return pr.ok?{ok:true,tried:true,type:pr.type,url:pr.finalUrl||src.url,headers:src.headers||{},source:src,drm:src.drm}:{ok:false,tried:true,label:'HTTP '+pr.status+' · '+pr.type};}catch(e){return {ok:false,tried:true,label:e.message||'ERROR DE PRUEBA'};}
+  }
+  try{
+    const rr=await api('/api/admin/stream-resolver',{method:'POST',body:{url:src.url}}),play=Array.isArray(rr.playable)?rr.playable:[];
+    if(play.length){const p=play[0],headers=p.headers||rr.recommendedHeaders||src.headers||{};return {ok:true,tried:true,type:p.type||'STREAM',url:p.url,headers,source:src,drm:src.drm,resolvedFrom:src.url};}
+    return {ok:false,tried:true,label:'PÁGINA SIN STREAM DIRECTO'};
+  }catch(e){return {ok:false,tried:true,label:e.message||'NO SE PUDO ANALIZAR'};}
+}
+async function azProbeChannel(index,card=null){
+  const channel=azReviewState.channels[index];if(!channel)return null;
+  const btn=card?.querySelector('.az-probe'),m=card?.querySelector('.az-channel-msg');
+  if(btn){btn.disabled=true;btn.textContent='PROBANDO...';}if(m)m.textContent='Revisando las fuentes del canal en orden...';
+  let last={ok:false,tried:true,label:'NINGUNA FUENTE CONFIRMADA'};
+  const order=[channel.selected,...channel.sources.map((_,i)=>i).filter(i=>i!==channel.selected)];
+  for(const i of order){const src=channel.sources[i];if(!src)continue;if(m)m.textContent='Probando fuente '+(i+1)+' de '+channel.sources.length+'...';const r=await azProbeSource(src);last=r;if(r.ok){channel.selected=i;channel.probe=r;break;}}
+  if(!channel.probe?.ok)channel.probe=last;if(btn){btn.disabled=false;btn.textContent='PROBAR CANAL';}azRenderReview();return channel.probe;
+}
+function azOpenInResolver(index){
+  const channel=azReviewState.channels[index];if(!channel)return;const src=channel.sources[channel.selected]||channel.sources[0];if(!src)return;
+  $('#resolverUrl').value=src.url;$('#resolverUrl').scrollIntoView({behavior:'smooth',block:'center'});toast(channel.name+' enviado al Resolver','ok');
+}
+async function azPublishChannel(index,destination,card=null){
+  const channel=azReviewState.channels[index];if(!channel)return;let probe=channel.probe;if(!probe?.ok)probe=await azProbeChannel(index,card);
+  if(!probe?.ok){toast('Primero necesito confirmar una fuente reproducible para '+channel.name,'bad');return;}
+  const src=channel.sources[channel.selected]||channel.sources[0],category=String(card?.querySelector('.az-target-category')?.value||channel.group).trim()||channel.group;
+  const button=card?.querySelector(destination==='tv1'?'.az-publish-tv1':'.az-publish-tv2');if(button){button.disabled=true;button.textContent='AGREGANDO...';}
+  try{
+    const payload={destination,name:channel.name,category,icon:src.image||channel.image||'',url:probe.url||src.url,pageUrl:probe.resolvedFrom||src.url,headers:probe.headers||src.headers||{},tvgId:channel.tvgId||src.tvgId||'',drmScheme:src.drm||'',keys:src.keys||[],drmLicenseUrl:src.drmLicenseUrl||'',drmLicenseHeaders:src.drmLicenseHeaders||{}};
+    await api('/api/admin/stream-resolver/publish',{method:'POST',body:payload});toast(channel.name+' agregado a '+destination.toUpperCase()+' · '+category,'ok');channel.probe={...probe,published:destination};await loadResolverPublished();
+  }catch(e){toast(e.message,'bad');}finally{if(button){button.disabled=false;button.textContent=destination==='tv1'?'+ TV1':'+ TV2';}}
+}
+$('#azReviewFile')?.addEventListener('change',async e=>{
+  const file=e.target.files?.[0];if(!file)return;const msgBox=$('#azReviewMsg');
+  try{
+    if(file.size>15*1024*1024)throw new Error('El archivo supera 15 MB.');if(msgBox)msgBox.textContent='Leyendo '+file.name+'...';
+    const text=await file.text(),doc=JSON.parse(text),r=azParseDocument(doc,file.name),groups=[...new Set(r.channels.map(x=>x.group))].sort((a,b)=>a.localeCompare(b,'es'));
+    $('#azReviewGroup').innerHTML='<option value="">TODAS LAS CATEGORÍAS</option>'+groups.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+    $('#azReviewSearch').value='';if(msgBox){msgBox.textContent='LISTA CARGADA · '+r.channels.length+' canales · '+r.links.length+' listas enlazadas';msgBox.className='msg ok';}azRenderReview();
+  }catch(err){azReviewState.channels=[];azReviewState.links=[];if(msgBox){msgBox.textContent='No se pudo cargar: '+err.message;msgBox.className='msg error';}azRenderReview();}
+});
+$('#azReviewSearch')?.addEventListener('input',()=>{azReviewState.limit=100;azRenderReview();});
+$('#azReviewGroup')?.addEventListener('change',()=>{azReviewState.limit=100;azRenderReview();});
+$('#azReviewClear')?.addEventListener('click',()=>{azReviewState.channels=[];azReviewState.links=[];azReviewState.limit=100;$('#azReviewFile').value='';$('#azReviewSearch').value='';$('#azReviewGroup').innerHTML='<option value="">TODAS LAS CATEGORÍAS</option>';msg($('#azReviewMsg'),'');azRenderReview();});
 
 async function loadResolverPublished(){const box=$('#resolverPublished');if(!box)return;try{const r=await api('/api/admin/stream-resolver/published'),items=r.items||[];box.innerHTML=items.length?items.map(x=>`<div class="resolver-item resolver-published-item"><div><span class="resolver-type">${esc(x.destination.toUpperCase())}</span> <strong>${esc(x.name)}</strong><div class="muted tiny">${esc(x.category)} · ${esc(x.type||'STREAM')}</div><div class="resolver-code">${esc(x.uri)}</div></div><div class="resolver-actions"><button class="ghost mini" data-resolver-move="${esc(x.id)}" data-from="${esc(x.destination)}">MOVER A ${x.destination==='tv1'?'TV2':'TV1'}</button><button class="danger mini" data-resolver-remove="${esc(x.id)}">QUITAR</button></div></div>`).join(''):'<div class="muted">Todavía no agregaste canales desde el Resolver.</div>';$$('[data-resolver-remove]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Quitar este canal de TV1/TV2? El resto de la lista no se modifica.'))return;try{await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverRemove)}`,{method:'DELETE'});toast('Canal quitado del destino','ok');await loadResolverPublished()}catch(e){alert(e.message)}});$$('[data-resolver-move]').forEach(b=>b.onclick=async()=>{const destination=b.dataset.from==='tv1'?'tv2':'tv1';if(!confirm(`¿Mover este canal a ${destination.toUpperCase()}?`))return;try{const rr=await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverMove)}/move`,{method:'POST',body:{destination}});toast(`${rr.name} movido a ${destination.toUpperCase()}`,'ok');await loadResolverPublished()}catch(e){alert(e.message)}})}catch(e){box.innerHTML=`<div class="msg bad">${esc(e.message)}</div>`}}
 function resolverLooksTemporary(raw){try{const u=new URL(String(raw||''));const keys=[...u.searchParams.keys()].map(x=>x.toLowerCase());return keys.some(k=>['exp','expires','expiry','token','sig','signature','auth','hdnts','hdnea','policy','key-pair-id','x-amz-expires','x-amz-signature'].includes(k)||/(?:^|_)(?:exp|token|sig|auth)(?:$|_)/.test(k))}catch{return false}}
