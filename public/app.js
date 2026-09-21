@@ -1800,7 +1800,7 @@ if('serviceWorker' in navigator && location.protocol==='https:'){
 bootstrap();
 
 
-const azReviewState={channels:[],links:[],limit:100,fileName:''};
+const azReviewState={channels:[],links:[],limit:100,fileName:'',batchRunning:false,batchStop:false,batchDone:0,batchTotal:0};
 
 function azCanonicalHeaderName(name){
   const raw=String(name||'').trim(),k=raw.toLowerCase().replace(/_/g,'-');
@@ -1889,7 +1889,8 @@ function azRenderStats(){
   const multi=azReviewState.channels.filter(x=>x.sources.length>1).length;
   const drm=azReviewState.channels.reduce((n,x)=>n+x.sources.filter(s=>s.drm==='clearkey'||s.drm==='widevine').length,0);
   const ok=azReviewState.channels.filter(x=>x.probe?.ok).length;
-  stats.innerHTML=total?'<b>'+total+' canales</b><span>'+sources+' fuentes</span><span>'+multi+' con varias opciones</span><span>'+drm+' fuentes DRM</span><span class="az-stat-ok">'+ok+' confirmados</span>':'Cargá un archivo JSON/W3U para comenzar.';
+  const batch=azReviewState.batchRunning?'<span class="badge">PROBANDO '+azReviewState.batchDone+'/'+azReviewState.batchTotal+'</span>':'';
+  stats.innerHTML=total?'<b>'+total+' canales</b><span>'+sources+' fuentes</span><span>'+multi+' con varias opciones</span><span>'+drm+' fuentes DRM</span><span class="az-stat-ok">'+ok+' confirmados</span>'+batch:'Cargá un archivo JSON/W3U para comenzar.';
 }
 function azRenderLinks(){
   const box=$('#azReviewLinks');if(!box)return;
@@ -1930,14 +1931,43 @@ async function azProbeSource(src){
     return {ok:false,tried:true,label:'PÁGINA SIN STREAM DIRECTO'};
   }catch(e){return {ok:false,tried:true,label:e.message||'NO SE PUDO ANALIZAR'};}
 }
-async function azProbeChannel(index,card=null){
+async function azProbeChannel(index,card=null,render=true){
   const channel=azReviewState.channels[index];if(!channel)return null;
   const btn=card?.querySelector('.az-probe'),m=card?.querySelector('.az-channel-msg');
   if(btn){btn.disabled=true;btn.textContent='PROBANDO...';}if(m)m.textContent='Revisando las fuentes del canal en orden...';
   let last={ok:false,tried:true,label:'NINGUNA FUENTE CONFIRMADA'};
   const order=[channel.selected,...channel.sources.map((_,i)=>i).filter(i=>i!==channel.selected)];
   for(const i of order){const src=channel.sources[i];if(!src)continue;if(m)m.textContent='Probando fuente '+(i+1)+' de '+channel.sources.length+'...';const r=await azProbeSource(src);last=r;if(r.ok){channel.selected=i;channel.probe=r;break;}}
-  if(!channel.probe?.ok)channel.probe=last;if(btn){btn.disabled=false;btn.textContent='PROBAR CANAL';}azRenderReview();return channel.probe;
+  if(!channel.probe?.ok)channel.probe=last;if(btn){btn.disabled=false;btn.textContent='PROBAR CANAL';}if(render)azRenderReview();else azRenderStats();return channel.probe;
+}
+async function azProbeVisibleBatch(){
+  if(azReviewState.batchRunning)return;
+  const targets=azVisibleChannels().filter(({x})=>!x.probe?.ok).map(({i})=>i);
+  if(!targets.length){toast('No hay canales pendientes en el filtro actual.','ok');return;}
+  if(!confirm('Se probarán '+targets.length+' canales del filtro actual, uno por uno. Podés detener la revisión cuando quieras.\n\nConviene elegir una categoría si la lista es muy grande.'))return;
+  const start=$('#azReviewProbeVisible'),stop=$('#azReviewStop'),msgBox=$('#azReviewMsg');
+  azReviewState.batchRunning=true;azReviewState.batchStop=false;azReviewState.batchDone=0;azReviewState.batchTotal=targets.length;
+  if(start){start.disabled=true;start.textContent='PROBANDO...';}
+  if(stop)stop.disabled=false;
+  azRenderStats();
+  try{
+    for(const index of targets){
+      if(azReviewState.batchStop)break;
+      const channel=azReviewState.channels[index];
+      if(msgBox){msgBox.textContent='PROBANDO '+(azReviewState.batchDone+1)+'/'+azReviewState.batchTotal+' · '+(channel?.name||'CANAL');msgBox.className='msg';}
+      await azProbeChannel(index,null,false);
+      azReviewState.batchDone++;
+      azRenderStats();
+    }
+  }finally{
+    const stopped=azReviewState.batchStop,done=azReviewState.batchDone,total=azReviewState.batchTotal;
+    azReviewState.batchRunning=false;azReviewState.batchStop=false;
+    if(start){start.disabled=false;start.textContent='PROBAR FILTRADOS';}
+    if(stop)stop.disabled=true;
+    const ok=targets.filter(i=>azReviewState.channels[i]?.probe?.ok).length;
+    if(msgBox){msgBox.textContent=(stopped?'PRUEBA DETENIDA':'PRUEBA FINALIZADA')+' · '+done+'/'+total+' revisados · '+ok+' confirmados';msgBox.className='msg '+(ok?'ok':'');}
+    azRenderReview();
+  }
 }
 function azOpenInResolver(index){
   const channel=azReviewState.channels[index];if(!channel)return;const src=channel.sources[channel.selected]||channel.sources[0];if(!src)return;
@@ -1964,7 +1994,9 @@ $('#azReviewFile')?.addEventListener('change',async e=>{
 });
 $('#azReviewSearch')?.addEventListener('input',()=>{azReviewState.limit=100;azRenderReview();});
 $('#azReviewGroup')?.addEventListener('change',()=>{azReviewState.limit=100;azRenderReview();});
-$('#azReviewClear')?.addEventListener('click',()=>{azReviewState.channels=[];azReviewState.links=[];azReviewState.limit=100;$('#azReviewFile').value='';$('#azReviewSearch').value='';$('#azReviewGroup').innerHTML='<option value="">TODAS LAS CATEGORÍAS</option>';msg($('#azReviewMsg'),'');azRenderReview();});
+$('#azReviewProbeVisible')?.addEventListener('click',()=>azProbeVisibleBatch());
+$('#azReviewStop')?.addEventListener('click',()=>{if(!azReviewState.batchRunning)return;azReviewState.batchStop=true;const b=$('#azReviewStop');if(b){b.disabled=true;b.textContent='DETENIENDO...';}});
+$('#azReviewClear')?.addEventListener('click',()=>{azReviewState.batchStop=true;azReviewState.channels=[];azReviewState.links=[];azReviewState.limit=100;azReviewState.batchDone=0;azReviewState.batchTotal=0;$('#azReviewFile').value='';$('#azReviewSearch').value='';$('#azReviewGroup').innerHTML='<option value="">TODAS LAS CATEGORÍAS</option>';msg($('#azReviewMsg'),'');azRenderReview();});
 
 async function loadResolverPublished(){const box=$('#resolverPublished');if(!box)return;try{const r=await api('/api/admin/stream-resolver/published'),items=r.items||[];box.innerHTML=items.length?items.map(x=>`<div class="resolver-item resolver-published-item"><div><span class="resolver-type">${esc(x.destination.toUpperCase())}</span> <strong>${esc(x.name)}</strong><div class="muted tiny">${esc(x.category)} · ${esc(x.type||'STREAM')}</div><div class="resolver-code">${esc(x.uri)}</div></div><div class="resolver-actions"><button class="ghost mini" data-resolver-move="${esc(x.id)}" data-from="${esc(x.destination)}">MOVER A ${x.destination==='tv1'?'TV2':'TV1'}</button><button class="danger mini" data-resolver-remove="${esc(x.id)}">QUITAR</button></div></div>`).join(''):'<div class="muted">Todavía no agregaste canales desde el Resolver.</div>';$$('[data-resolver-remove]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Quitar este canal de TV1/TV2? El resto de la lista no se modifica.'))return;try{await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverRemove)}`,{method:'DELETE'});toast('Canal quitado del destino','ok');await loadResolverPublished()}catch(e){alert(e.message)}});$$('[data-resolver-move]').forEach(b=>b.onclick=async()=>{const destination=b.dataset.from==='tv1'?'tv2':'tv1';if(!confirm(`¿Mover este canal a ${destination.toUpperCase()}?`))return;try{const rr=await api(`/api/admin/stream-resolver/published/${encodeURIComponent(b.dataset.resolverMove)}/move`,{method:'POST',body:{destination}});toast(`${rr.name} movido a ${destination.toUpperCase()}`,'ok');await loadResolverPublished()}catch(e){alert(e.message)}})}catch(e){box.innerHTML=`<div class="msg bad">${esc(e.message)}</div>`}}
 function resolverLooksTemporary(raw){try{const u=new URL(String(raw||''));const keys=[...u.searchParams.keys()].map(x=>x.toLowerCase());return keys.some(k=>['exp','expires','expiry','token','sig','signature','auth','hdnts','hdnea','policy','key-pair-id','x-amz-expires','x-amz-signature'].includes(k)||/(?:^|_)(?:exp|token|sig|auth)(?:$|_)/.test(k))}catch{return false}}
