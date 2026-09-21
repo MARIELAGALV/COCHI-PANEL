@@ -2040,6 +2040,88 @@ function parseRemoteM3uPlaylist(text,baseUrl){
   if(!channels.length)throw new Error('La lista M3U no contiene canales HTTP/HTTPS utilizables');
   return channels;
 }
+
+function remoteW3uKeys(value){
+  const out=[],seen=new Set();
+  const add=(kid,key)=>{kid=String(kid??'').trim();key=String(key??'').trim();if(!kid||!key)return;const sig=kid+':'+key;if(seen.has(sig))return;seen.add(sig);out.push({kid,key});};
+  const walk=v=>{
+    if(v===undefined||v===null)return;
+    if(typeof v==='string'){
+      const t=v.trim();if(!t)return;
+      if((t.startsWith('{')&&t.endsWith('}'))||(t.startsWith('[')&&t.endsWith(']'))){try{walk(JSON.parse(t));return}catch{}}
+      for(const p of t.split(/[\r\n,;]+/)){const i=p.indexOf(':');if(i>0)add(p.slice(0,i),p.slice(i+1));}
+      return;
+    }
+    if(Array.isArray(v)){v.forEach(walk);return;}
+    if(typeof v==='object'){
+      if(Array.isArray(v.keys))v.keys.forEach(walk);
+      const kid=v.kid??v.KID,key=v.key??v.KEY??v.k;
+      if(kid!==undefined&&key!==undefined)add(kid,key);
+    }
+  };
+  walk(value);return out;
+}
+function remoteW3uHeaders(...values){
+  const out={};
+  for(const value of values)if(value&&typeof value==='object'&&!Array.isArray(value)){
+    for(const [k,v] of Object.entries(value)){const key=String(k||'').trim(),val=String(v??'').trim();if(key&&val)out[key]=val;}
+  }
+  return out;
+}
+function remoteW3uStreamType(url,rawType=''){
+  const t=String(rawType||'').toLowerCase(),u=String(url||'').toLowerCase();
+  if(t.includes('hls')||/\.m3u8(?:[?#]|$)/i.test(u))return 'hls';
+  if(t.includes('dash')||/\.mpd(?:[?#]|$)/i.test(u))return 'dash';
+  if(t.includes('mp4')||/\.mp4(?:[?#]|$)/i.test(u))return 'mp4';
+  return 'auto';
+}
+function parseRemoteW3uPlaylist(text,baseUrl){
+  const raw=String(text||'').replace(/^\uFEFF/,'').trim();
+  if(!raw||(!raw.startsWith('{')&&!raw.startsWith('[')))throw new Error('No es JSON/W3U');
+  let doc;try{doc=JSON.parse(raw)}catch{throw new Error('El W3U/JSON no es válido')}
+  const groups=Array.isArray(doc)?[{name:'W3U',stations:doc}]:Array.isArray(doc?.groups)?doc.groups:Array.isArray(doc?.stations)?[{name:doc.name||'W3U',stations:doc.stations}]:[];
+  if(!groups.length)throw new Error('El W3U/JSON no contiene groups/stations');
+  const channels=[],seen=new Set();
+  for(const group of groups){
+    if(!group||typeof group!=='object')continue;
+    const stations=Array.isArray(group.stations)?group.stations:Array.isArray(group.samples)?group.samples:Array.isArray(group.channels)?group.channels:[];
+    for(const st of stations){
+      if(!st||typeof st!=='object')continue;
+      const opts=Array.isArray(st.options)&&st.options.length?st.options:[st];
+      const playbackSources=[];
+      for(const optRaw of opts){
+        const opt=optRaw&&typeof optRaw==='object'?optRaw:{};
+        const rawUrl=String(opt.url||opt.uri||opt.stream_url||opt.stream||st.url||st.uri||st.stream_url||st.stream||'').trim();
+        if(!rawUrl)continue;
+        let url;try{url=new URL(rawUrl,baseUrl).toString()}catch{continue}
+        if(!/^https?:\/\//i.test(url))continue;
+        const headers=remoteW3uHeaders(st.headers,opt.headers);
+        let drm=String(opt.drm_scheme||opt.license_type||st.drm_scheme||st.license_type||'').toLowerCase();
+        if(drm.includes('widevine'))drm='widevine';else if(drm.includes('clear'))drm='clearkey';else drm='';
+        const p={url,headers,type:remoteW3uStreamType(url,opt.type||st.type||''),drm_scheme:drm,enabled:playbackSources.length===0};
+        if(drm==='clearkey'){
+          const keys=remoteW3uKeys(opt.license_key??opt.keys??st.license_key??st.keys);
+          if(keys.length)p.keys=keys;else p.drm_scheme='';
+        }else if(drm==='widevine'){
+          const license=String(opt.drm_license_url||opt.license_url||opt.license_key||st.drm_license_url||st.license_url||st.license_key||'').trim();
+          if(/^https?:\/\//i.test(license)){p.drm_license_url=license;const lh=remoteW3uHeaders(st.drm_license_headers,st.license_headers,opt.drm_license_headers,opt.license_headers);if(Object.keys(lh).length)p.drm_license_headers=lh;}else p.drm_scheme='';
+        }
+        playbackSources.push(p);
+      }
+      if(!playbackSources.length)continue;
+      const first=playbackSources[0],name=String(st.name||st.title||opts[0]?.name||'Canal').trim()||'Canal';
+      const sig=name.toLowerCase()+'|'+first.url;if(seen.has(sig))continue;seen.add(sig);
+      const item={name,uri:first.url,playbackSources,activePlaybackSource:0,_remoteSourceGroup:String(group.name||'').trim()};
+      const icon=String(st.image||st.icon||opts[0]?.image||opts[0]?.icon||'').trim(),tvgId=String(st.tvgId||st['tvg-id']||'').trim();
+      if(icon)item.icon=icon;if(tvgId)item.tvgId=tvgId;
+      Object.assign(item,applySelectedPlaybackSource(item));
+      channels.push(item);
+    }
+  }
+  if(!channels.length)throw new Error('El W3U/JSON no contiene canales HTTP/HTTPS utilizables');
+  return channels;
+}
+
 function remoteM3uPublicRow(row){
   if(!row)return null;
   let effective=row.effective_url||'';
@@ -2055,7 +2137,13 @@ async function downloadRemoteM3u(row){
     const len=Number(r.headers.get('content-length')||0);if(len>10*1024*1024)throw new Error('La lista M3U supera 10 MB');
     const text=await r.text();if(Buffer.byteLength(text,'utf8')>10*1024*1024)throw new Error('La lista M3U supera 10 MB');
     const effective=String(r.url||target);
-    return {channels:parseRemoteM3uPlaylist(text,effective),effectiveUrl:effective};
+    let channels;
+    if(/#EXTM3U|#EXTINF:/i.test(text))channels=parseRemoteM3uPlaylist(text,effective);
+    else{
+      try{channels=parseRemoteW3uPlaylist(text,effective)}
+      catch(w3uError){throw new Error('La URL no devolvió una lista M3U ni W3U/AZPlay válida: '+String(w3uError?.message||w3uError))}
+    }
+    return {channels,effectiveUrl:effective};
   }finally{clearTimeout(timer)}
 }
 async function syncRemoteM3uSource(id,{actorId=null,force=false}={}){
