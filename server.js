@@ -2104,41 +2104,132 @@ function parseRemoteW3uPlaylist(text,baseUrl){
   const raw=String(text||'').replace(/^\uFEFF/,'').trim();
   if(!raw||(!raw.startsWith('{')&&!raw.startsWith('[')))throw new Error('No es JSON/W3U');
   let doc;try{doc=JSON.parse(raw)}catch{throw new Error('El W3U/JSON no es válido')}
-  const groups=Array.isArray(doc)?[{name:'W3U',stations:doc}]:Array.isArray(doc?.groups)?doc.groups:Array.isArray(doc?.stations)?[{name:doc.name||'W3U',stations:doc.stations}]:[];
-  if(!groups.length)throw new Error('El W3U/JSON no contiene groups/stations');
+
+  const groupLike=x=>!!(x&&typeof x==='object'&&!Array.isArray(x)&&(
+    Array.isArray(x.stations)||Array.isArray(x.canales)||Array.isArray(x.samples)||
+    Array.isArray(x.channels)||Array.isArray(x.items)||Array.isArray(x.streams)||Array.isArray(x.entries)
+  ));
+  let groups=[];
+  if(Array.isArray(doc)){
+    groups=doc.some(groupLike)?doc:[{name:'W3U',stations:doc}];
+  }else if(doc&&typeof doc==='object'){
+    const rootGroups=Array.isArray(doc.groups)?doc.groups:
+      Array.isArray(doc.categorias)?doc.categorias:
+      Array.isArray(doc.categories)?doc.categories:null;
+    if(rootGroups)groups=rootGroups;
+    else{
+      const rootStations=Array.isArray(doc.stations)?doc.stations:
+        Array.isArray(doc.canales)?doc.canales:
+        Array.isArray(doc.channels)?doc.channels:
+        Array.isArray(doc.samples)?doc.samples:
+        Array.isArray(doc.items)?doc.items:null;
+      if(rootStations)groups=[{name:doc.name||doc.categoria||doc.category||'W3U',stations:rootStations}];
+    }
+  }
+  if(!groups.length)throw new Error('El W3U/JSON no contiene categorías/canales reconocibles');
+
   const channels=[],seen=new Set();
   for(const group of groups){
     if(!group||typeof group!=='object')continue;
-    const stations=Array.isArray(group.stations)?group.stations:Array.isArray(group.samples)?group.samples:Array.isArray(group.channels)?group.channels:[];
+    const stations=Array.isArray(group.stations)?group.stations:
+      Array.isArray(group.canales)?group.canales:
+      Array.isArray(group.samples)?group.samples:
+      Array.isArray(group.channels)?group.channels:
+      Array.isArray(group.items)?group.items:
+      Array.isArray(group.streams)?group.streams:
+      Array.isArray(group.entries)?group.entries:[];
+    const groupName=String(group.name??group.categoria??group.category??group.title??group.group??'').trim();
+
     for(const st of stations){
       if(!st||typeof st!=='object')continue;
       const opts=Array.isArray(st.options)&&st.options.length?st.options:[st];
       const playbackSources=[];
+
       for(const optRaw of opts){
         const opt=optRaw&&typeof optRaw==='object'?optRaw:{};
         const rawUrl=String(opt.url||opt.uri||opt.stream_url||opt.stream||st.url||st.uri||st.stream_url||st.stream||'').trim();
         if(!rawUrl)continue;
         let url;try{url=new URL(rawUrl,baseUrl).toString()}catch{continue}
         if(!/^https?:\/\//i.test(url))continue;
+
         const headers=remoteW3uHeaders(st.headers,opt.headers);
-        let drm=String(opt.drm_scheme||opt.license_type||st.drm_scheme||st.license_type||'').toLowerCase();
-        if(drm.includes('widevine'))drm='widevine';else if(drm.includes('clear'))drm='clearkey';else drm='';
-        const p={url,headers,type:remoteW3uStreamType(url,opt.type||st.type||''),drm_scheme:drm,enabled:playbackSources.length===0};
+        const rawDrm=String(
+          opt.drm_scheme||opt.license_type||opt.tipo||
+          st.drm_scheme||st.license_type||st.tipo||''
+        ).toLowerCase();
+        let drm='';
+        if(rawDrm.includes('widevine'))drm='widevine';
+        else if(rawDrm.includes('clear'))drm='clearkey';
+
+        const p={
+          url,
+          headers,
+          type:remoteW3uStreamType(url,opt.type||opt.tipo||st.type||st.tipo||''),
+          drm_scheme:drm,
+          enabled:playbackSources.length===0
+        };
+
         if(drm==='clearkey'){
-          const keys=remoteW3uKeys(opt.license_key??opt.keys??st.license_key??st.keys);
-          if(keys.length)p.keys=keys;else p.drm_scheme='';
+          const originalDrmUri=String(
+            opt.drm_license_uri||opt.clearkey_license_uri||
+            st.drm_license_uri||st.clearkey_license_uri||''
+          ).trim();
+          const keys=[
+            ...remoteW3uKeys(opt.license_key??opt.keys??st.license_key??st.keys),
+            ...remoteClearKeyPairsFromUri(originalDrmUri)
+          ];
+          const uniq=[],ks=new Set();
+          for(const k of keys){
+            const sig=String(k.kid||'')+':'+String(k.key||'');
+            if(!k.kid||!k.key||ks.has(sig))continue;
+            ks.add(sig);uniq.push(k);
+          }
+          if(uniq.length)p.keys=uniq;
+          if(/^https?:\/\//i.test(originalDrmUri))p.drm_license_uri=originalDrmUri;
+          // Importante: no desactivar ClearKey si la llave vive en una URI/JSON externo.
+          // Conservamos la URI original para que COCHI pueda usarla/resolverla después.
+          if(!uniq.length&&!p.drm_license_uri)p.drm_scheme='';
         }else if(drm==='widevine'){
-          const license=String(opt.drm_license_url||opt.license_url||opt.license_key||st.drm_license_url||st.license_url||st.license_key||'').trim();
-          if(/^https?:\/\//i.test(license)){p.drm_license_url=license;const lh=remoteW3uHeaders(st.drm_license_headers,st.license_headers,opt.drm_license_headers,opt.license_headers);if(Object.keys(lh).length)p.drm_license_headers=lh;}else p.drm_scheme='';
+          const license=String(
+            opt.drm_license_url||opt.license_url||opt.drm_license_uri||opt.license_key||
+            st.drm_license_url||st.license_url||st.drm_license_uri||st.license_key||''
+          ).trim();
+          if(/^https?:\/\//i.test(license)){
+            p.drm_license_url=license;
+            const lh=remoteW3uHeaders(st.drm_license_headers,st.license_headers,opt.drm_license_headers,opt.license_headers);
+            if(Object.keys(lh).length)p.drm_license_headers=lh;
+          }else p.drm_scheme='';
         }
+
         playbackSources.push(p);
       }
+
       if(!playbackSources.length)continue;
-      const first=playbackSources[0],name=String(st.name||st.title||opts[0]?.name||'Canal').trim()||'Canal';
+      const first=playbackSources[0];
+      const name=String(st.name||st.canal||st.title||st.nombre||opts[0]?.name||opts[0]?.canal||'Canal').trim()||'Canal';
       const sig=name.toLowerCase()+'|'+first.url;if(seen.has(sig))continue;seen.add(sig);
-      const item={name,uri:first.url,playbackSources,activePlaybackSource:0,_remoteSourceGroup:String(group.name||'').trim()};
-      const icon=String(st.image||st.icon||opts[0]?.image||opts[0]?.icon||'').trim(),tvgId=String(st.tvgId||st['tvg-id']||'').trim();
-      if(icon)item.icon=icon;if(tvgId)item.tvgId=tvgId;
+
+      // Conservamos también los campos originales más importantes del JSON.
+      const item={
+        name,
+        uri:first.url,
+        url:String(st.url||first.url).trim()||first.url,
+        playbackSources,
+        activePlaybackSource:0,
+        _remoteSourceGroup:groupName
+      };
+      if(st.tipo!==undefined)item.tipo=st.tipo;
+      if(st.webview===true)item.webview=true;
+
+      const icon=String(st.image||st.icon||st.logo||opts[0]?.image||opts[0]?.icon||opts[0]?.logo||'').trim();
+      const tvgId=String(st.tvgId||st['tvg-id']||'').trim();
+      if(icon)item.icon=icon;
+      if(tvgId)item.tvgId=tvgId;
+
+      const originalDrmUri=String(st.drm_license_uri||st.clearkey_license_uri||'').trim();
+      if(originalDrmUri)item.drm_license_uri=originalDrmUri;
+      if(st.headers&&typeof st.headers==='object'&&!Array.isArray(st.headers))item.headers=remoteW3uHeaders(st.headers);
+
       Object.assign(item,applySelectedPlaybackSource(item));
       channels.push(item);
     }
