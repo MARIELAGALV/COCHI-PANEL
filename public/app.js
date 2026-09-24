@@ -1022,7 +1022,7 @@ function renderContentVisual(){
           <span class="category-chevron">${isOpen?'▾':'▸'}</span>
           <span><strong>${esc(g.name||`Categoría ${gi+1}`)}${categoryHidden?' <span class="hidden-channel-badge">OCULTA</span>':''}${categoryTimer?` <span class="scheduled-hide-badge">⏱ ${esc(categoryTimer)}</span>`:''}</strong><span class="muted small">${items.length} contenidos${isTvGrid&&items.some(contentItemHidden)?` · ${items.filter(contentItemHidden).length} canal${items.filter(contentItemHidden).length===1?'':'es'} oculto${items.filter(contentItemHidden).length===1?'':'s'}`:''}${categoryHidden?' · categoría fuera de CO-CHI':''} · posición ${gi+1}/${data.length}</span></span>
         </button>
-        <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-category="${gi}">⏱</button>${categoryHidden?`<button class="primary mini" data-category-show="${gi}">MOSTRAR</button>`:''}`:''}<button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
+        <div class="content-category-actions"><button class="order-btn" title="Subir categoría" data-cat-quick="${gi}:up">↑</button><button class="order-btn" title="Bajar categoría" data-cat-quick="${gi}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-category="${gi}">⏱</button><button class="${categoryHidden?'primary':'ghost'} mini" data-category-visibility="${gi}">${categoryHidden?'MOSTRAR':'OCULTAR'}</button>`:''}<button class="ghost mini" data-content-add="${gi}">+ CONTENIDO</button><button class="ghost mini" data-category-edit="${gi}">EDITAR</button><button class="danger mini" data-category-delete="${gi}">ELIMINAR</button></div>
       </div>
       <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>{const timer=isTvGrid?contentAutoHideLabel(x):'';const leadControl=isTvGrid?`<button class="ghost mini content-item-edit-lead" title="Editar canal" data-content-edit="${gi}:${si}">EDITAR</button>`:(x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:'');const rightEdit=isTvGrid?'':`<button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button>`;return `<div class="content-item ${isTvGrid?'content-item-tv':''} ${contentItemHidden(x)?'content-item-hidden':''}">
         ${leadControl}
@@ -1068,11 +1068,20 @@ function renderContentVisual(){
   });
   $$('[data-auto-hide-item]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.autoHideItem.split(':').map(Number);openAutoHideScheduler('item',g,i);});
   $$('[data-auto-hide-category]').forEach(b=>b.onclick=()=>openAutoHideScheduler('category',Number(b.dataset.autoHideCategory),null));
-  $$('[data-category-show]').forEach(b=>b.onclick=async()=>{
-    const g=Number(b.dataset.categoryShow),d=contentPlain(),group=d[g];if(!group)return;
-    const key=$('#contentKey')?.value||'';b.disabled=true;b.textContent='MOSTRANDO...';
-    try{delete group._cochiHidden;delete group._cochiAutoHideAt;await quickPublishContent(key,d,{syncOriginal:true,successText:`${group.name||'CATEGORÍA'} MOSTRADA`});state.contentOpen.add(g);setContentPlain(d);}
-    catch(err){msg($('#contentMsg'),'No se pudo mostrar la categoría: '+err.message);toast(err.message,'bad');b.disabled=false;b.textContent='MOSTRAR';}
+  $$('[data-category-visibility]').forEach(b=>b.onclick=async()=>{
+    const g=Number(b.dataset.categoryVisibility),d=contentPlain(),group=d[g];if(!group)return;
+    const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
+    const wasHidden=contentCategoryHidden(group),name=String(group.name||'CATEGORÍA');
+    b.disabled=true;const oldText=b.textContent;b.textContent=wasHidden?'MOSTRANDO...':'OCULTANDO...';
+    try{
+      if(wasHidden){delete group._cochiHidden;delete group._cochiAutoHideAt;}else group._cochiHidden=true;
+      await quickPublishContent(key,d,{syncOriginal:true,successText:`${name} ${wasHidden?'MOSTRADA':'OCULTADA'}`});
+      state.contentOpen.add(g);setContentPlain(d);
+    }catch(err){
+      if(wasHidden)group._cochiHidden=true;else delete group._cochiHidden;
+      msg($('#contentMsg'),'No se pudo cambiar la visibilidad de la categoría: '+err.message);
+      toast(err.message,'bad');b.disabled=false;b.textContent=oldText;
+    }
   });
   $$('[data-content-delete]').forEach(b=>b.onclick=()=>{
     const [g,i]=b.dataset.contentDelete.split(':').map(Number),d=contentPlain(),name=contentItemName(d[g].samples[i]);
