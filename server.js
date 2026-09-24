@@ -495,29 +495,54 @@ function decryptContentValue(value){
   return Buffer.concat([d.update(Buffer.from(String(value),'base64')),d.final()]).toString('utf8');
 }
 function cloneJson(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
-function remoteItemName(x,i=0){return String(x?.name??x?.title??x?.nombre??x?.channel_name??x?.channel??`Canal ${i+1}`).trim()||`Canal ${i+1}`;}
+function remoteItemName(x,i=0){return String(x?.name??x?.title??x?.nombre??x?.canal??x?.channel_name??x?.channel??`Canal ${i+1}`).trim()||`Canal ${i+1}`;}
 function remoteItemUri(x){return String(x?.uri??x?.url??x?.link??x?.stream_url??x?.streamUrl??x?.src??x?.source??'').trim();}
 function remoteItemIcon(x){return String(x?.icon??x?.logo??x?.image??x?.poster??x?.thumbnail??x?.['tvg-logo']??'').trim();}
+function remoteClearKeyPairsFromUri(value){
+  const out=[],seen=new Set(),add=(kid,key)=>{kid=String(kid??'').trim();key=String(key??'').trim();if(!kid||!key)return;const sig=kid+':'+key;if(seen.has(sig))return;seen.add(sig);out.push({kid,key});};
+  const raw=String(value||'').trim();if(!raw)return out;
+  let u;try{u=new URL(raw);}catch{return out}
+  const pairNames=['keyi','kidkey','clearkey','key_pair'];
+  for(const n of pairNames){
+    for(const v of u.searchParams.getAll(n)){
+      const i=String(v).indexOf(':');if(i>0)add(String(v).slice(0,i),String(v).slice(i+1));
+    }
+  }
+  const kids=[...u.searchParams.getAll('keyid'),...u.searchParams.getAll('keyid[]'),...u.searchParams.getAll('kid'),...u.searchParams.getAll('kid[]')];
+  const keys=[...u.searchParams.getAll('key'),...u.searchParams.getAll('key[]')];
+  for(let i=0;i<Math.min(kids.length,keys.length);i++)add(kids[i],keys[i]);
+  return out;
+}
 function looksLikeRemoteItem(x){return !!(x&&typeof x==='object'&&!Array.isArray(x)&&(x.code||remoteItemUri(x)||x.uri!==undefined||x.url!==undefined||x.link!==undefined||x.stream_url!==undefined));}
 function normalizeRemoteItem(x,i=0){
   if(!x||typeof x!=='object'||Array.isArray(x))return null;
   if(x.code)return cloneJson(x);
   const out=cloneJson(x),name=remoteItemName(x,i),uri=remoteItemUri(x),icon=remoteItemIcon(x);
-  // v1.1.1: conservar el formato original (url, template, redirects, keys, etc.)
-  // y sumar `uri` solo como alias interno para que el editor histórico del PANEL
-  // pueda mostrar/reproducir el canal sin destruir los campos que CO-CHI v0.23.83 lee.
+  // Conservamos TODOS los campos originales y solo agregamos aliases internos.
   out.name=name;if(uri&&!String(out.uri??'').trim())out.uri=uri;if(icon&&!String(out.icon??'').trim())out.icon=icon;
+  const rawType=String(out.tipo??out.type??'').trim().toUpperCase();
+  if(rawType==='HLS'&&!String(out.type||'').trim())out.type='hls';
+  if(rawType==='CLEARKEY'){
+    const pairs=remoteClearKeyPairsFromUri(out.drm_license_uri);
+    if(pairs.length){
+      if(!String(out.drm_scheme||'').trim())out.drm_scheme='clearkey';
+      if(!Array.isArray(out.keys)||!out.keys.length)out.keys=pairs;
+      if(!String(out.type||'').trim()&&/\.mpd(?:[?#]|$)/i.test(uri))out.type='dash';
+    }
+    // Si la licencia está en un JSON/PHP externo y no expone el par en la URL,
+    // NO la reemplazamos ni la anulamos: queda exactamente en drm_license_uri.
+  }
   return out;
 }
 function normalizeRemoteGroups(arr,defaultName='General'){
   if(!Array.isArray(arr))return null;
-  const groupish=arr.some(x=>x&&typeof x==='object'&&!Array.isArray(x)&&(Array.isArray(x.samples)||Array.isArray(x.channels)||Array.isArray(x.items)||Array.isArray(x.streams)||Array.isArray(x.entries)));
+  const groupish=arr.some(x=>x&&typeof x==='object'&&!Array.isArray(x)&&(Array.isArray(x.samples)||Array.isArray(x.canales)||Array.isArray(x.channels)||Array.isArray(x.items)||Array.isArray(x.streams)||Array.isArray(x.entries)));
   if(groupish){
     return arr.map((g,gi)=>{
       if(!g||typeof g!=='object'||Array.isArray(g))return null;
-      const items=Array.isArray(g.samples)?g.samples:Array.isArray(g.channels)?g.channels:Array.isArray(g.items)?g.items:Array.isArray(g.streams)?g.streams:Array.isArray(g.entries)?g.entries:[];
-      const out={...g,name:String(g.name??g.title??g.category??g.group??`Categoría ${gi+1}`),samples:items.map(normalizeRemoteItem).filter(Boolean)};
-      delete out.channels;delete out.items;delete out.streams;delete out.entries;return out;
+      const items=Array.isArray(g.samples)?g.samples:Array.isArray(g.canales)?g.canales:Array.isArray(g.channels)?g.channels:Array.isArray(g.items)?g.items:Array.isArray(g.streams)?g.streams:Array.isArray(g.entries)?g.entries:[];
+      const out={...g,name:String(g.name??g.title??g.categoria??g.category??g.group??`Categoría ${gi+1}`),samples:items.map(normalizeRemoteItem).filter(Boolean)};
+      delete out.canales;delete out.channels;delete out.items;delete out.streams;delete out.entries;return out;
     }).filter(Boolean);
   }
   if(arr.length===0)return [];
@@ -539,7 +564,7 @@ function normalizeRemoteCatalogRoot(input,key='tv1',depth=0){
     const category=String(input.category??input.categoria??input.group??input.group_title??input['group-title']??key.toUpperCase()).trim()||key.toUpperCase();
     return [{name:category,samples:item?[item]:[]}];
   }
-  const preferred=['categories','groups','channels','items','data','results','live','streams','tv','content','contents','playlist'];
+  const preferred=['categories','categorias','groups','channels','canales','items','data','results','live','streams','tv','content','contents','playlist'];
   for(const k of preferred){if(input[k]!==undefined){try{const r=normalizeRemoteCatalogRoot(input[k],key,depth+1);if(Array.isArray(r)&&r.length)return r}catch{}}}
   const mapped=[];
   for(const [name,val] of Object.entries(input)){
@@ -1946,10 +1971,10 @@ function selectedPlaybackSource(item){
   if(!sources.length)return null;
   let idx=Number.isInteger(item.activePlaybackSource)?item.activePlaybackSource:sources.findIndex(x=>x.enabled===true);
   if(idx<0||idx>=sources.length)idx=0;
-  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{},drm_scheme:String(src.drm_scheme||'').toLowerCase(),keys:Array.isArray(src.keys)?cloneJson(src.keys):[],drm_license_url:String(src.drm_license_url||src.license_url||'').trim(),drm_license_headers:src.drm_license_headers&&typeof src.drm_license_headers==='object'?cloneJson(src.drm_license_headers):((src.license_headers&&typeof src.license_headers==='object')?cloneJson(src.license_headers):{})};
+  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{},drm_scheme:String(src.drm_scheme||'').toLowerCase(),keys:Array.isArray(src.keys)?cloneJson(src.keys):[],drm_license_uri:String(src.drm_license_uri||src.clearkey_license_uri||'').trim(),drm_license_url:String(src.drm_license_url||src.license_url||'').trim(),drm_license_headers:src.drm_license_headers&&typeof src.drm_license_headers==='object'?cloneJson(src.drm_license_headers):((src.license_headers&&typeof src.license_headers==='object')?cloneJson(src.license_headers):{})};
 }
 function applySelectedPlaybackSource(item,{stripConfig=false}={}){
-  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;delete x.drm_scheme;delete x.keys;delete x.drm_license_url;delete x.drm_license_headers;delete x.license_url;delete x.license_headers;if(sel.drm_scheme==='clearkey'){x.drm_scheme='clearkey';x.keys=sel.keys;}else if(sel.drm_scheme==='widevine'){x.drm_scheme='widevine';x.drm_license_url=sel.drm_license_url;if(Object.keys(sel.drm_license_headers).length)x.drm_license_headers=sel.drm_license_headers;}}
+  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;delete x.drm_scheme;delete x.keys;delete x.drm_license_url;delete x.drm_license_headers;delete x.license_url;delete x.license_headers;if(sel.drm_scheme==='clearkey'){x.drm_scheme='clearkey';x.keys=sel.keys;if(sel.drm_license_uri)x.drm_license_uri=sel.drm_license_uri;}else if(sel.drm_scheme==='widevine'){x.drm_scheme='widevine';x.drm_license_url=sel.drm_license_url;if(Object.keys(sel.drm_license_headers).length)x.drm_license_headers=sel.drm_license_headers;}}
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
