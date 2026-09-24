@@ -3860,7 +3860,18 @@ async function route(req,res){
       if(looksLikeOwnContentEndpoint(url,key))return sendJson(res,400,{error:'Esa es la salida protegida del backend. Pegá la URL real del JSON/repo.'});
       let json,stats,encrypted,text;
       try{
-        const rr=await fetch(url,{headers:{'User-Agent':'CO-CHI-PANEL/0.9.1'},signal:AbortSignal.timeout(20000)});
+        const sourceInfo=parseGithubWritableSource(url);
+        let rr;
+        if(sourceInfo?.kind==='release_asset'){
+          const releaseUrl=`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/tags/${encodeURIComponent(sourceInfo.tag)}`;
+          const relRes=await githubReadRequest(releaseUrl,{headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}});
+          if(!relRes.ok)throw new Error(`GitHub no pudo abrir la release ${sourceInfo.tag} (HTTP ${relRes.status})`);
+          const release=await relRes.json(),asset=(release.assets||[]).find(a=>String(a.name)===sourceInfo.assetName);
+          if(!asset)throw new Error(`No se encontró el asset ${sourceInfo.assetName} dentro de la release ${sourceInfo.tag}`);
+          rr=await githubReadRequest(`https://api.github.com/repos/${encodeURIComponent(sourceInfo.owner)}/${encodeURIComponent(sourceInfo.repo)}/releases/assets/${asset.id}`,{headers:{Accept:'application/octet-stream','Cache-Control':'no-cache, no-store','Pragma':'no-cache'}});
+        }else{
+          rr=await fetch(url,{cache:'no-store',headers:{'User-Agent':'CO-CHI-PANEL/1.1.6','Cache-Control':'no-cache, no-store','Pragma':'no-cache'},signal:AbortSignal.timeout(20000)});
+        }
         if(!rr.ok)throw new Error(`HTTP ${rr.status}`);
         const raw=await rr.text();
         if(Buffer.byteLength(raw,'utf8')>25*1024*1024)throw new Error('El JSON supera 25 MB');
