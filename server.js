@@ -1979,25 +1979,6 @@ function applySelectedPlaybackSource(item,{stripConfig=false}={}){
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
-
-function normalizeTemplateForDelivery(item){
-  if(!item||typeof item!=='object')return item;
-  const x=item,enabled=x.isTemplate===true||String(x.is_template||'').toLowerCase()==='true';
-  if(!enabled)return x;
-  let t=String(x.template||'').trim();if(!t)return x;
-  // Compatibilidad: LIVE conserva el método histórico CENC. OUT y rutas futuras
-  // quedan exactamente como fueron configuradas en el template.
-  if(/(?:^|\{token\}|https?:\/\/[^/]+)\/live\//i.test(t))t=t.replace(/SA_Live_dash_enc/ig,'SA_Live_dash_cenc');
-  x.template=t;
-  return x;
-}
-
-function normalizeTemplatesInPayload(payload){
-  if(!Array.isArray(payload))return payload;
-  const out=structuredClone(payload);
-  for(const group of out)for(const item of (Array.isArray(group?.samples)?group.samples:[]))normalizeTemplateForDelivery(item);
-  return out;
-}
 function publishedContentView(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
@@ -2011,7 +1992,7 @@ function publishedContentView(key,json){
     out.samples=samples.filter(item=>{
       if(item?._cochiHidden===true)return false;
       const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
-    }).map(item=>{const x=normalizeTemplateForDelivery(applySelectedPlaybackSource(item,{stripConfig:true}));delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
+    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
     return out;
   });
 }
@@ -3101,7 +3082,7 @@ async function route(req,res){
     const r=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get('tv2');if(!r||!r.json_text)return sendJson(res,404,{error:'TV2 todavía no publicada'});
     try{
       const sec=playbackSecurityState();
-      let clear=normalizeTemplatesInPayload(decryptManagedContent(JSON.parse(r.json_text)));
+      let clear=decryptManagedContent(JSON.parse(r.json_text));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
       const found=tv2FindBySourceId(clear,tv2Resolve[1]);if(!found)return sendJson(res,404,{error:'ID TV2 no encontrado'});
       let one=[{name:String(found.group?.name||'General'),samples:[structuredClone(found.item)]}];
@@ -3142,7 +3123,7 @@ async function route(req,res){
         // Si una lista histórica no puede abrirse para generar el sobre V2,
         // seguimos abajo y entregamos automáticamente el formato compatible.
         try{
-          let clear=normalizeTemplatesInPayload(decryptManagedContent(JSON.parse(r.json_text)));
+          let clear=decryptManagedContent(JSON.parse(r.json_text));
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
           clear=applyTvEpgNow(clear);
@@ -3179,7 +3160,7 @@ async function route(req,res){
         let payload=JSON.parse(r.json_text);
         if((sourceKey==='tv1'||sourceKey==='tv2')&&epgRuntime.byId.size){
           try{
-            let clear=normalizeTemplatesInPayload(decryptManagedContent(payload));
+            let clear=decryptManagedContent(payload);
             if(st.mode==='demo')clear=filterDemoCategories(clear);
             clear=await applyTvFailover(clear);
             clear=applyTvEpgNow(clear);
