@@ -360,6 +360,28 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
             <div class="muted tiny">Podés usar GitHub, GitHub Releases, Cloudflare, Railway u otra URL HTTPS. El PANEL guardará una URL independiente para cada lista.</div>
           </div>
 
+          <div id="epgCard" class="content-source-card">
+            <div class="content-source-head"><div><h4>EPG / Guía de Programación</h4><p class="muted small">Cargá una o varias URLs XMLTV. CO-CHI relaciona la guía por <b>EPG ID / tvg-id</b> y, si falta, intenta por nombre del canal. La APK usa la línea de descripción existente para mostrar el programa actual.</p></div><span class="badge active">TV</span></div>
+            <label>URLs XMLTV / EPG <textarea id="epgUrls" rows="4" spellcheck="false" placeholder="https://.../guide.xml&#10;https://.../epg.xml"></textarea><span class="muted tiny">Una URL por línea. Dejé precargadas dos guías públicas de Argentina para probar.</span></label>
+            <div class="content-source-actions">
+              <label class="switch-row"><input id="epgEnabled" type="checkbox" checked> EPG activo</label>
+              <label>Actualizar cada
+                <select id="epgRefreshMinutes">
+                  <option value="5">5 minutos</option>
+                  <option value="10" selected>10 minutos</option>
+                  <option value="15">15 minutos</option>
+                  <option value="30">30 minutos</option>
+                  <option value="60">1 hora</option>
+                </select>
+              </label>
+              <button id="epgSaveBtn" class="primary" type="button">GUARDAR EPG</button>
+              <button id="epgRefreshBtn" class="ghost" type="button">ACTUALIZAR / PROBAR</button>
+            </div>
+            <div id="epgStatus" class="muted tiny">EPG sin comprobar.</div>
+            <div id="epgSamples" class="mt10"></div>
+            <div id="epgMsg" class="msg"></div>
+          </div>
+
           <div id="remoteM3uCard" class="content-source-card">
             <div class="content-source-head"><div><h4>Categoría remota M3U / W3U autoactualizable</h4><p class="muted small">Guardá una URL .m3u/.m3u8 o W3U/AZPlay remota. El PANEL la relee solo, adapta los canales al formato interno y los publica como una categoría normal sin modificar la APK.</p></div><span class="badge active">TV</span></div>
             <div class="form-row">
