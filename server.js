@@ -1979,6 +1979,18 @@ function applySelectedPlaybackSource(item,{stripConfig=false}={}){
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
+
+function normalizeTemplateForDelivery(item){
+  if(!item||typeof item!=='object')return item;
+  const x=item,enabled=x.isTemplate===true||String(x.is_template||'').toLowerCase()==='true';
+  if(!enabled)return x;
+  let t=String(x.template||'').trim();if(!t)return x;
+  // Compatibilidad: LIVE conserva el método histórico CENC. OUT y rutas futuras
+  // quedan exactamente como fueron configuradas en el template.
+  if(/(?:^|\{token\}|https?:\/\/[^/]+)\/live\//i.test(t))t=t.replace(/SA_Live_dash_enc/ig,'SA_Live_dash_cenc');
+  x.template=t;
+  return x;
+}
 function publishedContentView(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
@@ -1992,7 +2004,7 @@ function publishedContentView(key,json){
     out.samples=samples.filter(item=>{
       if(item?._cochiHidden===true)return false;
       const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
-    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
+    }).map(item=>{const x=normalizeTemplateForDelivery(applySelectedPlaybackSource(item,{stripConfig:true}));delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
     return out;
   });
 }
