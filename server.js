@@ -1991,6 +1991,13 @@ function normalizeTemplateForDelivery(item){
   x.template=t;
   return x;
 }
+
+function normalizeTemplatesInPayload(payload){
+  if(!Array.isArray(payload))return payload;
+  const out=structuredClone(payload);
+  for(const group of out)for(const item of (Array.isArray(group?.samples)?group.samples:[]))normalizeTemplateForDelivery(item);
+  return out;
+}
 function publishedContentView(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
@@ -3094,7 +3101,7 @@ async function route(req,res){
     const r=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get('tv2');if(!r||!r.json_text)return sendJson(res,404,{error:'TV2 todavía no publicada'});
     try{
       const sec=playbackSecurityState();
-      let clear=decryptManagedContent(JSON.parse(r.json_text));
+      let clear=normalizeTemplatesInPayload(decryptManagedContent(JSON.parse(r.json_text)));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
       const found=tv2FindBySourceId(clear,tv2Resolve[1]);if(!found)return sendJson(res,404,{error:'ID TV2 no encontrado'});
       let one=[{name:String(found.group?.name||'General'),samples:[structuredClone(found.item)]}];
@@ -3135,7 +3142,7 @@ async function route(req,res){
         // Si una lista histórica no puede abrirse para generar el sobre V2,
         // seguimos abajo y entregamos automáticamente el formato compatible.
         try{
-          let clear=decryptManagedContent(JSON.parse(r.json_text));
+          let clear=normalizeTemplatesInPayload(decryptManagedContent(JSON.parse(r.json_text)));
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
           clear=applyTvEpgNow(clear);
@@ -3172,7 +3179,7 @@ async function route(req,res){
         let payload=JSON.parse(r.json_text);
         if((sourceKey==='tv1'||sourceKey==='tv2')&&epgRuntime.byId.size){
           try{
-            let clear=decryptManagedContent(payload);
+            let clear=normalizeTemplatesInPayload(decryptManagedContent(payload));
             if(st.mode==='demo')clear=filterDemoCategories(clear);
             clear=await applyTvFailover(clear);
             clear=applyTvEpgNow(clear);
