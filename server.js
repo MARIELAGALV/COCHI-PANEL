@@ -7,6 +7,7 @@ const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
@@ -2363,8 +2364,9 @@ async function applyTvFailover(payload){
 
 
 const EPG_DEFAULT_URLS=[
-  'https://iptv-org.github.io/epg/guides/ar/mi.tv.epg.xml',
-  'https://iptv-org.github.io/epg/guides/ar/gatotv.com.epg.xml'
+  'https://www.open-epg.com/files/argentina.xml',
+  'https://dearbulut.github.io/iptv/epg/ar.xml.gz',
+  'https://free-epg.de/api/epg/ar.xml.gz'
 ];
 const epgRuntime={updatedAt:0,lastUpdated:'',lastError:'',sourcesOk:0,channels:0,byId:new Map(),byName:new Map(),refreshing:null};
 function epgConfig(){
@@ -2516,7 +2518,13 @@ async function refreshEpgRuntime({force=false}={}){
         let r;try{r=await fetch(url,{redirect:'follow',cache:'no-store',headers:{Accept:'application/xml,text/xml,text/plain,*/*','User-Agent':'CO-CHI-PANEL/'+VERSION+' EPG'},signal:ctl.signal});}finally{clearTimeout(timer)}
         if(!r.ok)throw new Error('HTTP '+r.status);
         const len=Number(r.headers.get('content-length')||0);if(len>30*1024*1024)throw new Error('EPG supera 30 MB');
-        const xml=await r.text();if(Buffer.byteLength(xml,'utf8')>30*1024*1024)throw new Error('EPG supera 30 MB');
+        let raw=Buffer.from(await r.arrayBuffer());
+        if(raw.length>30*1024*1024)throw new Error('EPG supera 30 MB');
+        if(raw.length>=2&&raw[0]===0x1f&&raw[1]===0x8b){
+          raw=zlib.gunzipSync(raw);
+          if(raw.length>60*1024*1024)throw new Error('EPG descomprimido supera 60 MB');
+        }
+        const xml=raw.toString('utf8');
         return {ok:true,url,parsed:parseXmltvNow(xml,now)};
       }catch(e){return {ok:false,url,error:String(e?.message||e)}}
     }));
