@@ -1562,7 +1562,7 @@ function editContentItem(groupIndex,itemIndex=null){
       if(isTv){
         const epgId=String($('#ciEpgId')?.value||'').trim();
         if(epgId){obj.epg_id=epgId;obj['tvg-id']=epgId;}else{delete obj.epg_id;delete obj.epgId;delete obj['tvg-id'];delete obj.tvg_id;delete obj.tvgId;delete obj.xmltv_id;delete obj.xmltvId;}
-        const sourceRows=$('[data-playback-source]'),collected=[];
+        const sourceRows=$$('[data-playback-source]'),collected=[];
         const selectedOriginalIndex=activePlaybackSource;
         if(!Number.isInteger(selectedOriginalIndex)||selectedOriginalIndex<0)throw new Error('No hay una URL activa. Tocá ACTIVAR en la fuente que querés usar antes de actualizar.');
         let selectedCollectedIndex=0;
