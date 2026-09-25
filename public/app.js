@@ -1375,6 +1375,7 @@ function editContentItem(groupIndex,itemIndex=null){
     <div class="content-editor-grid">
       <section class="content-editor-column">
         ${isTv?`<div class="content-editor-meta-row"><label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>URL de imagen / logo<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://.../logo.png"><span class="muted tiny">PNG, JPG/JPEG, WebP, GIF, SVG, BMP, ICO, AVIF/APNG y URLs sin extensión.</span></label></div>`:`<label>Nombre<input id="ciName" value="${esc(cur.name||'')}" required></label><label>Icono / carátula<input id="ciIcon" value="${esc(cur.icon||'')}" placeholder="https://..."></label>`}
+        ${isTv?`<div class="form-row"><label>EPG ID / tvg-id<input id="ciEpgId" value="${esc(cur.epg_id||cur['tvg-id']||cur.tvg_id||cur.tvgId||cur.xmltv_id||'')}" placeholder="Ej. TyCSports.ar"><span class="muted tiny">Opcional. Si la guía no reconoce el canal por nombre, pegá aquí el ID XMLTV exacto.</span></label></div>`:''}
         ${isSeries?`<label>URL principal de la serie (opcional)<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">No es un tráiler. Si cada capítulo tiene su propia URL, podés dejar este campo vacío.</span></label>`:(isTv?`<div class="source-selector-note"><b>Reproducción TV por fuentes</b><span class="muted tiny">Configurá URL 1, URL 2 y sus datos. Tocá ACTIVAR en la fuente que querés usar; solo una puede quedar EN USO.</span></div>`:`<label>URL principal de reproducción<textarea id="ciUri" class="content-main-url" rows="2" spellcheck="false" placeholder="https://...">${esc(cur.uri||'')}</textarea><span class="muted tiny">La URL usa todo el ancho del editor y se muestra en varias líneas para poder revisarla completa.</span></label>`)}
         ${isTv?`<div class="stream-format-box"><div class="playback-source-box"><div class="playback-source-title"><div><h4>URLS DE REPRODUCCIÓN / RESPALDO</h4><span class="muted tiny">Cada URL conserva su formato, headers y DRM. Usá ACTIVAR / DETENER para elegir claramente cuál usa CO-CHI.</span></div><button id="ciAddPlaybackSource" class="ghost" type="button">+ AGREGAR URL</button></div><div id="ciPlaybackSources"></div></div><p class="muted tiny">La configuración es independiente por fuente: una URL puede ser HLS sin DRM y otra DASH con ClearKey o Widevine. Al activar una fuente se publican juntos su URL, headers, formato y DRM.</p></div><div class="template-config-box template-config-box-v111"><div class="template-config-head"><div><h4>REDIRECCIÓN / TEMPLATE CO-CHI <span class="template-new-badge">v1.1.6</span></h4><span class="muted tiny">Valores reales precargados desde el JSON; si faltan, nombre/código se detectan desde una URL compatible.</span></div></div><div class="template-field-grid"><label class="template-boolean-field"><span><b>isTemplate</b> <small>(boolean)</small></span><span class="template-checkbox-line"><input id="ciIsTemplate" type="checkbox" ${templatePrefill.isTemplate?'checked':''}> <b>true / false</b> · activar redirección por plantilla</span></label><label><span><b>nameRedirect</b> <small>(string)</small></span><input id="ciNameRedirect" value="${esc(templatePrefill.nameRedirect)}" placeholder="AmericaTV"></label><label><span><b>codeRedirect</b> <small>(string)</small></span><input id="ciCodeRedirect" value="${esc(templatePrefill.codeRedirect)}" placeholder="c7eds"></label><label class="template-full-field"><span><b>template</b> <small>(string)</small></span><textarea id="ciTemplate" rows="3" spellcheck="false" placeholder="{token}/live/{codigo}/{nombre}/SA_Live_dash_enc/{nombre}.mpd">${esc(templatePrefill.template)}</textarea></label></div><div class="muted tiny template-help-v111">Si el JSON ya contiene isTemplate/nameRedirect/codeRedirect/template, se muestran exactamente aquí. Los textos grises son solo ejemplos cuando no existe un valor.</div></div>`:''}
         <div class="form-row"><label>Mover a categoría<select id="ciCategory">${targetOptions}</select></label><label>Posición<input id="ciPosition" type="number" min="1" value="${currentPos}"></label></div>
@@ -1552,14 +1553,16 @@ function editContentItem(groupIndex,itemIndex=null){
     const submitBtn=$('#ciSubmitBtn');
     try{
       if(submitBtn){submitBtn.disabled=true;if(isQuickEditable)submitBtn.textContent='ACTUALIZANDO...';}
-      const managedTvFields=new Set(['name','icon','uri','url','headers','type','tipo','drm_scheme','keys','drm_license_url','drm_license_headers','license_url','license_headers','backupUris','playbackSources','activePlaybackSource','drm_header','drm_headers','clearkey_input_order','key_order','_failover','isTemplate','nameRedirect','codeRedirect','template']);
+      const managedTvFields=new Set(['name','icon','uri','url','headers','type','tipo','drm_scheme','keys','drm_license_url','drm_license_headers','license_url','license_headers','backupUris','playbackSources','activePlaybackSource','drm_header','drm_headers','clearkey_input_order','key_order','_failover','isTemplate','nameRedirect','codeRedirect','template','epg_id','epgId','tvg-id','tvg_id','tvgId','xmltv_id','xmltvId']);
       const tvExtra=isTv?Object.fromEntries(Object.entries(cur||{}).filter(([k])=>!managedTvFields.has(k))):null;
       const extraText=isTv?'':($('#ciExtras')?.value||'').trim(),extra=isTv?tvExtra:(extraText?JSON.parse(extraText):{});
       const obj={...extra,name:$('#ciName').value.trim()};
       const icon=$('#ciIcon').value.trim(),uri=String($('#ciUri')?.value||'').trim();
       if(icon)obj.icon=icon;else delete obj.icon;if(uri)obj.uri=uri;else delete obj.uri;
       if(isTv){
-        const sourceRows=$$('[data-playback-source]'),collected=[];
+        const epgId=String($('#ciEpgId')?.value||'').trim();
+        if(epgId){obj.epg_id=epgId;obj['tvg-id']=epgId;}else{delete obj.epg_id;delete obj.epgId;delete obj['tvg-id'];delete obj.tvg_id;delete obj.tvgId;delete obj.xmltv_id;delete obj.xmltvId;}
+        const sourceRows=$('[data-playback-source]'),collected=[];
         const selectedOriginalIndex=activePlaybackSource;
         if(!Number.isInteger(selectedOriginalIndex)||selectedOriginalIndex<0)throw new Error('No hay una URL activa. Tocá ACTIVAR en la fuente que querés usar antes de actualizar.');
         let selectedCollectedIndex=0;
@@ -1629,6 +1632,57 @@ function editContentItem(groupIndex,itemIndex=null){
     }catch(err){msg($('#ciMsg'),'No se pudo actualizar: '+err.message);if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=isQuickEditable?'ACTUALIZAR':(itemIndex===null?'AGREGAR':'GUARDAR');}}
   };
 }
+
+
+function renderEpgStatus(d={}){
+  const status=$('#epgStatus'),samples=$('#epgSamples'),matches=d.matches||{},tv1=matches.tv1||{},tv2=matches.tv2||{};
+  if(status){
+    const when=d.lastUpdated?fmt(d.lastUpdated):'todavía no actualizado';
+    status.textContent=(d.enabled?'EPG ACTIVO':'EPG APAGADO')+' · '+Number(d.channels||0)+' canales en guía · '+Number(matches.matched||0)+'/'+Number(matches.total||0)+' canales CO-CHI con programa actual · TV1 '+Number(tv1.matched||0)+'/'+Number(tv1.total||0)+' · TV2 '+Number(tv2.matched||0)+'/'+Number(tv2.total||0)+' · '+when;
+  }
+  if(samples){
+    const rows=Array.isArray(matches.samples)?matches.samples:[];
+    samples.innerHTML=rows.length?'<div class="content-source-list">'+rows.map(x=>'<div class="source-private-info"><b>'+esc((x.source||'').toUpperCase()+' · '+(x.name||''))+'</b><span>'+esc(x.now||'')+'</span><span class="muted tiny">EPG ID: '+esc(x.epgId||'')+'</span></div>').join('')+'</div>':'';
+  }
+  if(d.lastError)msg($('#epgMsg'),'Aviso EPG: '+d.lastError);
+}
+async function loadEpgSettings(){
+  const card=$('#epgCard');if(!card)return;
+  const key=String($('#contentKey')?.value||'').toLowerCase(),isTv=key==='tv1'||key==='tv2';
+  card.hidden=!isTv;if(!isTv)return;
+  try{
+    const d=await api('/api/admin/epg');
+    $('#epgUrls').value=(d.urls||[]).join('\n');
+    $('#epgEnabled').checked=d.enabled!==false;
+    $('#epgRefreshMinutes').value=String(d.refreshMinutes||10);
+    renderEpgStatus(d);
+  }catch(e){msg($('#epgMsg'),e.message);}
+}
+async function saveEpgSettings({silent=false}={}){
+  const urls=String($('#epgUrls')?.value||'').split(/\r?\n|[,;]+/).map(x=>x.trim()).filter(Boolean);
+  if(!urls.length)throw new Error('Ingresá al menos una URL XMLTV / EPG.');
+  const body={enabled:$('#epgEnabled')?.checked!==false,urls,refreshMinutes:Number($('#epgRefreshMinutes')?.value||10)};
+  const d=await api('/api/admin/epg',{method:'PUT',body});
+  renderEpgStatus(d);
+  if(!silent){msg($('#epgMsg'),'EPG GUARDADO. El servidor actualizará la guía automáticamente.',true);toast('EPG GUARDADO','ok');}
+  return d;
+}
+async function refreshEpgNow(){
+  const btn=$('#epgRefreshBtn');
+  try{
+    if(btn){btn.disabled=true;btn.textContent='PROBANDO EPG...';}
+    msg($('#epgMsg'),'Guardando y descargando la guía EPG...');
+    await saveEpgSettings({silent:true});
+    const d=await api('/api/admin/epg/refresh',{method:'POST',body:{}});
+    renderEpgStatus(d);
+    const m=d.matches||{};
+    const text='EPG ACTUALIZADO · '+Number(d.channels||0)+' canales en guía · '+Number(m.matched||0)+'/'+Number(m.total||0)+' canales CO-CHI vinculados';
+    msg($('#epgMsg'),text,true);toast(text,'ok');
+  }catch(e){msg($('#epgMsg'),e.message);toast(e.message,'bad');}
+  finally{if(btn){btn.disabled=false;btn.textContent='ACTUALIZAR / PROBAR';}}
+}
+$('#epgSaveBtn')?.addEventListener('click',()=>saveEpgSettings().catch(e=>{msg($('#epgMsg'),e.message);toast(e.message,'bad');}));
+$('#epgRefreshBtn')?.addEventListener('click',refreshEpgNow);
 
 async function loadRemoteM3uSources(){
   const card=$('#remoteM3uCard'),list=$('#remoteM3uList');if(!card||!list)return;
@@ -1721,6 +1775,7 @@ async function saveContentSource(){
 async function loadContent(preserveMessage=false){
   const key=$('#contentKey').value;
   await loadContentSource();
+  await loadEpgSettings();
   await loadRemoteM3uSources();
   try{
     const d=await api(`/api/admin/content/${key}`);state.content[key]=d;state.contentOpen=new Set();state.contentQuery='';if($('#contentSearch'))$('#contentSearch').value='';
