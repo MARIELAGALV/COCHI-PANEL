@@ -1609,11 +1609,17 @@ function editContentItem(groupIndex,itemIndex=null){
         else if(active.drm_scheme==='widevine'){delete obj.clearkey_input_order;delete obj.key_order;obj.drm_scheme='widevine';obj.drm_license_url=active.drm_license_url;if(active.drm_license_headers&&Object.keys(active.drm_license_headers).length)obj.drm_license_headers=active.drm_license_headers;}
         delete obj.backupUris;
         const useTemplate=$('#ciIsTemplate')?.checked===true;
-        if(useTemplate){
-          const nameRedirect=String($('#ciNameRedirect')?.value||'').trim(),nameRedirect2=String($('#ciNameRedirect2')?.value||'').trim(),codeRedirect=String($('#ciCodeRedirect')?.value||'').trim(),template=String($('#ciTemplate')?.value||'').trim();
-          if(!nameRedirect||!codeRedirect||!template)throw new Error('Plantilla CO-CHI: completá nameRedirect, codeRedirect y template.');
-          obj.isTemplate=true;obj.nameRedirect=nameRedirect;if(nameRedirect2)obj.nameRedirect2=nameRedirect2;else delete obj.nameRedirect2;delete obj.name_redirect2;obj.codeRedirect=codeRedirect;obj.template=template;
-        }else{delete obj.isTemplate;delete obj.nameRedirect;delete obj.nameRedirect2;delete obj.name_redirect2;delete obj.codeRedirect;delete obj.template;}
+        const nameRedirect=String($('#ciNameRedirect')?.value||'').trim();
+        const nameRedirect2=String($('#ciNameRedirect2')?.value||'').trim();
+        const codeRedirect=String($('#ciCodeRedirect')?.value||'').trim();
+        const template=String($('#ciTemplate')?.value||'').trim();
+        if(useTemplate&&(!nameRedirect||!codeRedirect||!template))throw new Error('Plantilla CO-CHI: completá nameRedirect, codeRedirect y template.');
+        obj.isTemplate=useTemplate;
+        if(nameRedirect)obj.nameRedirect=nameRedirect;else delete obj.nameRedirect;
+        if(nameRedirect2)obj.nameRedirect2=nameRedirect2;else delete obj.nameRedirect2;
+        delete obj.name_redirect2;
+        if(codeRedirect)obj.codeRedirect=codeRedirect;else delete obj.codeRedirect;
+        if(template)obj.template=template;else delete obj.template;
       }
       const targetGroup=Number($('#ciCategory').value);
       let pos=Math.max(1,Number($('#ciPosition').value)||1)-1;
