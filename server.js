@@ -1995,125 +1995,6 @@ function publishedContentView(key,json){
     return out;
   });
 }
-
-const EPG_DEFAULT_URLS=[
-  'https://iptv-org.github.io/epg/guides/ar/mi.tv.epg.xml',
-  'https://iptv-org.github.io/epg/guides/ar/gatotv.com.epg.xml'
-];
-const epgNowCache={at:0,byId:new Map(),byName:new Map(),count:0,refreshing:null};
-function epgUrls(){
-  const custom=String(process.env.COCHI_EPG_URLS||'').split(/[\n,;]+/).map(x=>x.trim()).filter(x=>/^https?:\/\//i.test(x));
-  return custom.length?custom:EPG_DEFAULT_URLS;
-}
-function epgXmlDecode(value){
-  return String(value||'')
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1')
-    .replace(/&#x([0-9a-f]+);/gi,(_,h)=>{try{return String.fromCodePoint(parseInt(h,16))}catch{return _}})
-    .replace(/&#(\d+);/g,(_,n)=>{try{return String.fromCodePoint(parseInt(n,10))}catch{return _}})
-    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
-}
-function epgText(value){return epgXmlDecode(String(value||'').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim();}
-function epgAttr(attrs,name){
-  const re=new RegExp('(?:^|\\s)'+name+'\\s*=\\s*["\\\']([^"\\\']*)["\\\']','i'),m=re.exec(String(attrs||''));
-  return m?epgXmlDecode(m[1]).trim():'';
-}
-function epgNorm(value){
-  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
-    .replace(/\b(?:fhd|full\s*hd|uhd|4k|1080p|720p|hd|sd)\b/g,' ')
-    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
-}
-function epgParseDate(value){
-  const m=String(value||'').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-])(\d{2})(\d{2}))?/);
-  if(!m)return NaN;
-  let ms=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
-  if(m[7]){const off=(+m[8]*60+(+m[9]||0))*60000;ms+=m[7]==='+'?-off:off;}
-  return ms;
-}
-function epgClock(ms){
-  try{return new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ms));}
-  catch{return new Date(ms).toISOString().slice(11,16)}
-}
-function parseXmltvNow(xml,nowMs=Date.now()){
-  const channelNames=new Map(),byId=new Map(),byName=new Map();
-  let m;
-  const chRe=/<channel\b([^>]*)>([\s\S]*?)<\/channel>/gi;
-  while((m=chRe.exec(xml))){
-    const id=epgAttr(m[1],'id');if(!id)continue;
-    const names=[];const dn=/<display-name(?:\s[^>]*)?>([\s\S]*?)<\/display-name>/gi;let d;
-    while((d=dn.exec(m[2]))){const n=epgText(d[1]);if(n&&!names.includes(n))names.push(n)}
-    channelNames.set(id,names);
-  }
-  const pRe=/<programme\b([^>]*)>([\s\S]*?)<\/programme>/gi;
-  while((m=pRe.exec(xml))){
-    const id=epgAttr(m[1],'channel'),start=epgParseDate(epgAttr(m[1],'start')),stop=epgParseDate(epgAttr(m[1],'stop'));
-    if(!id||!Number.isFinite(start)||!Number.isFinite(stop)||nowMs<start||nowMs>=stop)continue;
-    const tm=/<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(m[2]),title=epgText(tm?.[1]||'');
-    if(!title)continue;
-    const row={id,title,start,stop,text:`${epgClock(start)}–${epgClock(stop)} · ${title}`};
-    byId.set(String(id).trim().toLowerCase(),row);
-    const idBase=String(id).split('.')[0];if(idBase)byName.set(epgNorm(idBase),row);
-    for(const n of channelNames.get(id)||[]){const k=epgNorm(n);if(k)byName.set(k,row);}
-  }
-  return {byId,byName,count:byId.size};
-}
-async function refreshEpgNow(){
-  const now=Date.now();
-  if(epgNowCache.at&&now-epgNowCache.at<10*60*1000)return epgNowCache;
-  if(epgNowCache.refreshing)return epgNowCache.refreshing;
-  epgNowCache.refreshing=(async()=>{
-    const byId=new Map(),byName=new Map();let count=0,ok=0;
-    const results=await Promise.all(epgUrls().map(async url=>{
-      try{
-        const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),4500);
-        let r;try{
-          r=await fetch(url,{cache:'no-store',redirect:'follow',headers:{Accept:'application/xml,text/xml,text/plain,*/*','User-Agent':`CO-CHI-PANEL/${VERSION} EPG`},signal:ctl.signal});
-        }finally{clearTimeout(timer)}
-        if(!r.ok)throw new Error('HTTP '+r.status);
-        const len=Number(r.headers.get('content-length')||0);if(len>20*1024*1024)throw new Error('EPG demasiado grande');
-        const xml=await r.text();if(Buffer.byteLength(xml,'utf8')>20*1024*1024)throw new Error('EPG demasiado grande');
-        return {url,parsed:parseXmltvNow(xml,now)};
-      }catch(e){
-        console.warn('[CO-CHI EPG] No se pudo cargar '+url+': '+String(e?.message||e));
-        return {url,parsed:null};
-      }
-    }));
-    for(const result of results){
-      const parsed=result.parsed;if(!parsed)continue;ok++;
-      for(const [k,v] of parsed.byId)if(!byId.has(k))byId.set(k,v);
-      for(const [k,v] of parsed.byName)if(k&&!byName.has(k))byName.set(k,v);
-      count+=parsed.count;
-    }
-    if(ok){epgNowCache.byId=byId;epgNowCache.byName=byName;epgNowCache.count=count;epgNowCache.at=Date.now();}
-    return epgNowCache;
-  })();
-  try{return await epgNowCache.refreshing}finally{epgNowCache.refreshing=null}
-}
-async function applyTvEpgNow(list){
-  if(!Array.isArray(list))return list;
-  let epg;try{epg=await refreshEpgNow()}catch{return list}
-  const out=structuredClone(list);
-  for(const group of out){
-    const fallback=String(group?.name||'').trim();
-    for(const item of (Array.isArray(group?.samples)?group.samples:[])){
-      if(!item||typeof item!=='object')continue;
-      const ids=[item.tvgId,item['tvg-id'],item.xmltv_id,item.epg_id,item.id].map(x=>String(x||'').trim()).filter(Boolean);
-      let hit=null;
-      for(const id of ids){hit=epg.byId.get(id.toLowerCase());if(hit)break}
-      if(!hit){
-        const names=[item.name,item.canal,item.title,item.nombre].map(epgNorm).filter(Boolean);
-        for(const n of names){hit=epg.byName.get(n);if(hit)break}
-      }
-      if(hit){
-        item.description=hit.text;
-        item._cochiEpg={title:hit.title,start:new Date(hit.start).toISOString(),stop:new Date(hit.stop).toISOString()};
-      }else if(!String(item.description||item.descripcion||'').trim()&&fallback){
-        item.description=fallback;
-      }
-    }
-  }
-  return out;
-}
-
 function hiddenContentCount(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;
   let n=0;for(const g of json){const samples=Array.isArray(g?.samples)?g.samples:[];if(g?._cochiHidden===true){n+=samples.length;continue;}for(const x of samples)if(x?._cochiHidden===true)n++;}return n;
@@ -3043,7 +2924,6 @@ async function route(req,res){
           let clear=decryptManagedContent(JSON.parse(r.json_text));
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
-          clear=await applyTvEpgNow(clear);
           const dedicatedOn=tvDedicatedEnabled(sourceKey);
           if(dedicatedOn){
             if(!tvDedicatedConfigured(sourceKey))throw new Error(`Gateway ${sourceKey.toUpperCase()} activado pero no configurado`);
@@ -3075,26 +2955,6 @@ async function route(req,res){
       // reconstruirse si el gateway no está activo.
       if(!sec.enabled){
         let payload=JSON.parse(r.json_text);
-        if(sourceKey==='tv1'||sourceKey==='tv2'){
-          try{
-            let clear=decryptManagedContent(payload);
-            if(st.mode==='demo')clear=filterDemoCategories(clear);
-            clear=await applyTvFailover(clear);
-            clear=await applyTvEpgNow(clear);
-            if(sourceKey==='tv2'&&tv2IdCatalogRequested(req))clear=tv2MetadataCatalog(clear);
-            payload=encryptManagedContent(clear);
-            return sendJson(res,200,payload,{
-              'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
-              'X-COCHI-Access-Mode':String(st.mode||''),
-              'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
-              'X-COCHI-Playback-Security':'compatible',
-              'X-COCHI-Playback-Generation':String(sec.generation),
-              'X-COCHI-EPG':epgNowCache.count?'on':'empty'
-            });
-          }catch(epgCompatError){
-            console.warn('[CO-CHI EPG] Fallback catálogo compatible: '+String(epgCompatError?.message||epgCompatError));
-          }
-        }
         if(publicContent[1]==='tv2'&&tv2IdCatalogRequested(req)){
           payload=decryptManagedContent(payload);
           if(st.mode==='demo')payload=filterDemoCategories(payload);
@@ -3118,7 +2978,7 @@ async function route(req,res){
       if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
       let clear=decryptManagedContent(JSON.parse(r.json_text));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
-      if(publicContent[1]==='tv1'||publicContent[1]==='tv2'){clear=await applyTvFailover(clear);clear=await applyTvEpgNow(clear);}
+      if(publicContent[1]==='tv1'||publicContent[1]==='tv2')clear=await applyTvFailover(clear);
       clear=securePlaybackObject(clear,sec.generation);
       const payload=encryptManagedContent(clear);
       return sendJson(res,200,payload,{
