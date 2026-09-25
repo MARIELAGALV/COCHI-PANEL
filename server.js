@@ -709,6 +709,23 @@ async function saveEditableToOriginalSource(key,json){
   return {remote,text,stats:contentStats(json)};
 }
 
+function limitCatalogItems(list,limit){
+  limit=Math.max(0,Number(limit)||0);
+  if(!limit||!Array.isArray(list))return list;
+  const out=[];let left=limit;
+  for(const group of list){
+    if(left<=0)break;
+    if(!group||typeof group!=='object'){continue;}
+    const samples=Array.isArray(group.samples)?group.samples:[];
+    if(!samples.length)continue;
+    const take=samples.slice(0,left);
+    if(!take.length)continue;
+    out.push({...group,samples:take});
+    left-=take.length;
+  }
+  return out;
+}
+
 function contentStats(list){
   const categories=Array.isArray(list)?list.length:0;
   let items=0,nested=0;
@@ -2882,6 +2899,7 @@ async function route(req,res){
     try{
       const sec=playbackSecurityState();
       let clear=decryptManagedContent(JSON.parse(r.json_text));
+      if(progressiveLimit)clear=limitCatalogItems(clear,progressiveLimit);
       if(st.mode==='demo')clear=filterDemoCategories(clear);
       const found=tv2FindBySourceId(clear,tv2Resolve[1]);if(!found)return sendJson(res,404,{error:'ID TV2 no encontrado'});
       let one=[{name:String(found.group?.name||'General'),samples:[structuredClone(found.item)]}];
@@ -2911,6 +2929,7 @@ async function route(req,res){
     try{
       const sec=playbackSecurityState();
       const sourceKey=publicContent[1];
+      const progressiveLimit=sourceKey==='series'?Math.max(0,Math.min(100,Number(u.searchParams.get('limit')||0))):0;
 
       // v0.9.45 — TV1/TV2: cifrado V2 por solicitud, exclusivo de CO-CHI.
       // La app nueva envía una clave pública EC temporal; el backend devuelve
@@ -2922,6 +2941,7 @@ async function route(req,res){
         // seguimos abajo y entregamos automáticamente el formato compatible.
         try{
           let clear=decryptManagedContent(JSON.parse(r.json_text));
+          if(progressiveLimit)clear=limitCatalogItems(clear,progressiveLimit);
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
           const dedicatedOn=tvDedicatedEnabled(sourceKey);
@@ -2955,6 +2975,7 @@ async function route(req,res){
       // reconstruirse si el gateway no está activo.
       if(!sec.enabled){
         let payload=JSON.parse(r.json_text);
+        if(progressiveLimit)payload=limitCatalogItems(payload,progressiveLimit);
         if(publicContent[1]==='tv2'&&tv2IdCatalogRequested(req)){
           payload=decryptManagedContent(payload);
           if(st.mode==='demo')payload=filterDemoCategories(payload);
