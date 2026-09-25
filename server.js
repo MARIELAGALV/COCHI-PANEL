@@ -2365,7 +2365,6 @@ async function applyTvFailover(payload){
 
 const EPG_DEFAULT_URLS=[
   'https://www.open-epg.com/files/argentina.xml',
-  'https://dearbulut.github.io/iptv/epg/ar.xml.gz',
   'https://free-epg.de/api/epg/ar.xml.gz'
 ];
 const epgRuntime={updatedAt:0,lastUpdated:'',lastError:'',sourcesOk:0,channels:0,byId:new Map(),byName:new Map(),refreshing:null};
@@ -2373,10 +2372,13 @@ function epgConfig(){
   let urls=[];
   try{const raw=JSON.parse(getSetting('epg_urls_json','[]'));if(Array.isArray(raw))urls=raw.map(x=>String(x||'').trim()).filter(x=>/^https?:\/\//i.test(x));}catch{}
   const legacyOnly=urls.length>0&&urls.every(x=>/^https:\/\/iptv-org\.github\.io\/epg\/guides\/ar\/(?:mi\.tv|gatotv\.com)\.epg\.xml$/i.test(x));
+  const cleanedUrls=urls.filter(x=>!/^https:\/\/dearbulut\.github\.io\/iptv\/epg\/ar\.xml\.gz$/i.test(x));
+  const removedDeadSource=cleanedUrls.length!==urls.length;
+  urls=cleanedUrls;
   if(!urls.length||legacyOnly){
     urls=[...EPG_DEFAULT_URLS];
-    if(legacyOnly)setSetting('epg_urls_json',JSON.stringify(urls));
   }
+  if(legacyOnly||removedDeadSource)setSetting('epg_urls_json',JSON.stringify(urls));
   return {
     enabled:boolSetting('epg_enabled',true),
     urls,
