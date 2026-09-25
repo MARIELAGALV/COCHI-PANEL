@@ -2062,18 +2062,26 @@ async function refreshEpgNow(){
   if(epgNowCache.refreshing)return epgNowCache.refreshing;
   epgNowCache.refreshing=(async()=>{
     const byId=new Map(),byName=new Map();let count=0,ok=0;
-    for(const url of epgUrls()){
+    const results=await Promise.all(epgUrls().map(async url=>{
       try{
-        const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),7000);
-        let r;try{r=await fetch(url,{cache:'no-store',redirect:'follow',headers:{Accept:'application/xml,text/xml,text/plain,*/*','User-Agent':`CO-CHI-PANEL/${VERSION} EPG`},signal:ctl.signal});}finally{clearTimeout(timer)}
+        const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),4500);
+        let r;try{
+          r=await fetch(url,{cache:'no-store',redirect:'follow',headers:{Accept:'application/xml,text/xml,text/plain,*/*','User-Agent':`CO-CHI-PANEL/${VERSION} EPG`},signal:ctl.signal});
+        }finally{clearTimeout(timer)}
         if(!r.ok)throw new Error('HTTP '+r.status);
         const len=Number(r.headers.get('content-length')||0);if(len>20*1024*1024)throw new Error('EPG demasiado grande');
         const xml=await r.text();if(Buffer.byteLength(xml,'utf8')>20*1024*1024)throw new Error('EPG demasiado grande');
-        const parsed=parseXmltvNow(xml,now);
-        for(const [k,v] of parsed.byId)if(!byId.has(k))byId.set(k,v);
-        for(const [k,v] of parsed.byName)if(k&&!byName.has(k))byName.set(k,v);
-        count+=parsed.count;ok++;
-      }catch(e){console.warn('[CO-CHI EPG] No se pudo cargar '+url+': '+String(e?.message||e));}
+        return {url,parsed:parseXmltvNow(xml,now)};
+      }catch(e){
+        console.warn('[CO-CHI EPG] No se pudo cargar '+url+': '+String(e?.message||e));
+        return {url,parsed:null};
+      }
+    }));
+    for(const result of results){
+      const parsed=result.parsed;if(!parsed)continue;ok++;
+      for(const [k,v] of parsed.byId)if(!byId.has(k))byId.set(k,v);
+      for(const [k,v] of parsed.byName)if(k&&!byName.has(k))byName.set(k,v);
+      count+=parsed.count;
     }
     if(ok){epgNowCache.byId=byId;epgNowCache.byName=byName;epgNowCache.count=count;epgNowCache.at=Date.now();}
     return epgNowCache;
