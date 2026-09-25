@@ -2480,14 +2480,20 @@ function epgDescription(row){
   return epgClock(cur.start)+'–'+epgClock(cur.stop)+' · '+cur.title;
 }
 function applyTvEpgNow(payload){
-  if(!Array.isArray(payload)||!epgRuntime.byId.size)return payload;
+  if(!Array.isArray(payload))return payload;
   const out=structuredClone(payload);
   for(const group of out)for(const item of (Array.isArray(group?.samples)?group.samples:[])){
-    const row=epgMatchItem(item),desc=epgDescription(row);
-    if(!desc)continue;
-    item.description=desc;
-    item.epg_current={title:row.current.title,start:new Date(row.current.start).toISOString(),stop:new Date(row.current.stop).toISOString()};
-    if(row.next)item.epg_next={title:row.next.title,start:new Date(row.next.start).toISOString(),stop:new Date(row.next.stop).toISOString()};
+    const row=epgRuntime.byId.size?epgMatchItem(item):null,desc=epgDescription(row);
+    if(desc){
+      item.description=desc;
+      item.epg_current={title:row.current.title,start:new Date(row.current.start).toISOString(),stop:new Date(row.current.stop).toISOString()};
+      if(row.next)item.epg_next={title:row.next.title,start:new Date(row.next.start).toISOString(),stop:new Date(row.next.stop).toISOString()};
+      else delete item.epg_next;
+      continue;
+    }
+    delete item.epg_current;delete item.epg_next;
+    const fallback=String(item.category||item.categoria||group?.name||'').trim();
+    if(fallback)item.description=fallback;
   }
   return out;
 }
