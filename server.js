@@ -2361,6 +2361,187 @@ async function applyTvFailover(payload){
 }
 
 
+
+const EPG_DEFAULT_URLS=[
+  'https://iptv-org.github.io/epg/guides/ar/mi.tv.epg.xml',
+  'https://iptv-org.github.io/epg/guides/ar/gatotv.com.epg.xml'
+];
+const epgRuntime={updatedAt:0,lastUpdated:'',lastError:'',sourcesOk:0,channels:0,byId:new Map(),byName:new Map(),refreshing:null};
+function epgConfig(){
+  let urls=[];
+  try{const raw=JSON.parse(getSetting('epg_urls_json','[]'));if(Array.isArray(raw))urls=raw.map(x=>String(x||'').trim()).filter(x=>/^https?:\/\//i.test(x));}catch{}
+  if(!urls.length)urls=[...EPG_DEFAULT_URLS];
+  return {
+    enabled:boolSetting('epg_enabled',true),
+    urls,
+    refreshMinutes:Math.max(5,Math.min(180,Number(getSetting('epg_refresh_minutes','10'))||10))
+  };
+}
+function epgXmlDecode(value){
+  return String(value||'')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1')
+    .replace(/&#x([0-9a-f]+);/gi,(_,h)=>{try{return String.fromCodePoint(parseInt(h,16))}catch{return _}})
+    .replace(/&#(\d+);/g,(_,n)=>{try{return String.fromCodePoint(parseInt(n,10))}catch{return _}})
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+}
+function epgXmlText(value){return epgXmlDecode(String(value||'').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim();}
+function epgAttr(attrs,name){
+  const re=new RegExp('(?:^|\\s)'+name+'\\s*=\\s*["\\\']([^"\\\']*)["\\\']','i'),m=re.exec(String(attrs||''));
+  return m?epgXmlDecode(m[1]).trim():'';
+}
+function epgNorm(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+    .replace(/\b(?:full\s*hd|fhd|uhd|4k|1080p|720p|hd|sd|argentina)\b/g,' ')
+    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function epgTime(value){
+  const m=String(value||'').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-])(\d{2})(\d{2}))?/);
+  if(!m)return NaN;
+  let ms=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
+  if(m[7]){const off=(+m[8]*60+(+m[9]||0))*60000;ms+=m[7]==='+'?-off:off;}
+  return ms;
+}
+function epgClock(ms){
+  try{return new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ms));}
+  catch{return new Date(ms).toISOString().slice(11,16)}
+}
+function epgPutName(map,key,row){
+  key=epgNorm(key);if(!key)return;
+  if(!map.has(key)){map.set(key,row);return}
+  const prev=map.get(key);
+  if(prev&&String(prev.id||'')!==String(row.id||''))map.set(key,null);
+}
+function parseXmltvNow(xml,nowMs=Date.now()){
+  const channelNames=new Map(),byId=new Map(),byName=new Map();
+  let m;
+  const chRe=/<channel\b([^>]*)>([\s\S]*?)<\/channel>/gi;
+  while((m=chRe.exec(xml))){
+    const id=epgAttr(m[1],'id');if(!id)continue;
+    const names=[];const dn=/<display-name(?:\s[^>]*)?>([\s\S]*?)<\/display-name>/gi;let d;
+    while((d=dn.exec(m[2]))){const n=epgXmlText(d[1]);if(n&&!names.includes(n))names.push(n)}
+    channelNames.set(id,names);
+  }
+  const pRe=/<programme\b([^>]*)>([\s\S]*?)<\/programme>/gi;
+  while((m=pRe.exec(xml))){
+    const id=epgAttr(m[1],'channel'),start=epgTime(epgAttr(m[1],'start')),stop=epgTime(epgAttr(m[1],'stop'));
+    if(!id||!Number.isFinite(start)||!Number.isFinite(stop)||stop<=start)continue;
+    const titleMatch=/<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(m[2]),title=epgXmlText(titleMatch?.[1]||'');
+    if(!title)continue;
+    const key=id.toLowerCase(),row=byId.get(key)||{id,names:channelNames.get(id)||[],current:null,next:null};
+    const prog={title,start,stop};
+    if(start<=nowMs&&nowMs<stop)row.current=prog;
+    else if(start>nowMs&&start<nowMs+18*60*60*1000&&(!row.next||start<row.next.start))row.next=prog;
+    byId.set(key,row);
+  }
+  for(const row of byId.values()){
+    for(const name of row.names)epgPutName(byName,name,row);
+    const base=String(row.id||'').split('.')[0];if(base)epgPutName(byName,base,row);
+  }
+  return {byId,byName};
+}
+function mergeEpgParsed(parts){
+  const byId=new Map(),byName=new Map();
+  for(const part of parts){
+    if(!part)continue;
+    for(const [k,row] of part.byId){
+      const prev=byId.get(k);
+      if(!prev){byId.set(k,row);continue}
+      if(!prev.current&&row.current)prev.current=row.current;
+      if((!prev.next&&row.next)||(row.next&&prev.next&&row.next.start<prev.next.start))prev.next=row.next;
+      for(const n of row.names||[])if(!prev.names.includes(n))prev.names.push(n);
+    }
+  }
+  for(const row of byId.values()){
+    for(const n of row.names||[])epgPutName(byName,n,row);
+    const base=String(row.id||'').split('.')[0];if(base)epgPutName(byName,base,row);
+  }
+  return {byId,byName};
+}
+function epgMatchItem(item){
+  if(!item||typeof item!=='object')return null;
+  const ids=[item.epg_id,item.epgId,item['tvg-id'],item.tvg_id,item.tvgId,item.xmltv_id,item.xmltvId]
+    .map(x=>String(x||'').trim()).filter(Boolean);
+  for(const id of ids){const row=epgRuntime.byId.get(id.toLowerCase());if(row)return row}
+  const names=[item.name,item.canal,item.title,item.nombre].map(epgNorm).filter(Boolean);
+  for(const name of names){const row=epgRuntime.byName.get(name);if(row)return row}
+  return null;
+}
+function epgDescription(row){
+  if(!row?.current)return '';
+  const cur=row.current;
+  return epgClock(cur.start)+'–'+epgClock(cur.stop)+' · '+cur.title;
+}
+function applyTvEpgNow(payload){
+  if(!Array.isArray(payload)||!epgRuntime.byId.size)return payload;
+  const out=structuredClone(payload);
+  for(const group of out)for(const item of (Array.isArray(group?.samples)?group.samples:[])){
+    const row=epgMatchItem(item),desc=epgDescription(row);
+    if(!desc)continue;
+    item.description=desc;
+    item.epg_current={title:row.current.title,start:new Date(row.current.start).toISOString(),stop:new Date(row.current.stop).toISOString()};
+    if(row.next)item.epg_next={title:row.next.title,start:new Date(row.next.start).toISOString(),stop:new Date(row.next.stop).toISOString()};
+  }
+  return out;
+}
+function epgCatalogMatchStats(){
+  const result={tv1:{total:0,matched:0},tv2:{total:0,matched:0},samples:[]};
+  for(const key of ['tv1','tv2']){
+    let json=[];try{json=loadManagedEditable(key)}catch{}
+    for(const group of (Array.isArray(json)?json:[]))for(const item of (Array.isArray(group?.samples)?group.samples:[])){
+      result[key].total++;
+      const row=epgMatchItem(item);if(!row?.current)continue;
+      result[key].matched++;
+      if(result.samples.length<12)result.samples.push({source:key,name:String(item.name||item.canal||item.title||''),epgId:String(row.id||''),now:epgDescription(row)});
+    }
+  }
+  result.total=result.tv1.total+result.tv2.total;
+  result.matched=result.tv1.matched+result.tv2.matched;
+  return result;
+}
+async function refreshEpgRuntime({force=false}={}){
+  const cfg=epgConfig();
+  if(!cfg.enabled){
+    epgRuntime.updatedAt=0;epgRuntime.lastUpdated='';epgRuntime.lastError='';epgRuntime.sourcesOk=0;epgRuntime.channels=0;epgRuntime.byId=new Map();epgRuntime.byName=new Map();
+    return epgRuntime;
+  }
+  const maxAge=cfg.refreshMinutes*60*1000;
+  if(!force&&epgRuntime.updatedAt&&Date.now()-epgRuntime.updatedAt<maxAge)return epgRuntime;
+  if(epgRuntime.refreshing)return epgRuntime.refreshing;
+  epgRuntime.refreshing=(async()=>{
+    const now=Date.now();
+    const results=await Promise.all(cfg.urls.map(async url=>{
+      try{
+        assertPublicHttpUrl(url);
+        const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),8000);
+        let r;try{r=await fetch(url,{redirect:'follow',cache:'no-store',headers:{Accept:'application/xml,text/xml,text/plain,*/*','User-Agent':'CO-CHI-PANEL/'+VERSION+' EPG'},signal:ctl.signal});}finally{clearTimeout(timer)}
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        const len=Number(r.headers.get('content-length')||0);if(len>30*1024*1024)throw new Error('EPG supera 30 MB');
+        const xml=await r.text();if(Buffer.byteLength(xml,'utf8')>30*1024*1024)throw new Error('EPG supera 30 MB');
+        return {ok:true,url,parsed:parseXmltvNow(xml,now)};
+      }catch(e){return {ok:false,url,error:String(e?.message||e)}}
+    }));
+    const ok=results.filter(x=>x.ok);
+    if(!ok.length){
+      epgRuntime.lastError=results.map(x=>x.url+': '+x.error).join(' | ').slice(0,2000);
+      throw new Error(epgRuntime.lastError||'No se pudo cargar ninguna fuente EPG');
+    }
+    const merged=mergeEpgParsed(ok.map(x=>x.parsed));
+    epgRuntime.byId=merged.byId;epgRuntime.byName=merged.byName;epgRuntime.channels=merged.byId.size;epgRuntime.sourcesOk=ok.length;
+    epgRuntime.updatedAt=Date.now();epgRuntime.lastUpdated=nowIso();
+    epgRuntime.lastError=results.filter(x=>!x.ok).map(x=>x.url+': '+x.error).join(' | ').slice(0,2000);
+    return epgRuntime;
+  })();
+  try{return await epgRuntime.refreshing}finally{epgRuntime.refreshing=null}
+}
+function epgPublicStatus(){
+  const cfg=epgConfig(),matches=epgCatalogMatchStats();
+  return {enabled:cfg.enabled,urls:cfg.urls,refreshMinutes:cfg.refreshMinutes,lastUpdated:epgRuntime.lastUpdated,lastError:epgRuntime.lastError,sourcesOk:epgRuntime.sourcesOk,channels:epgRuntime.channels,matches};
+}
+function epgMaybeRefresh(){
+  const cfg=epgConfig();if(!cfg.enabled)return;
+  if(!epgRuntime.updatedAt||Date.now()-epgRuntime.updatedAt>=cfg.refreshMinutes*60*1000)refreshEpgRuntime().catch(e=>console.warn('[EPG]',e.message));
+}
+
 function mediaNormTitle(value){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
     .replace(/&/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
@@ -2911,6 +3092,7 @@ async function route(req,res){
     try{
       const sec=playbackSecurityState();
       const sourceKey=publicContent[1];
+      if(sourceKey==='tv1'||sourceKey==='tv2')epgMaybeRefresh();
 
       // v0.9.45 — TV1/TV2: cifrado V2 por solicitud, exclusivo de CO-CHI.
       // La app nueva envía una clave pública EC temporal; el backend devuelve
@@ -2924,6 +3106,7 @@ async function route(req,res){
           let clear=decryptManagedContent(JSON.parse(r.json_text));
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
+          clear=applyTvEpgNow(clear);
           const dedicatedOn=tvDedicatedEnabled(sourceKey);
           if(dedicatedOn){
             if(!tvDedicatedConfigured(sourceKey))throw new Error(`Gateway ${sourceKey.toUpperCase()} activado pero no configurado`);
@@ -2955,6 +3138,24 @@ async function route(req,res){
       // reconstruirse si el gateway no está activo.
       if(!sec.enabled){
         let payload=JSON.parse(r.json_text);
+        if((sourceKey==='tv1'||sourceKey==='tv2')&&epgRuntime.byId.size){
+          try{
+            let clear=decryptManagedContent(payload);
+            if(st.mode==='demo')clear=filterDemoCategories(clear);
+            clear=await applyTvFailover(clear);
+            clear=applyTvEpgNow(clear);
+            if(sourceKey==='tv2'&&tv2IdCatalogRequested(req))clear=tv2MetadataCatalog(clear);
+            payload=encryptManagedContent(clear);
+            return sendJson(res,200,payload,{
+              'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
+              'X-COCHI-Access-Mode':String(st.mode||''),
+              'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
+              'X-COCHI-Playback-Security':'compatible',
+              'X-COCHI-Playback-Generation':String(sec.generation),
+              'X-COCHI-EPG':'1'
+            });
+          }catch(epgDeliveryError){console.warn('[EPG] Entrega compatible sin EPG: '+String(epgDeliveryError?.message||epgDeliveryError));}
+        }
         if(publicContent[1]==='tv2'&&tv2IdCatalogRequested(req)){
           payload=decryptManagedContent(payload);
           if(st.mode==='demo')payload=filterDemoCategories(payload);
@@ -2978,7 +3179,7 @@ async function route(req,res){
       if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
       let clear=decryptManagedContent(JSON.parse(r.json_text));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
-      if(publicContent[1]==='tv1'||publicContent[1]==='tv2')clear=await applyTvFailover(clear);
+      if(publicContent[1]==='tv1'||publicContent[1]==='tv2'){clear=await applyTvFailover(clear);clear=applyTvEpgNow(clear);}
       clear=securePlaybackObject(clear,sec.generation);
       const payload=encryptManagedContent(clear);
       return sendJson(res,200,payload,{
@@ -3983,6 +4184,29 @@ async function route(req,res){
     }
 
 
+
+    if(p==='/api/admin/epg'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
+      return sendJson(res,200,epgPublicStatus());
+    }
+    if(p==='/api/admin/epg'&&m==='PUT'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
+      const b=await readJson(req),enabled=b.enabled!==false,refreshMinutes=Math.max(5,Math.min(180,Number(b.refreshMinutes||10)||10));
+      const urls=(Array.isArray(b.urls)?b.urls:String(b.urls||'').split(/[\r\n,;]+/)).map(x=>String(x||'').trim()).filter(Boolean);
+      if(!urls.length)return sendJson(res,400,{error:'Ingresá al menos una URL XMLTV / EPG'});
+      for(const url of urls){if(!/^https?:\/\//i.test(url))return sendJson(res,400,{error:'URL EPG inválida: '+url});try{assertPublicHttpUrl(url)}catch(e){return sendJson(res,400,{error:e.message})}}
+      setSetting('epg_enabled',enabled?'1':'0');setSetting('epg_urls_json',JSON.stringify(urls));setSetting('epg_refresh_minutes',String(refreshMinutes));
+      epgRuntime.updatedAt=0;epgRuntime.lastUpdated='';epgRuntime.lastError='';epgRuntime.sourcesOk=0;epgRuntime.channels=0;epgRuntime.byId=new Map();epgRuntime.byName=new Map();
+      audit(actor.id,'epg_settings_changed','settings',null,(enabled?'on':'off')+'; '+urls.length+' fuente(s); '+refreshMinutes+' min');
+      if(enabled)refreshEpgRuntime({force:true}).catch(e=>console.warn('[EPG] guardado',e.message));
+      return sendJson(res,200,{ok:true,...epgPublicStatus()});
+    }
+    if(p==='/api/admin/epg/refresh'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
+      try{await refreshEpgRuntime({force:true});audit(actor.id,'epg_refreshed','settings',null,epgRuntime.channels+' canales EPG');return sendJson(res,200,{ok:true,...epgPublicStatus()});}
+      catch(e){return sendJson(res,502,{error:'No se pudo actualizar el EPG: '+String(e?.message||e),...epgPublicStatus()});}
+    }
+
     if(p==='/api/admin/remote-m3u'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona las listas M3U remotas'});
       return sendJson(res,200,{sources:db.prepare('SELECT * FROM remote_m3u_categories ORDER BY source_key,category_name,id').all().map(remoteM3uPublicRow)});
@@ -4065,6 +4289,8 @@ processAutoHideTimers();
 const autoHideTimer=setInterval(processAutoHideTimers,10*1000);autoHideTimer.unref?.();
 
 // Categorías remotas M3U: se refrescan aunque el navegador del panel esté cerrado.
+const epgStartupTimer=setTimeout(()=>epgMaybeRefresh(),5000);epgStartupTimer.unref?.();
+const epgTimer=setInterval(()=>epgMaybeRefresh(),60*1000);epgTimer.unref?.();
 const remoteM3uStartupTimer=setTimeout(()=>processRemoteM3uSources().catch(e=>console.warn('[REMOTE-M3U] inicio',e.message)),3000);remoteM3uStartupTimer.unref?.();
 const remoteM3uTimer=setInterval(()=>processRemoteM3uSources().catch(e=>console.warn('[REMOTE-M3U] ciclo',e.message)),60*1000);remoteM3uTimer.unref?.();
 
