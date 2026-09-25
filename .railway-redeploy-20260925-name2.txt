@@ -1,0 +1,1 @@
+Forzar redeploy de Railway para aplicar soporte opcional nameRedirect2 / {nombre2}.
