@@ -1714,16 +1714,23 @@ function rescueApplyTemplate(row,base){
   return String(row.template||'{token}/live/{codigo}/{nombre}/{ruta}/{archivo}').replace(/\{(token|codigo|nombre|ruta|archivo)\}/g,(_,k)=>vars[k]||'');
 }
 function rescueExtractBase(finalUrl){
-  const s=String(finalUrl||'');const i=s.toLowerCase().indexOf('/live/');
-  return i>0?s.slice(0,i).replace(/\/+$/,''):'';
+  const s=String(finalUrl||''),low=s.toLowerCase();
+  const live=low.indexOf('/live/'),out=low.indexOf('/out/');
+  const marks=[live,out].filter(i=>i>0);
+  if(!marks.length)return '';
+  const i=Math.min(...marks);
+  return s.slice(0,i).replace(/\/+$/,'');
 }
 function rescueUrlChanged(a,b){
   try{const x=new URL(String(a||'')),y=new URL(String(b||''));return x.href!==y.href}catch{return String(a||'')!==String(b||'')}
 }
 function rescueFinalMatchesCode(finalUrl,code){
   const s=String(finalUrl||'').toLowerCase(),c=String(code||'').trim().toLowerCase();
-  if(!s.includes('/live/'))return false;
-  return !c||s.includes('/live/'+c+'/');
+  for(const marker of ['/live/','/out/']){
+    if(!s.includes(marker))continue;
+    return !c||s.includes(marker+c+'/');
+  }
+  return false;
 }
 // v0.9.102 — captura directa del PRIMER 301/302 desde el propio PANEL.
 // No sigue el Location: así puede obtener /tok_.../ aunque el host edge del destino
