@@ -1992,7 +1992,13 @@ function publishedContentView(key,json){
     out.samples=samples.filter(item=>{
       if(item?._cochiHidden===true)return false;
       const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
-    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;return x;});
+    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;
+      if(x.isTemplate===true&&typeof x.template==='string'&&x.template.includes('{nombre2}')){
+        const nombre2=String(x.nameRedirect2||x.name_redirect2||x.nameRedirect||x.name_redirect||'').trim();
+        if(nombre2)x.template=x.template.split('{nombre2}').join(nombre2);
+      }
+      delete x.nameRedirect2;delete x.name_redirect2;
+      return x;});
     return out;
   });
 }
