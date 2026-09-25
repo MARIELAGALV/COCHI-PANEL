@@ -1609,10 +1609,18 @@ function editContentItem(groupIndex,itemIndex=null){
         else if(active.drm_scheme==='widevine'){delete obj.clearkey_input_order;delete obj.key_order;obj.drm_scheme='widevine';obj.drm_license_url=active.drm_license_url;if(active.drm_license_headers&&Object.keys(active.drm_license_headers).length)obj.drm_license_headers=active.drm_license_headers;}
         delete obj.backupUris;
         const useTemplate=$('#ciIsTemplate')?.checked===true;
-        const nameRedirect=String($('#ciNameRedirect')?.value||'').trim();
-        const nameRedirect2=String($('#ciNameRedirect2')?.value||'').trim();
-        const codeRedirect=String($('#ciCodeRedirect')?.value||'').trim();
-        const template=String($('#ciTemplate')?.value||'').trim();
+        const typedNameRedirect=String($('#ciNameRedirect')?.value||'').trim();
+        const typedNameRedirect2=String($('#ciNameRedirect2')?.value||'').trim();
+        const typedCodeRedirect=String($('#ciCodeRedirect')?.value||'').trim();
+        const typedTemplate=String($('#ciTemplate')?.value||'').trim();
+        const previousNameRedirect=String(cur?.nameRedirect||cur?.name_redirect||'').trim();
+        const previousNameRedirect2=String(cur?.nameRedirect2||cur?.name_redirect2||'').trim();
+        const previousCodeRedirect=String(cur?.codeRedirect||cur?.code_redirect||'').trim();
+        const previousTemplate=String(cur?.template||cur?.urlTemplate||cur?.url_template||'').trim();
+        const nameRedirect=useTemplate?typedNameRedirect:(typedNameRedirect||previousNameRedirect);
+        const nameRedirect2=useTemplate?typedNameRedirect2:(typedNameRedirect2||previousNameRedirect2);
+        const codeRedirect=useTemplate?typedCodeRedirect:(typedCodeRedirect||previousCodeRedirect);
+        const template=useTemplate?typedTemplate:(typedTemplate||previousTemplate);
         if(useTemplate&&(!nameRedirect||!codeRedirect||!template))throw new Error('Plantilla CO-CHI: completá nameRedirect, codeRedirect y template.');
         obj.isTemplate=useTemplate;
         if(nameRedirect)obj.nameRedirect=nameRedirect;else delete obj.nameRedirect;
