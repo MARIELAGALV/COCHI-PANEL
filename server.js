@@ -1808,6 +1808,25 @@ function cookieHeaderFromBody(raw){
     if(data?.cookies&&typeof data.cookies==='object'&&!Array.isArray(data.cookies)){
       return Object.entries(data.cookies).filter(([k,v])=>k&&v!==undefined&&v!==null).map(([k,v])=>`${String(k).trim()}=${String(v).trim()}`).filter(x=>/^[^=;\s]+=[^;\r\n]*$/.test(x)).join('; ');
     }
+
+    // Soporta cookies expresadas como objetos {name, value, ...},
+    // también dentro de arrays o estructuras anidadas.
+    const pairs=[];
+    const walkCookieObjects=(node,depth=0)=>{
+      if(depth>8||node===undefined||node===null)return;
+      if(Array.isArray(node)){for(const entry of node)walkCookieObjects(entry,depth+1);return;}
+      if(typeof node!=='object')return;
+      const name=typeof node.name==='string'?node.name.trim():'';
+      const value=node.value;
+      if(name&&value!==undefined&&value!==null&&['string','number','boolean'].includes(typeof value)){
+        const pair=`${name}=${String(value)}`;
+        if(/^[^=;\s]+=[^;\r\n]*$/.test(pair))pairs.push(pair);
+        return;
+      }
+      for(const child of Object.values(node))walkCookieObjects(child,depth+1);
+    };
+    walkCookieObjects(data);
+    if(pairs.length)return [...new Set(pairs)].join('; ').slice(0,8000);
   }catch{}
   if(/^[^=;\s]+=[^;\r\n]*(?:;\s*[^=;\s]+=[^;\r\n]*)*$/.test(text)&&text.length<=8000)return text;
   return '';
