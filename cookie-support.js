@@ -154,6 +154,19 @@ function extractCookiesFromJson(value,jar,received,depth=0,keyHint=''){
   const isCookieHint=['cookie','cookies','cookieheader','requestcookie','playbackcookie'].includes(hint);
   const isSetCookieHint=['setcookie','setcookies'].includes(hint);
 
+  // Soporta respuestas JSON genéricas con cookies representadas como
+  // objetos {name, value, ...}, incluso cuando vienen dentro de un array raíz.
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    const cookieName=typeof value.name==='string'?value.name.trim():'';
+    const cookieValue=value.value;
+    if(cookieName&&cookieValue!==undefined&&cookieValue!==null&&
+       ['string','number','boolean'].includes(typeof cookieValue)){
+      jar.set(cookieName,String(cookieValue));
+      received.add(cookieName);
+      return;
+    }
+  }
+
   if(typeof value==='string'){
     const s=value.trim();if(!s)return;
     if(isSetCookieHint){mergeSetCookieValue(jar,s,received);return;}
