@@ -1,5 +1,5 @@
-/* CO-CHI PANEL v1.1.6 — conserva el CSS actual y recupera las tarjetas móviles de Clientes finales. */
-@import url("/styles-core-v1.1.6.css?v=1.1.6");
+/* CO-CHI PANEL v1.1.7 — conserva el CSS actual y recupera las tarjetas móviles de Clientes finales. */
+@import url("/styles-core-v1.1.7.css?v=1.1.7");
 
 @media (max-width:660px){
   body[data-view="clients"] .main{
@@ -555,7 +555,7 @@ body[data-view="devices"] #view-devices .actions button{
 }
 
 
-/* v1.1.6 · Revisor JSON/W3U AZPlay */
+/* v1.1.7 · Revisor JSON/W3U AZPlay */
 .az-review-box{margin-top:14px}
 .az-review-toolbar{display:grid;grid-template-columns:minmax(230px,1.15fr) minmax(180px,1fr) minmax(180px,.8fr) auto;gap:9px;align-items:end}
 .az-file-label{margin:0}
