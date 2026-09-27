@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.6';
+const VERSION = '1.1.7';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1775,6 +1775,140 @@ async function rescueRequestManual(rawUrl,headers={},timeoutSeconds=10){
     req.end();
   });
 }
+
+/* v1.1.7 — Cookie URL para fuentes propias/autorizadas.
+   La APK ya reenvía cualquier header "Cookie" presente en headers; por eso
+   resolvemos cookie_url en el backend y no tocamos Media3 ni el reproductor. */
+const playbackCookieCache=new Map();
+function playbackCookieUrl(item){
+  return String(item?.cookie_url||item?.cookieUrl||'').trim().slice(0,2000);
+}
+function catalogHasPlaybackCookie(list){
+  if(!Array.isArray(list))return false;
+  for(const group of list)for(const item of (Array.isArray(group?.samples)?group.samples:[]))if(playbackCookieUrl(item))return true;
+  return false;
+}
+function cookieHeaderFromSetCookie(raw){
+  const values=Array.isArray(raw)?raw:(raw?[raw]:[]);
+  const pairs=[];
+  for(const value of values){
+    const pair=String(value||'').split(';')[0].trim();
+    if(pair&&/^[^=;\s]+=[^;\r\n]*$/.test(pair))pairs.push(pair);
+  }
+  return pairs.join('; ');
+}
+function cookieHeaderFromBody(raw){
+  const text=String(raw||'').trim();
+  if(!text||text.length>65536)return '';
+  try{
+    const data=JSON.parse(text);
+    const direct=data?.cookie??data?.Cookie??data?.set_cookie??data?.setCookie??data?.data?.cookie;
+    if(typeof direct==='string'&&direct.trim())return direct.trim().slice(0,8000);
+    if(Array.isArray(direct))return cookieHeaderFromSetCookie(direct);
+    if(data?.cookies&&typeof data.cookies==='object'&&!Array.isArray(data.cookies)){
+      return Object.entries(data.cookies).filter(([k,v])=>k&&v!==undefined&&v!==null).map(([k,v])=>`${String(k).trim()}=${String(v).trim()}`).filter(x=>/^[^=;\s]+=[^;\r\n]*$/.test(x)).join('; ');
+    }
+  }catch{}
+  if(/^[^=;\s]+=[^;\r\n]*(?:;\s*[^=;\s]+=[^;\r\n]*)*$/.test(text)&&text.length<=8000)return text;
+  return '';
+}
+async function fetchAuthorizedPlaybackCookie(rawUrl,sourceHeaders={},redirectDepth=0){
+  const u=assertPublicHttpUrl(rawUrl);
+  if(u.username||u.password)throw new Error('No se permiten credenciales dentro de cookie_url');
+  if(redirectDepth>3)throw new Error('Demasiadas redirecciones en cookie_url');
+  const addresses=await rescueResolveHost4(u.hostname);
+  if(!addresses.length)throw new Error('cookie_url sin resolución DNS');
+  for(const ip of addresses)if(rescuePrivateIp(ip))throw new Error('cookie_url apunta a una red privada/local');
+
+  const transport=u.protocol==='https:'?https:http;
+  const requestHeaders={Accept:'application/json,text/plain,*/*'};
+  for(const [k,v] of Object.entries(sourceHeaders||{})){
+    if(!v)continue;
+    if(/^(origin|referer|user-agent|accept-language)$/i.test(String(k)))requestHeaders[String(k)]=String(v).slice(0,2000);
+  }
+  requestHeaders['User-Agent']=requestHeaders['User-Agent']||`CO-CHI-PANEL/${VERSION}`;
+
+  return await new Promise((resolve,reject)=>{
+    let settled=false,size=0;const chunks=[];
+    const lookup=(hostname,opts,cb)=>rescueResolveHost4(hostname).then(a=>a[0]?cb(null,a[0],4):cb(new Error('DNS sin IPv4'))).catch(cb);
+    const req=transport.request({
+      protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,
+      method:'GET',headers:requestHeaders,lookup,family:4,servername:u.hostname,timeout:10000,agent:false
+    },res=>{
+      const status=Number(res.statusCode||0),location=Array.isArray(res.headers.location)?res.headers.location[0]:(res.headers.location||'');
+      if(status>=300&&status<400&&location){
+        res.resume();
+        res.on('end',async()=>{
+          if(settled)return;settled=true;
+          try{resolve(await fetchAuthorizedPlaybackCookie(new URL(String(location),u).href,sourceHeaders,redirectDepth+1));}
+          catch(e){reject(e);}
+        });
+        return;
+      }
+      res.on('data',chunk=>{
+        if(settled)return;
+        size+=chunk.length;
+        if(size>65536){settled=true;req.destroy();reject(new Error('Respuesta de cookie_url demasiado grande'));return;}
+        chunks.push(chunk);
+      });
+      res.on('end',()=>{
+        if(settled)return;settled=true;
+        if(status<200||status>=300)return reject(new Error(`cookie_url respondió HTTP ${status}`));
+        const fromHeader=cookieHeaderFromSetCookie(res.headers['set-cookie']);
+        const fromBody=cookieHeaderFromBody(Buffer.concat(chunks).toString('utf8'));
+        const cookie=fromHeader||fromBody;
+        if(!cookie)return reject(new Error('cookie_url no devolvió una cookie válida'));
+        resolve(cookie.slice(0,8000));
+      });
+    });
+    req.on('timeout',()=>req.destroy(Object.assign(new Error('Timeout consultando cookie_url'),{code:'ETIMEDOUT'})));
+    req.on('error',e=>{if(settled)return;settled=true;reject(e)});
+    req.end();
+  });
+}
+async function resolvePlaybackCookie(item){
+  const out=cloneJson(item||{}),url=playbackCookieUrl(out);
+  if(!url)return out;
+  const sourceHeaders=objectPlaybackHeaders(out);
+  const cacheKey=crypto.createHash('sha256').update(url+'\n'+JSON.stringify(sourceHeaders)).digest('hex');
+  const now=Date.now(),cached=playbackCookieCache.get(cacheKey);
+  try{
+    let cookie='';
+    if(cached&&cached.expiresAt>now)cookie=cached.cookie;
+    else{
+      cookie=await fetchAuthorizedPlaybackCookie(url,sourceHeaders);
+      playbackCookieCache.set(cacheKey,{cookie,expiresAt:now+30000});
+      if(playbackCookieCache.size>200){
+        for(const [k,v] of playbackCookieCache)if(!v||v.expiresAt<=now)playbackCookieCache.delete(k);
+      }
+    }
+    const headers=out.headers&&typeof out.headers==='object'&&!Array.isArray(out.headers)?cloneJson(out.headers):{};
+    headers.Cookie=cookie;
+    out.headers=headers;
+    out.cookie_ready=true;
+    return out;
+  }catch(e){
+    out.cookie_ready=false;
+    console.warn(`[CO-CHI COOKIE] ${String(out.name||'Canal').slice(0,80)}: ${String(e?.message||e)}`);
+    return out;
+  }
+}
+async function applyPlaybackCookies(list){
+  if(!Array.isArray(list)||!catalogHasPlaybackCookie(list))return list;
+  const out=cloneJson(list);
+  for(const group of out){
+    if(!Array.isArray(group?.samples))continue;
+    for(let i=0;i<group.samples.length;i++){
+      const item=group.samples[i];
+      if(playbackCookieUrl(item)){
+        group.samples[i]=await resolvePlaybackCookie(item);
+        if(group.samples[i]?.cookie_ready===true)console.log(`[CO-CHI COOKIE] Lista para reproducir: ${String(group.samples[i].name||'Canal').slice(0,80)}`);
+      }
+    }
+  }
+  return out;
+}
+
 async function rescueCaptureFirstLocation(rawUrl,headers={},timeoutSeconds=10){
   const started=Date.now();
   try{
@@ -1979,10 +2113,21 @@ function selectedPlaybackSource(item){
   if(!sources.length)return null;
   let idx=Number.isInteger(item.activePlaybackSource)?item.activePlaybackSource:sources.findIndex(x=>x.enabled===true);
   if(idx<0||idx>=sources.length)idx=0;
-  const src=sources[idx];return {idx,url:String(src.url||'').trim(),headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{},drm_scheme:String(src.drm_scheme||'').toLowerCase(),keys:Array.isArray(src.keys)?cloneJson(src.keys):[],drm_license_uri:String(src.drm_license_uri||src.clearkey_license_uri||'').trim(),drm_license_url:String(src.drm_license_url||src.license_url||'').trim(),drm_license_headers:src.drm_license_headers&&typeof src.drm_license_headers==='object'?cloneJson(src.drm_license_headers):((src.license_headers&&typeof src.license_headers==='object')?cloneJson(src.license_headers):{})};
+  const src=sources[idx];return {
+    idx,
+    url:String(src.url||'').trim(),
+    headers:src.headers&&typeof src.headers==='object'?cloneJson(src.headers):{},
+    drm_scheme:String(src.drm_scheme||'').toLowerCase(),
+    keys:Array.isArray(src.keys)?cloneJson(src.keys):[],
+    drm_license_uri:String(src.drm_license_uri||src.clearkey_license_uri||'').trim(),
+    drm_license_url:String(src.drm_license_url||src.license_url||'').trim(),
+    drm_license_headers:src.drm_license_headers&&typeof src.drm_license_headers==='object'?cloneJson(src.drm_license_headers):((src.license_headers&&typeof src.license_headers==='object')?cloneJson(src.license_headers):{}),
+    cookie_url:String(src.cookie_url||src.cookieUrl||'').trim(),
+    cookie_required:src.cookie_required===true||src.cookieRequired===true
+  };
 }
 function applySelectedPlaybackSource(item,{stripConfig=false}={}){
-  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;delete x.drm_scheme;delete x.keys;delete x.drm_license_url;delete x.drm_license_headers;delete x.license_url;delete x.license_headers;if(sel.drm_scheme==='clearkey'){x.drm_scheme='clearkey';x.keys=sel.keys;if(sel.drm_license_uri)x.drm_license_uri=sel.drm_license_uri;}else if(sel.drm_scheme==='widevine'){x.drm_scheme='widevine';x.drm_license_url=sel.drm_license_url;if(Object.keys(sel.drm_license_headers).length)x.drm_license_headers=sel.drm_license_headers;}}
+  const x=cloneJson(item||{}),sel=selectedPlaybackSource(x);if(sel){x.uri=sel.url;if(Object.keys(sel.headers).length)x.headers=sel.headers;else delete x.headers;delete x.drm_scheme;delete x.keys;delete x.drm_license_url;delete x.drm_license_headers;delete x.license_url;delete x.license_headers;if(sel.drm_scheme==='clearkey'){x.drm_scheme='clearkey';x.keys=sel.keys;if(sel.drm_license_uri)x.drm_license_uri=sel.drm_license_uri;}else if(sel.drm_scheme==='widevine'){x.drm_scheme='widevine';x.drm_license_url=sel.drm_license_url;if(Object.keys(sel.drm_license_headers).length)x.drm_license_headers=sel.drm_license_headers;}if(sel.cookie_url)x.cookie_url=sel.cookie_url;else{delete x.cookie_url;delete x.cookieUrl;}if(sel.cookie_required)x.cookie_required=true;else delete x.cookie_required;}
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
@@ -3100,6 +3245,7 @@ async function route(req,res){
       const found=tv2FindBySourceId(clear,tv2Resolve[1]);if(!found)return sendJson(res,404,{error:'ID TV2 no encontrado'});
       let one=[{name:String(found.group?.name||'General'),samples:[structuredClone(found.item)]}];
       one=await applyTvFailover(one);
+      one=await applyPlaybackCookies(one);
       if(tvDedicatedEnabled('tv2')){
         if(!tvDedicatedConfigured('tv2'))return sendJson(res,503,{error:'Gateway TV2 activado pero no configurado'});
         one=tvDedicatedPlaybackObject(one,'tv2');
@@ -3139,6 +3285,7 @@ async function route(req,res){
           let clear=decryptManagedContent(JSON.parse(r.json_text));
           if(st.mode==='demo')clear=filterDemoCategories(clear);
           clear=await applyTvFailover(clear);
+          clear=await applyPlaybackCookies(clear);
           clear=applyTvEpgNow(clear);
           const dedicatedOn=tvDedicatedEnabled(sourceKey);
           if(dedicatedOn){
@@ -3171,6 +3318,28 @@ async function route(req,res){
       // reconstruirse si el gateway no está activo.
       if(!sec.enabled){
         let payload=JSON.parse(r.json_text);
+        if(sourceKey==='tv1'||sourceKey==='tv2'){
+          try{
+            let cookieClear=decryptManagedContent(payload);
+            if(catalogHasPlaybackCookie(cookieClear)){
+              if(st.mode==='demo')cookieClear=filterDemoCategories(cookieClear);
+              cookieClear=await applyTvFailover(cookieClear);
+              cookieClear=await applyPlaybackCookies(cookieClear);
+              cookieClear=applyTvEpgNow(cookieClear);
+              payload=encryptManagedContent(cookieClear);
+              return sendJson(res,200,payload,{
+                'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache',
+                'X-COCHI-Access-Mode':String(st.mode||''),
+                'X-COCHI-Demo-Blocked':st.mode==='demo'?demoBlockedCategories().join('|'):'',
+                'X-COCHI-Playback-Security':'compatible',
+                'X-COCHI-Playback-Generation':String(sec.generation),
+                'X-COCHI-Cookie-Resolved':'1'
+              });
+            }
+          }catch(cookieDeliveryError){
+            console.warn('[CO-CHI COOKIE] Entrega compatible sin resolver cookie: '+String(cookieDeliveryError?.message||cookieDeliveryError));
+          }
+        }
         if((sourceKey==='tv1'||sourceKey==='tv2')&&epgRuntime.byId.size){
           try{
             let clear=decryptManagedContent(payload);
@@ -3212,7 +3381,7 @@ async function route(req,res){
       if(!sec.gatewayConfigured)return sendJson(res,503,{error:'Seguridad de reproducción activada pero Gateway no configurado'});
       let clear=decryptManagedContent(JSON.parse(r.json_text));
       if(st.mode==='demo')clear=filterDemoCategories(clear);
-      if(publicContent[1]==='tv1'||publicContent[1]==='tv2'){clear=await applyTvFailover(clear);clear=applyTvEpgNow(clear);}
+      if(publicContent[1]==='tv1'||publicContent[1]==='tv2'){clear=await applyTvFailover(clear);clear=await applyPlaybackCookies(clear);clear=applyTvEpgNow(clear);}
       clear=securePlaybackObject(clear,sec.generation);
       const payload=encryptManagedContent(clear);
       return sendJson(res,200,payload,{
