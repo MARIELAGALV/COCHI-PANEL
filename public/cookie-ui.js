@@ -39,11 +39,15 @@
     return `${COOKIE_URL_STORAGE_PREFIX}:${encodeURIComponent(channel)}:${encodeURIComponent(sourceIndex)}`;
   }
   function loadSavedCookieUrl(row){
+    const persisted=String(row?.dataset?.cookieUrl||'').trim();
+    if(persisted)return persisted;
     try{return String(localStorage.getItem(cookieUrlStorageKey(row))||'').trim();}catch{return '';}
   }
   function saveCookieUrl(row,value){
+    const v=String(value||'').trim();
+    if(row?.dataset)row.dataset.cookieUrl=v;
     try{
-      const key=cookieUrlStorageKey(row),v=String(value||'').trim();
+      const key=cookieUrlStorageKey(row);
       if(v)localStorage.setItem(key,v);else localStorage.removeItem(key);
     }catch{}
   }
