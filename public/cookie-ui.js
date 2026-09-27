@@ -65,16 +65,17 @@
     const manual=box.querySelector('.cochi-cookie-manual'),cookieUrl=box.querySelector('.cochi-cookie-url'),status=box.querySelector('.cochi-cookie-status'),fetchBtn=box.querySelector('.cochi-cookie-fetch');
     const syncFromHeaders=()=>{const c=getHeader(parseHeaders(headersArea.value),'Cookie');if(document.activeElement!==manual)manual.value=c;};
     syncFromHeaders();
-    cookieUrl.value=loadSavedCookieUrl(row);
+    cookieUrl.value=String(row.dataset.cookieUrl||'').trim()||loadSavedCookieUrl(row);
+    row.dataset.cookieUrl=cookieUrl.value;
     headersArea.addEventListener('input',syncFromHeaders);
-    cookieUrl.addEventListener('input',()=>saveCookieUrl(row,cookieUrl.value));
-    cookieUrl.addEventListener('change',()=>saveCookieUrl(row,cookieUrl.value));
+    cookieUrl.addEventListener('input',()=>{row.dataset.cookieUrl=String(cookieUrl.value||'').trim();saveCookieUrl(row,cookieUrl.value);});
+    cookieUrl.addEventListener('change',()=>{row.dataset.cookieUrl=String(cookieUrl.value||'').trim();saveCookieUrl(row,cookieUrl.value);});
     manual.addEventListener('input',()=>{headersArea.value=replaceCookieHeader(headersArea.value,manual.value.trim());headersArea.dispatchEvent(new Event('input',{bubbles:true}));setStatus(status,manual.value.trim()?'Cookie lista para guardar en esta fuente.':'Cookie eliminada de los headers.',manual.value.trim()?'ok':'');});
-    box.querySelector('.cochi-cookie-use-source').addEventListener('click',()=>{cookieUrl.value=String(urlArea.value||'').trim();saveCookieUrl(row,cookieUrl.value);setStatus(status,cookieUrl.value?'URL de la fuente copiada y guardada.':'La fuente todavía no tiene URL.',cookieUrl.value?'ok':'bad');});
+    box.querySelector('.cochi-cookie-use-source').addEventListener('click',()=>{cookieUrl.value=String(urlArea.value||'').trim();row.dataset.cookieUrl=cookieUrl.value;saveCookieUrl(row,cookieUrl.value);setStatus(status,cookieUrl.value?'URL de la fuente copiada y lista para guardar.':'La fuente todavía no tiene URL.',cookieUrl.value?'ok':'bad');});
     fetchBtn.addEventListener('click',async()=>{
       const target=String(cookieUrl.value||'').trim(),sourceUrl=String(urlArea.value||'').trim();
       if(!target){setStatus(status,'Ingresá la URL desde donde querés obtener la cookie.','bad');return;}
-      saveCookieUrl(row,target);
+      row.dataset.cookieUrl=target;saveCookieUrl(row,target);
       const headers=parseHeaders(headersArea.value),currentCookie=getHeader(headers,'Cookie');
       fetchBtn.disabled=true;fetchBtn.textContent='OBTENIENDO...';setStatus(status,'Consultando la URL desde el backend del PANEL...');
       try{
