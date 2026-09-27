@@ -14,7 +14,7 @@ const DATA_DIR = process.env.COCHI_DATA_DIR ? path.resolve(process.env.COCHI_DAT
 const DB_PATH = path.join(DATA_DIR, 'cochi-panel.db');
 const TRUST_PROXY_HTTPS = String(process.env.COCHI_HTTPS || '').toLowerCase() === '1' || String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 const COOKIE_ROUTE = '/api/admin/cookie-fetch';
-const UI_SCRIPT = '/cookie-ui.js?v=1.1.7';
+const UI_SCRIPT = '/cookie-ui.js?v=1.1.7-cookie-persist-1';
 const UI_CSS = '/cookie-ui.css?v=1.1.7';
 const MAX_BODY = 64 * 1024;
 const MAX_RESPONSE_BODY = 1024 * 1024;
