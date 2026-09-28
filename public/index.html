@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
-  <link rel="stylesheet" href="/styles.css?v=1.1.7-design-clean-editor-1">
+  <link rel="stylesheet" href="/styles.css?v=1.1.7-live-banner-editor-1">
 </head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
@@ -166,6 +166,31 @@
           <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Cargá y configurá el banner. La edición visual real se abre desde AJUSTAR IMAGEN.</p></div><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div>
           <div class="source-row">
             <div class="source-head"><div class="source-title">Destacado administrable</div><label class="switch-row"><input id="homeBannerEnabled" type="checkbox"> Activado</label></div>
+
+            <div class="design-live-preview-wrap">
+              <div class="design-live-preview-head">
+                <div><b>VISTA PREVIA EN TIEMPO REAL</b><span>Esta imagen cambia mientras editás los datos y muestra la versión ajustada cuando la guardás.</span></div>
+                <div class="home-banner-tv-size"><b>TV 1280 × 520 px</b><span>≈ 2.46:1</span></div>
+              </div>
+              <div id="homeBannerPreviewHero" class="design-live-preview-hero">
+                <img id="homeBannerPreviewImage" alt="Vista previa real del banner" hidden>
+                <div id="homeBannerPreviewVideo" class="design-live-preview-video" hidden>VIDEO / YOUTUBE</div>
+                <div id="homeBannerPreviewEmpty" class="design-live-preview-empty">CARGÁ UNA IMAGEN PARA VERLA ACÁ</div>
+                <div id="homeBannerPreviewScrim" class="design-live-preview-scrim"></div>
+                <div class="design-live-preview-copy">
+                  <span id="homeBannerPreviewEyebrow">DESTACADO</span>
+                  <strong id="homeBannerPreviewTitle">BANNER PRINCIPAL</strong>
+                  <small id="homeBannerPreviewMeta"></small>
+                  <p id="homeBannerPreviewDescription"></p>
+                  <div class="design-live-preview-buttons"><i id="homeBannerPreviewPrimary">Ver ahora</i><i id="homeBannerPreviewExplore">Explorar</i></div>
+                </div>
+              </div>
+              <div class="design-live-preview-footer">
+                <span class="muted tiny">Elegí qué portada estás revisando:</span>
+                <div id="homeBannerPreviewSlots" class="home-banner-preview-slots" aria-label="Seleccionar imagen para vista previa"></div>
+                <button id="homeBannerPreviewAdjustBtn" class="primary" type="button">AJUSTAR ESTA IMAGEN</button>
+              </div>
+            </div>
 
             <div class="source-fields"><label>TIPO<select id="homeBannerType"><option value="image">Imagen fija</option><option value="video">Video automático / YouTube</option></select></label><label>IMAGEN / VIDEO 1<div class="banner-url-edit-row"><input id="homeBannerMediaUrl" type="url" placeholder="https://.../banner.jpg, promo.mp4, youtube.com/watch?v=... o youtu.be/..."><button id="homeBannerAdjustPrimaryBtn" class="ghost banner-adjust-btn" type="button">AJUSTAR IMAGEN</button><span id="homeBannerAdjustedPrimary" class="badge off">ORIGINAL</span></div></label></div><div class="source-fields"><label>IMAGEN DE RESPALDO (opcional)<input id="homeBannerFallback" type="url" placeholder="https://.../respaldo.jpg"></label><label>ETIQUETA<input id="homeBannerEyebrow" maxlength="60" placeholder="NUEVO ESTRENO"></label></div>
             <div class="source-fields"><label>TÍTULO<input id="homeBannerTitle" maxlength="120" placeholder="Nombre de la serie o promoción"></label><label>META / TEXTO CORTO<input id="homeBannerMeta" maxlength="120" placeholder="Nueva temporada · 2026"></label></div>
@@ -395,6 +420,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.7-design-clean-editor-1"></script>
+  <script src="/app.js?v=1.1.7-live-banner-editor-1"></script>
 </body>
 </html>
