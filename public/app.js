@@ -1971,7 +1971,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-live-banner-editor-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-live-banner-editor-2').catch(()=>{}));
 }
 bootstrap();
 
