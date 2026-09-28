@@ -853,9 +853,10 @@ function updateHomeBannerAdjustedBadges(){
   $$('.home-banner-extra-row').forEach(r=>{const slot=Number(r.dataset.bannerSlot),b=r.querySelector('.home-banner-adjusted-badge');if(!b)return;const ok=homeBannerIsAdjusted(slot);b.textContent=ok?'AJUSTADA':'ORIGINAL';b.className=`badge home-banner-adjusted-badge ${ok?'active':'off'}`;});
 }
 function updateHomeBannerPreview(){
+  updateHomeBannerAdjustedBadges();
   const hero=$('#homeBannerPreviewHero'),img=$('#homeBannerPreviewImage'),video=$('#homeBannerPreviewVideo');if(!hero||!img||!video)return;
   const slot=Math.max(1,Math.min(10,Number(homeBannerPreviewSlot)||1)),url=homeBannerSlotUrl(slot),type=slot===1?($('#homeBannerType')?.value||'image'):'image';
-  renderHomeBannerSlotButtons();updateHomeBannerAdjustedBadges();
+  renderHomeBannerSlotButtons();
   img.hidden=true;video.hidden=true;img.removeAttribute('src');
   if(url){if(type==='video'){video.hidden=false;video.textContent='VIDEO / YOUTUBE · VISTA PREVIA';}else{img.hidden=false;img.onload=()=>{img.hidden=false};img.onerror=()=>{img.hidden=true};img.src=homeBannerPreviewUrl(slot);}}
   $('#homeBannerPreviewEyebrow').textContent=$('#homeBannerEyebrow')?.value||'DESTACADO';
@@ -1887,7 +1888,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-design-banner-move-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-design-clean-editor-1').catch(()=>{}));
 }
 bootstrap();
 
