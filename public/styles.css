@@ -592,3 +592,16 @@ body[data-view="devices"] #view-devices .actions button{
 .banner-crop-dimensions{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin:9px 0 12px;padding:8px 12px;border:1px solid rgba(0,207,255,.24);border-radius:10px;background:rgba(0,207,255,.06)}
 .banner-crop-dimensions b{font-size:12px;color:#ebfbff}.banner-crop-dimensions span{font-size:11px;color:#8eafc0}
 @media(max-width:760px){.home-banner-preview-head{align-items:flex-start!important}.home-banner-tv-size{white-space:normal}.home-banner-size-guide{align-items:flex-start;flex-direction:column;gap:7px}.home-banner-size-guide>div{min-width:0}.banner-crop-dimensions{justify-content:flex-start}}
+
+
+/* v1.1.7 · Diseño limpio sin previews decorativas */
+#view-appearance .theme-layout{
+  display:block!important;
+}
+#view-appearance .theme-controls{
+  width:100%!important;
+  max-width:none!important;
+}
+#view-appearance .theme-color-grid{
+  width:100%;
+}
