@@ -163,7 +163,7 @@ function switchView(name){
   if(contentGroup&&['content','sources','resolver'].includes(name))contentGroup.classList.remove('collapsed');
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
   document.body.dataset.view=name;
-  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción',appearance:'Diseño y apariencia'};
+  const t={dashboard:'Inicio',accounts:'Fichas PANEL',clients:'Clientes finales',devices:'Dispositivos',credits:'Créditos',promotions:'Promociones',demos:'Demos',adults:'PIN Adultos',sources:'Fuentes de contenido',content:'Manager de Contenido',resolver:'Resolver stream web',security:'Seguridad de reproducción',appearance:'Diseño'};
   $('#pageTitle').textContent=t[name]||name;refreshCurrent();
 }
 async function refreshMe(){const r=await api('/api/panel/me');state.me=r.account;$('#meName').textContent=state.me.name;$('#roleEyebrow').textContent=state.me.is_root_admin?'ADMINISTRACIÓN PRINCIPAL':state.me.role_name;$('#meCredits').textContent=state.me.role_level===1?'':`${state.me.credits} créditos`;applyAccessVisibility();}
@@ -179,8 +179,8 @@ async function refreshCurrent(){
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
     if(v==='security'&&state.me.role_level===1){await loadPlaybackSecurity();await loadTvGateways();}
-    if(v==='appearance'&&state.me.role_level===1)await loadAppTheme();
-    if(v==='sources'&&state.me.role_level===1){await loadSources();await loadHomeBanner();}
+    if(v==='appearance'&&state.me.role_level===1)await Promise.all([loadAppTheme(),loadHomeBanner()]);
+    if(v==='sources'&&state.me.role_level===1)await loadSources();
     if(v==='resolver'&&state.me.role_level===1){}
     if(v==='content'&&state.me.role_level===1)await loadContent();
   }catch(e){if(e.status===401||e.status===423){show('activateView');msg($('#activateMsg'),e.status===423?blockedPanelMessage(e):'Volvé a ingresar.');}else console.error(e);}
@@ -1887,7 +1887,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-recovery-design-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-design-banner-move-1').catch(()=>{}));
 }
 bootstrap();
 
