@@ -581,3 +581,14 @@ body[data-view="devices"] #view-devices .actions button{
 .az-link-row:first-of-type{margin-top:8px}.az-link-row .resolver-code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:900px){.az-review-toolbar{grid-template-columns:1fr 1fr}.az-review-list{grid-template-columns:1fr}.az-link-row{grid-template-columns:1fr auto}.az-link-row .resolver-code{grid-column:1/-1}}
 @media(max-width:600px){.az-review-toolbar{grid-template-columns:1fr}.az-channel-head{grid-template-columns:46px minmax(0,1fr)}.az-channel-head img,.az-logo-empty{width:46px;height:40px}.az-channel-status{grid-column:1/-1;justify-self:start}.az-channel-grid{grid-template-columns:1fr}.az-channel-actions button{flex:1 1 45%}}
+
+
+/* v1.1.7 · Medida exacta banner TV */
+.home-banner-tv-size{display:flex;flex-direction:column;gap:2px;padding:7px 10px;border:1px solid rgba(0,207,255,.42);border-radius:10px;background:rgba(0,207,255,.08);white-space:nowrap}
+.home-banner-tv-size b{font-size:12px;color:#e8fbff}.home-banner-tv-size span{font-size:10px;color:#82a9bc}
+.home-banner-size-guide{display:flex;align-items:center;gap:16px;margin:10px 0 14px;padding:12px 14px;border:1px solid rgba(0,207,255,.28);border-radius:12px;background:linear-gradient(90deg,rgba(0,207,255,.08),rgba(5,23,39,.35))}
+.home-banner-size-guide>div{display:flex;flex-direction:column;gap:2px;min-width:210px}.home-banner-size-guide strong{font-size:10px;color:#7fa8bb;letter-spacing:.04em}.home-banner-size-guide b{font-size:20px;color:#f1fbff}
+.home-banner-size-guide>span{font-size:11px;line-height:1.45;color:#9ab4c4}
+.banner-crop-dimensions{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin:9px 0 12px;padding:8px 12px;border:1px solid rgba(0,207,255,.24);border-radius:10px;background:rgba(0,207,255,.06)}
+.banner-crop-dimensions b{font-size:12px;color:#ebfbff}.banner-crop-dimensions span{font-size:11px;color:#8eafc0}
+@media(max-width:760px){.home-banner-preview-head{align-items:flex-start!important}.home-banner-tv-size{white-space:normal}.home-banner-size-guide{align-items:flex-start;flex-direction:column;gap:7px}.home-banner-size-guide>div{min-width:0}.banner-crop-dimensions{justify-content:flex-start}}
