@@ -668,3 +668,13 @@ body[data-view="devices"] #view-devices .actions button{
   .banner-text-fields{grid-template-columns:1fr}
   .banner-text-fields label:first-child{grid-column:auto}
 }
+
+
+/* v1.1.7 · Corrección hidden preview/banner editor */
+.design-live-preview-hero > img[hidden],
+.design-live-preview-video[hidden],
+.design-live-preview-empty[hidden],
+#homeBannerPreviewScrim[hidden],
+#bannerTextControls[hidden]{
+  display:none!important;
+}
