@@ -678,3 +678,26 @@ body[data-view="devices"] #view-devices .actions button{
 #bannerTextControls[hidden]{
   display:none!important;
 }
+
+
+/* v1.1.7 · Ajuste exacto del lienzo 1280x520 */
+.banner-crop-modal .banner-crop-stage.banner-editor-stage{
+  width:min(100%,920px)!important;
+  aspect-ratio:1280 / 520!important;
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  margin:0 auto!important;
+  overflow:hidden!important;
+}
+.banner-crop-modal .banner-crop-stage.banner-editor-stage canvas{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  aspect-ratio:1280 / 520!important;
+  max-width:100%!important;
+  margin:0!important;
+}
+.banner-crop-modal .banner-crop-stage.banner-editor-stage .banner-crop-loading{
+  inset:0!important;
+}
