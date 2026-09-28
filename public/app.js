@@ -854,24 +854,31 @@ function updateHomeBannerAdjustedBadges(){
 }
 function updateHomeBannerPreview(){
   updateHomeBannerAdjustedBadges();
-  const hero=$('#homeBannerPreviewHero'),img=$('#homeBannerPreviewImage'),video=$('#homeBannerPreviewVideo');if(!hero||!img||!video)return;
+  const hero=$('#homeBannerPreviewHero'),img=$('#homeBannerPreviewImage'),video=$('#homeBannerPreviewVideo'),empty=$('#homeBannerPreviewEmpty'),adjustBtn=$('#homeBannerPreviewAdjustBtn');
+  if(!hero||!img||!video)return;
   const slot=Math.max(1,Math.min(10,Number(homeBannerPreviewSlot)||1)),url=homeBannerSlotUrl(slot),type=slot===1?($('#homeBannerType')?.value||'image'):'image';
   renderHomeBannerSlotButtons();
-  img.hidden=true;video.hidden=true;img.removeAttribute('src');
-  if(url){if(type==='video'){video.hidden=false;video.textContent='VIDEO / YOUTUBE · VISTA PREVIA';}else{img.hidden=false;img.onload=()=>{img.hidden=false};img.onerror=()=>{img.hidden=true};img.src=homeBannerPreviewUrl(slot);}}
-  $('#homeBannerPreviewEyebrow').textContent=$('#homeBannerEyebrow')?.value||'DESTACADO';
-  $('#homeBannerPreviewTitle').textContent=$('#homeBannerTitle')?.value||'BANNER PRINCIPAL';
-  $('#homeBannerPreviewMeta').textContent=$('#homeBannerMeta')?.value||'';
-  $('#homeBannerPreviewDescription').textContent=$('#homeBannerDescription')?.value||'';
-  $('#homeBannerPreviewPrimary').textContent=$('#homeBannerButtonText')?.value||'Ver ahora';
-  $('#homeBannerPreviewExplore').textContent=$('#homeBannerExploreText')?.value||'Explorar';
-  $('#homeBannerPreviewEyebrow').hidden=!$('#homeBannerShowEyebrow')?.checked;
-  $('#homeBannerPreviewTitle').hidden=!$('#homeBannerShowTitle')?.checked;
-  $('#homeBannerPreviewMeta').hidden=!$('#homeBannerShowMeta')?.checked;
-  $('#homeBannerPreviewDescription').hidden=!$('#homeBannerShowDescription')?.checked;
-  $('#homeBannerPreviewPrimary').hidden=!$('#homeBannerShowPrimary')?.checked;
-  $('#homeBannerPreviewExplore').hidden=!$('#homeBannerShowExplore')?.checked;
-  $('#homeBannerPreviewScrim').hidden=!$('#homeBannerShowScrim')?.checked;
+  img.hidden=true;video.hidden=true;if(empty)empty.hidden=!!url;img.removeAttribute('src');
+  if(url){
+    if(type==='video'){
+      video.hidden=false;video.textContent='VIDEO / YOUTUBE · VISTA PREVIA';
+    }else{
+      img.hidden=false;img.onload=()=>{img.hidden=false;if(empty)empty.hidden=true};img.onerror=()=>{img.hidden=true;if(empty){empty.hidden=false;empty.textContent='NO SE PUDO CARGAR ESTA IMAGEN'}};img.src=homeBannerPreviewUrl(slot);
+    }
+  }
+  if(adjustBtn){
+    adjustBtn.hidden=!url||type==='video';
+    adjustBtn.textContent=slot===1?'AJUSTAR IMAGEN PRINCIPAL':`AJUSTAR IMAGEN ${slot}`;
+    adjustBtn.onclick=()=>openHomeBannerImageEditor(slot);
+  }
+  const eyebrow=$('#homeBannerPreviewEyebrow'),title=$('#homeBannerPreviewTitle'),meta=$('#homeBannerPreviewMeta'),desc=$('#homeBannerPreviewDescription'),primary=$('#homeBannerPreviewPrimary'),explore=$('#homeBannerPreviewExplore'),scrim=$('#homeBannerPreviewScrim');
+  if(eyebrow){eyebrow.textContent=$('#homeBannerEyebrow')?.value||'DESTACADO';eyebrow.hidden=!$('#homeBannerShowEyebrow')?.checked;}
+  if(title){title.textContent=$('#homeBannerTitle')?.value||'BANNER PRINCIPAL';title.hidden=!$('#homeBannerShowTitle')?.checked;}
+  if(meta){meta.textContent=$('#homeBannerMeta')?.value||'';meta.hidden=!$('#homeBannerShowMeta')?.checked;}
+  if(desc){desc.textContent=$('#homeBannerDescription')?.value||'';desc.hidden=!$('#homeBannerShowDescription')?.checked;}
+  if(primary){primary.textContent=$('#homeBannerButtonText')?.value||'Ver ahora';primary.hidden=!$('#homeBannerShowPrimary')?.checked;}
+  if(explore){explore.textContent=$('#homeBannerExploreText')?.value||'Explorar';explore.hidden=!$('#homeBannerShowExplore')?.checked;}
+  if(scrim)scrim.hidden=!$('#homeBannerShowScrim')?.checked;
 }
 function bindHomeBannerPreviewEvents(){
   const ids=['homeBannerType','homeBannerMediaUrl','homeBannerEyebrow','homeBannerTitle','homeBannerDescription','homeBannerMeta','homeBannerButtonText','homeBannerExploreText','homeBannerShowPrimary','homeBannerShowExplore','homeBannerShowEyebrow','homeBannerShowTitle','homeBannerShowDescription','homeBannerShowMeta','homeBannerShowScrim'];
@@ -879,36 +886,112 @@ function bindHomeBannerPreviewEvents(){
   $$('.home-banner-extra').forEach((el,i)=>{if(el.dataset.previewBound==='1')return;el.dataset.previewBound='1';el.addEventListener('input',()=>{homeBannerPreviewSlot=i+2;updateHomeBannerPreview();});});
 }
 function openHomeBannerImageEditor(slot){
-  slot=Math.max(1,Math.min(10,Number(slot)||1));const sourceUrl=homeBannerSlotUrl(slot);if(!sourceUrl){toast(`Ingresá primero la URL de la imagen ${slot}`,'bad');return;}
+  slot=Math.max(1,Math.min(10,Number(slot)||1));
+  const sourceUrl=homeBannerSlotUrl(slot);
+  if(!sourceUrl){toast(`Ingresá primero la URL de la imagen ${slot}`,'bad');return;}
   if(slot===1&&($('#homeBannerType')?.value||'image')!=='image'){toast('El ajuste manual está disponible para imágenes fijas.','bad');return;}
-  openModal(`<div class="banner-crop-head"><div><h3>Ajustar imagen ${slot}</h3><p class="muted small">Mové la imagen con el mouse o el dedo. <b>ALTO</b> y <b>ANCHO</b> quedan lado a lado; el <b>ZOOM</b> se ingresa como porcentaje.</p></div><span class="badge">TV 1280 × 520 · ≈2.46:1</span></div><div id="bannerCropDimensions" class="banner-crop-dimensions"><b>SALIDA TV: 1280 × 520 px</b><span id="bannerCropOriginalDimensions">Detectando medida original…</span></div><div class="banner-crop-stage" style="width:min(100%,78vh);margin:0 auto"><canvas id="bannerCropCanvas" width="1280" height="520"></canvas><div id="bannerCropLoading" class="banner-crop-loading">CARGANDO IMAGEN...</div></div><div class="banner-crop-controls" style="display:flex!important;flex-direction:column!important;gap:12px;margin-top:12px;width:100%"><div id="bannerCropAxes" style="display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;gap:18px;align-items:center;width:100%;min-width:0"><div id="bannerCropHeightControl" style="display:flex!important;flex-direction:row!important;align-items:center;gap:9px;flex:1 1 0;min-width:0;margin:0"><span style="white-space:nowrap;font-weight:800">ALTO</span><input id="bannerCropScaleY" type="range" min="10" max="300" step="1" value="100" style="flex:1 1 auto;min-width:90px;margin:0"><b id="bannerCropScaleYValue" style="white-space:nowrap">100%</b></div><div id="bannerCropWidthControl" style="display:flex!important;flex-direction:row!important;align-items:center;gap:9px;flex:1 1 0;min-width:0;margin:0"><span style="white-space:nowrap;font-weight:800">ANCHO</span><input id="bannerCropScaleX" type="range" min="10" max="300" step="1" value="100" style="flex:1 1 auto;min-width:90px;margin:0"><b id="bannerCropScaleXValue" style="white-space:nowrap">100%</b></div><div id="bannerCropZoomControl" style="display:flex!important;flex-direction:row!important;align-items:center;gap:7px;flex:0 0 auto;margin:0"><span style="white-space:nowrap;font-weight:800">ZOOM</span><input id="bannerCropZoom" type="number" min="10" max="300" step="5" value="100" inputmode="numeric" style="width:68px!important;min-width:68px!important;max-width:68px!important;text-align:center;padding:8px 6px;margin:0"><b id="bannerCropZoomValue" style="white-space:nowrap">%</b></div></div><div class="banner-crop-quick" style="display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:8px;justify-content:center;width:100%"><button id="bannerCropCover" class="ghost" type="button">RELLENAR</button><button id="bannerCropContain" class="ghost" type="button">ENCAJAR</button><button id="bannerCropFree" class="ghost" type="button">LIBRE</button><button id="bannerCropCenter" class="ghost" type="button">CENTRAR</button><button id="bannerCropOriginal" class="ghost" type="button">USAR ORIGINAL</button></div><div class="muted tiny" style="text-align:center">En LIBRE: arrastrá la imagen para subirla, bajarla o moverla hacia los costados.</div></div><div class="muted tiny">Al tocar APLICAR AJUSTE, el PANEL guarda una versión optimizada del recorte. La APK no necesita cambios: recibe la imagen ya preparada.</div><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button id="bannerCropApply" class="primary" type="button" disabled>APLICAR AJUSTE</button></div><div id="bannerCropMsg" class="msg"></div>`);
+
+  openModal(`<div class="banner-crop-head"><div><h3>Editor visual · imagen ${slot}</h3><p class="muted small">Lo que ves en este lienzo es lo que se guarda. Arrastrá la imagen o el texto con el mouse/dedo.</p></div><span class="badge">TV 1280 × 520 · ≈2.46:1</span></div>
+    <div class="banner-crop-dimensions"><b>SALIDA TV: 1280 × 520 px</b><span id="bannerCropOriginalDimensions">Detectando medida original…</span></div>
+    <div class="banner-crop-stage banner-editor-stage"><canvas id="bannerCropCanvas" width="1280" height="520"></canvas><div id="bannerCropLoading" class="banner-crop-loading">CARGANDO IMAGEN...</div></div>
+    <div class="banner-crop-controls banner-editor-controls">
+      <div id="bannerCropAxes" class="banner-editor-axis-row">
+        <div id="bannerCropHeightControl" class="banner-editor-axis"><span>ALTO</span><input id="bannerCropScaleY" type="range" min="10" max="300" step="1" value="100"><b id="bannerCropScaleYValue">100%</b></div>
+        <div id="bannerCropWidthControl" class="banner-editor-axis"><span>ANCHO</span><input id="bannerCropScaleX" type="range" min="10" max="300" step="1" value="100"><b id="bannerCropScaleXValue">100%</b></div>
+        <div id="bannerCropZoomControl" class="banner-editor-zoom"><span>ZOOM</span><input id="bannerCropZoom" type="number" min="10" max="300" step="5" value="100" inputmode="numeric"><b>%</b></div>
+      </div>
+      <div class="banner-crop-quick"><button id="bannerCropCover" class="ghost" type="button">RELLENAR</button><button id="bannerCropContain" class="ghost" type="button">ENCAJAR</button><button id="bannerCropFree" class="ghost" type="button">LIBRE</button><button id="bannerCropCenter" class="ghost" type="button">CENTRAR</button><button id="bannerCropOriginal" class="ghost" type="button">USAR ORIGINAL</button></div>
+
+      <div class="banner-text-editor">
+        <div class="banner-text-editor-head"><div><b>TEXTO MOVIBLE</b><span class="muted tiny">Podés agregar un texto y arrastrarlo directamente sobre la imagen para ubicarlo donde no tape logos o letras.</span></div><label class="switch-row"><input id="bannerTextEnabled" type="checkbox"> Agregar texto</label></div>
+        <div id="bannerTextControls" class="banner-text-fields" hidden>
+          <label>Texto<textarea id="bannerTextValue" rows="2" maxlength="120" placeholder="Nueva serie"></textarea></label>
+          <label>Tamaño<input id="bannerTextSize" type="number" min="14" max="140" step="1" value="52"></label>
+          <label>Color<input id="bannerTextColor" type="color" value="#FFFFFF"></label>
+          <label class="switch-row"><input id="bannerTextBold" type="checkbox" checked> Negrita</label>
+          <label class="switch-row"><input id="bannerTextShadow" type="checkbox" checked> Sombra</label>
+        </div>
+      </div>
+      <div class="muted tiny" style="text-align:center">Consejo: tocá directamente el texto para moverlo. Si tocás otra zona, movés la imagen.</div>
+    </div>
+    <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button id="bannerCropApply" class="primary" type="button" disabled>APLICAR AJUSTE</button></div><div id="bannerCropMsg" class="msg"></div>`);
+
   $('#modal').classList.add('banner-crop-modal');
-  const canvas=$('#bannerCropCanvas'),ctx=canvas.getContext('2d'),loading=$('#bannerCropLoading'),zoom=$('#bannerCropZoom'),zoomValue=$('#bannerCropZoomValue'),apply=$('#bannerCropApply'),widthControl=$('#bannerCropWidthControl'),heightControl=$('#bannerCropHeightControl'),scaleXInput=$('#bannerCropScaleX'),scaleYInput=$('#bannerCropScaleY'),scaleXValue=$('#bannerCropScaleXValue'),scaleYValue=$('#bannerCropScaleYValue');
-  const image=new Image();let baseScale=1,zoomFactor=1,scaleX=1,scaleY=1,offsetX=0,offsetY=0,drag=false,lastX=0,lastY=0,mode='cover';
-  const draw=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#08111d';ctx.fillRect(0,0,canvas.width,canvas.height);if(!image.naturalWidth)return;const w=image.naturalWidth*baseScale*zoomFactor*scaleX,h=image.naturalHeight*baseScale*zoomFactor*scaleY,x=(canvas.width-w)/2+offsetX,y=(canvas.height-h)/2+offsetY;ctx.drawImage(image,x,y,w,h);};
-  const updateModeUi=()=>{
-    if(widthControl)widthControl.style.display='grid';
-    if(heightControl)heightControl.style.display='grid';
-    for(const [id,key] of [['bannerCropCover','cover'],['bannerCropContain','contain'],['bannerCropFree','free']]){const b=$('#'+id);if(b)b.className=mode===key?'primary':'ghost';}
+  const canvas=$('#bannerCropCanvas'),ctx=canvas.getContext('2d'),loading=$('#bannerCropLoading'),zoom=$('#bannerCropZoom'),apply=$('#bannerCropApply'),scaleXInput=$('#bannerCropScaleX'),scaleYInput=$('#bannerCropScaleY'),scaleXValue=$('#bannerCropScaleXValue'),scaleYValue=$('#bannerCropScaleYValue'),textEnabled=$('#bannerTextEnabled'),textControls=$('#bannerTextControls'),textValue=$('#bannerTextValue'),textSize=$('#bannerTextSize'),textColor=$('#bannerTextColor'),textBold=$('#bannerTextBold'),textShadow=$('#bannerTextShadow');
+  const savedInfo=homeBannerAdjustedInfo(slot),saved=(savedInfo&&String(savedInfo.sourceUrl||'')===sourceUrl&&savedInfo.transform&&typeof savedInfo.transform==='object')?savedInfo.transform:null;
+  const image=new Image();
+  let baseScale=1,zoomFactor=1,scaleX=1,scaleY=1,offsetX=0,offsetY=0,mode='cover',drag=false,dragTarget='image',lastX=0,lastY=0;
+  let textLayer={enabled:false,text:'Nueva serie',x:70,y:65,size:52,color:'#FFFFFF',bold:true,shadow:true};
+
+  const clamp=(n,min,max)=>Math.max(min,Math.min(max,Number(n)));
+  const calcBase=m=>{const cover=Math.max(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight),contain=Math.min(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);return m==='cover'?cover:contain;};
+  const textLines=()=>String(textLayer.text||'').split(/\n/);
+  const textBox=()=>{
+    ctx.save();ctx.font=`${textLayer.bold?'700':'400'} ${textLayer.size}px Arial, sans-serif`;let w=0;for(const line of textLines())w=Math.max(w,ctx.measureText(line||' ').width);ctx.restore();return {w,h:Math.max(textLayer.size,textLines().length*textLayer.size*1.18)};
   };
-  const resetFactors=()=>{zoomFactor=1;scaleX=1;scaleY=1;offsetX=0;offsetY=0;zoom.value='100';zoomValue.textContent='%';scaleXInput.value='100';scaleYInput.value='100';scaleXValue.textContent='100%';scaleYValue.textContent='100%';};
-  const setMode=m=>{mode=m;const cover=Math.max(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight),contain=Math.min(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);baseScale=m==='cover'?cover:contain;resetFactors();updateModeUi();draw();};
-  image.onload=()=>{loading.hidden=true;apply.disabled=false;const dim=$('#bannerCropOriginalDimensions');if(dim)dim.textContent=`ORIGINAL: ${image.naturalWidth} × ${image.naturalHeight} px → TV: 1280 × 520 px`;setMode('cover');};
+  const draw=(selection=true)=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#08111d';ctx.fillRect(0,0,canvas.width,canvas.height);
+    if(!image.naturalWidth)return;
+    const w=image.naturalWidth*baseScale*zoomFactor*scaleX,h=image.naturalHeight*baseScale*zoomFactor*scaleY,x=(canvas.width-w)/2+offsetX,y=(canvas.height-h)/2+offsetY;
+    ctx.drawImage(image,x,y,w,h);
+    if(textLayer.enabled&&textLayer.text){
+      ctx.save();ctx.textBaseline='top';ctx.font=`${textLayer.bold?'700':'400'} ${textLayer.size}px Arial, sans-serif`;ctx.fillStyle=textLayer.color;
+      if(textLayer.shadow){ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=Math.max(5,textLayer.size*.13);ctx.shadowOffsetX=2;ctx.shadowOffsetY=2;}
+      textLines().forEach((line,i)=>ctx.fillText(line,textLayer.x,textLayer.y+i*textLayer.size*1.18));ctx.restore();
+      if(selection){const b=textBox();ctx.save();ctx.strokeStyle='#00CFFF';ctx.lineWidth=2;ctx.setLineDash([8,6]);ctx.strokeRect(textLayer.x-8,textLayer.y-8,b.w+16,b.h+16);ctx.restore();}
+    }
+  };
+  const updateModeUi=()=>{for(const [id,key] of [['bannerCropCover','cover'],['bannerCropContain','contain'],['bannerCropFree','free']]){const b=$('#'+id);if(b)b.className=mode===key?'primary':'ghost';}};
+  const syncControls=()=>{
+    zoom.value=String(Math.round(zoomFactor*100));scaleXInput.value=String(Math.round(scaleX*100));scaleYInput.value=String(Math.round(scaleY*100));scaleXValue.textContent=`${Math.round(scaleX*100)}%`;scaleYValue.textContent=`${Math.round(scaleY*100)}%`;
+    textEnabled.checked=!!textLayer.enabled;textControls.hidden=!textLayer.enabled;textValue.value=textLayer.text||'';textSize.value=String(textLayer.size);textColor.value=textLayer.color;textBold.checked=!!textLayer.bold;textShadow.checked=!!textLayer.shadow;updateModeUi();
+  };
+  const resetFactors=()=>{zoomFactor=1;scaleX=1;scaleY=1;offsetX=0;offsetY=0;};
+  const setMode=m=>{mode=m;baseScale=calcBase(m);resetFactors();syncControls();draw();};
+
+  image.onload=()=>{
+    loading.hidden=true;apply.disabled=false;const dim=$('#bannerCropOriginalDimensions');if(dim)dim.textContent=`ORIGINAL: ${image.naturalWidth} × ${image.naturalHeight} px → TV: 1280 × 520 px`;
+    if(saved){
+      mode=['cover','contain','free'].includes(String(saved.mode))?String(saved.mode):'cover';
+      baseScale=Number.isFinite(Number(saved.baseScale))&&Number(saved.baseScale)>0?Number(saved.baseScale):calcBase(mode);
+      zoomFactor=clamp(saved.zoom||1,.1,3);scaleX=clamp(saved.scaleX||1,.1,3);scaleY=clamp(saved.scaleY||1,.1,3);offsetX=Number(saved.offsetX)||0;offsetY=Number(saved.offsetY)||0;
+      const t=saved.textOverlay;
+      if(t&&typeof t==='object')textLayer={enabled:t.enabled===true,text:String(t.text||'').slice(0,120),x:Number(t.x)||70,y:Number(t.y)||65,size:clamp(t.size||52,14,140),color:/^#[0-9A-Fa-f]{6}$/.test(String(t.color||''))?String(t.color).toUpperCase():'#FFFFFF',bold:t.bold!==false,shadow:t.shadow!==false};
+      syncControls();draw();msg($('#bannerCropMsg'),'EDICIÓN GUARDADA RECUPERADA. Podés continuar desde donde la dejaste.',true);
+    }else setMode('cover');
+  };
   image.onerror=()=>{loading.textContent='NO SE PUDO CARGAR LA IMAGEN';const dim=$('#bannerCropOriginalDimensions');if(dim)dim.textContent='No se pudo detectar la medida original';msg($('#bannerCropMsg'),'El servidor no pudo obtener esa imagen. Revisá la URL o probá otra.');};
   image.src=`/api/admin/image-preview?url=${encodeURIComponent(sourceUrl)}`;
-  zoom.oninput=()=>{const pct=Math.max(10,Math.min(300,Number(zoom.value||100)));zoomFactor=pct/100;zoomValue.textContent='%';draw();};
-  scaleXInput.oninput=()=>{if(mode!=='free')mode='free';scaleX=Math.max(.10,Number(scaleXInput.value||100)/100);scaleXValue.textContent=`${Math.round(scaleX*100)}%`;updateModeUi();draw();};
-  scaleYInput.oninput=()=>{if(mode!=='free')mode='free';scaleY=Math.max(.10,Number(scaleYInput.value||100)/100);scaleYValue.textContent=`${Math.round(scaleY*100)}%`;updateModeUi();draw();};
+
+  zoom.oninput=()=>{zoomFactor=clamp((Number(zoom.value)||100)/100,.1,3);draw();};
+  scaleXInput.oninput=()=>{if(mode!=='free')mode='free';scaleX=clamp((Number(scaleXInput.value)||100)/100,.1,3);scaleXValue.textContent=`${Math.round(scaleX*100)}%`;updateModeUi();draw();};
+  scaleYInput.oninput=()=>{if(mode!=='free')mode='free';scaleY=clamp((Number(scaleYInput.value)||100)/100,.1,3);scaleYValue.textContent=`${Math.round(scaleY*100)}%`;updateModeUi();draw();};
   $('#bannerCropCover').onclick=()=>image.naturalWidth&&setMode('cover');
   $('#bannerCropContain').onclick=()=>image.naturalWidth&&setMode('contain');
-  $('#bannerCropFree').onclick=()=>image.naturalWidth&&setMode('free');
+  $('#bannerCropFree').onclick=()=>{if(!image.naturalWidth)return;mode='free';updateModeUi();draw();};
   $('#bannerCropCenter').onclick=()=>{offsetX=0;offsetY=0;draw();};
+
+  textEnabled.onchange=()=>{textLayer.enabled=textEnabled.checked;textControls.hidden=!textLayer.enabled;if(textLayer.enabled&&!textLayer.text)textLayer.text='Nueva serie';syncControls();draw();};
+  const textChanged=()=>{textLayer.text=String(textValue.value||'').slice(0,120);textLayer.size=clamp(textSize.value||52,14,140);textLayer.color=textColor.value;textLayer.bold=textBold.checked;textLayer.shadow=textShadow.checked;draw();};
+  textValue.oninput=textChanged;textSize.oninput=textChanged;textColor.oninput=textChanged;textBold.onchange=textChanged;textShadow.onchange=textChanged;
+
   const point=e=>{const r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)*(canvas.width/r.width),y:(e.clientY-r.top)*(canvas.height/r.height)}};
-  canvas.onpointerdown=e=>{if(!image.naturalWidth)return;e.preventDefault();drag=true;canvas.setPointerCapture?.(e.pointerId);const p=point(e);lastX=p.x;lastY=p.y;};
-  canvas.onpointermove=e=>{if(!drag)return;e.preventDefault();const p=point(e);offsetX+=p.x-lastX;offsetY+=p.y-lastY;lastX=p.x;lastY=p.y;draw();};
+  const onText=p=>{if(!textLayer.enabled||!textLayer.text)return false;const b=textBox();return p.x>=textLayer.x-14&&p.x<=textLayer.x+b.w+14&&p.y>=textLayer.y-14&&p.y<=textLayer.y+b.h+14;};
+  canvas.onpointerdown=e=>{if(!image.naturalWidth)return;e.preventDefault();const p=point(e);drag=true;dragTarget=onText(p)?'text':'image';lastX=p.x;lastY=p.y;canvas.setPointerCapture?.(e.pointerId);};
+  canvas.onpointermove=e=>{if(!drag)return;e.preventDefault();const p=point(e),dx=p.x-lastX,dy=p.y-lastY;if(dragTarget==='text'){textLayer.x=clamp(textLayer.x+dx,-400,canvas.width+400);textLayer.y=clamp(textLayer.y+dy,-200,canvas.height+200);}else{offsetX+=dx;offsetY+=dy;}lastX=p.x;lastY=p.y;draw();};
   canvas.onpointerup=canvas.onpointercancel=e=>{drag=false;try{canvas.releasePointerCapture?.(e.pointerId)}catch{}};
-  $('#bannerCropOriginal').onclick=async()=>{try{await api(`/api/admin/home-banner/image-adjustment/${slot}`,{method:'DELETE'});state.homeBannerAdjustedSlots=state.homeBannerAdjustedSlots||{};delete state.homeBannerAdjustedSlots[String(slot)];closeModal();updateHomeBannerPreview();toast(`Imagen ${slot}: se usará el original`,'ok');}catch(e){msg($('#bannerCropMsg'),e.message)}};
-  apply.onclick=async()=>{try{apply.disabled=true;apply.textContent='GUARDANDO...';const dataUrl=canvas.toDataURL('image/jpeg',.88);const transform={mode,zoom:Number(zoomFactor.toFixed(3)),scaleX:Number(scaleX.toFixed(3)),scaleY:Number(scaleY.toFixed(3)),offsetX:Math.round(offsetX),offsetY:Math.round(offsetY),width:1280,height:720};const r=await api(`/api/admin/home-banner/image-adjustment/${slot}`,{method:'PUT',body:{sourceUrl,dataUrl,transform}});state.homeBannerAdjustedSlots=state.homeBannerAdjustedSlots||{};state.homeBannerAdjustedSlots[String(slot)]=r.adjustment;closeModal();homeBannerPreviewSlot=slot;updateHomeBannerPreview();toast(`Imagen ${slot} ajustada y guardada`,'ok');}catch(e){apply.disabled=false;apply.textContent='APLICAR AJUSTE';msg($('#bannerCropMsg'),e.message)}};
+
+  $('#bannerCropOriginal').onclick=async()=>{try{await api(`/api/admin/home-banner/image-adjustment/${slot}`,{method:'DELETE'});state.homeBannerAdjustedSlots=state.homeBannerAdjustedSlots||{};delete state.homeBannerAdjustedSlots[String(slot)];closeModal();homeBannerPreviewSlot=slot;updateHomeBannerPreview();toast(`Imagen ${slot}: se usará el original`,'ok');}catch(e){msg($('#bannerCropMsg'),e.message)}};
+
+  apply.onclick=async()=>{
+    try{
+      apply.disabled=true;apply.textContent='GUARDANDO...';draw(false);
+      const dataUrl=canvas.toDataURL('image/jpeg',.9);draw(true);
+      const transform={mode,baseScale:Number(baseScale.toFixed(6)),zoom:Number(zoomFactor.toFixed(3)),scaleX:Number(scaleX.toFixed(3)),scaleY:Number(scaleY.toFixed(3)),offsetX:Math.round(offsetX),offsetY:Math.round(offsetY),width:1280,height:520,textOverlay:{enabled:!!textLayer.enabled,text:String(textLayer.text||'').slice(0,120),x:Math.round(textLayer.x),y:Math.round(textLayer.y),size:Math.round(textLayer.size),color:textLayer.color,bold:!!textLayer.bold,shadow:!!textLayer.shadow}};
+      const r=await api(`/api/admin/home-banner/image-adjustment/${slot}`,{method:'PUT',body:{sourceUrl,dataUrl,transform}});
+      state.homeBannerAdjustedSlots=state.homeBannerAdjustedSlots||{};state.homeBannerAdjustedSlots[String(slot)]=r.adjustment;closeModal();homeBannerPreviewSlot=slot;updateHomeBannerPreview();toast(`Imagen ${slot} y edición guardadas`,'ok');
+    }catch(e){apply.disabled=false;apply.textContent='APLICAR AJUSTE';msg($('#bannerCropMsg'),e.message)}
+  };
 }
 async function loadHomeBanner(){
   const d=await api('/api/admin/home-banner');const b=d.banner||{};state.homeBanner=b;state.homeBannerAdjustedSlots=d.adjustedSlots||{};
@@ -1888,7 +1971,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-design-clean-editor-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.7-live-banner-editor-1').catch(()=>{}));
 }
 bootstrap();
 
