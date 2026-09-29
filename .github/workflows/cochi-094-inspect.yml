@@ -39,7 +39,7 @@ jobs:
           set -eux
           git config user.name "cochi-build-bot"
           git config user.email "cochi-build-bot@users.noreply.github.com"
-          git add tools/cochi94/focused93
+          git add tools/cochi94/focused93 tools/cochi94/base93java
           git diff --cached --quiet && exit 0
           git commit -m "Guardar ruta enfocada del reproductor 0.23.93"
           git pull --rebase origin cochi-094-audio-test-build
