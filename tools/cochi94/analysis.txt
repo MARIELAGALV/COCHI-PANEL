@@ -1,5 +1,5 @@
 CO-CHI 0.23.93 AUDIO ANALYSIS
-Generated: 2026-09-29T01:15:08Z
+Generated: 2026-09-29T01:17:09Z
 
 === JADX files containing player/renderers terms ===
 work/jadx-out/sources/x/C1044mq.java
@@ -298,6 +298,1028 @@ work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1174-    .line 525
 work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1175-    const-string v7, "setImageOutput"
 work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1176-
 work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1177-    .line 526
+
+=== Factory candidates creating MediaCodecAudioRenderer (JADX) ===
+work/jadx-out/sources/x/I2.java-211-
+work/jadx-out/sources/x/I2.java-212-    @Override // x.InterfaceC1362sx
+work/jadx-out/sources/x/I2.java-213-    public Object I(Uri uri, C1550wd c1550wd) {
+work/jadx-out/sources/x/I2.java-214-        InterfaceC0521ck interfaceC0521ck = (InterfaceC0521ck) ((InterfaceC1362sx) this.i).I(uri, c1550wd);
+work/jadx-out/sources/x/I2.java-215-        List list = (List) this.j;
+work/jadx-out/sources/x/I2.java-216-        return (list == null || list.isEmpty()) ? interfaceC0521ck : (InterfaceC0521ck) interfaceC0521ck.a(list);
+work/jadx-out/sources/x/I2.java-217-    }
+work/jadx-out/sources/x/I2.java-218-
+work/jadx-out/sources/x/I2.java-219-    @Override // x.InterfaceC0247Qh
+work/jadx-out/sources/x/I2.java-220-    public Object a() {
+work/jadx-out/sources/x/I2.java-221-        return (C0972lL) this.i;
+work/jadx-out/sources/x/I2.java-222-    }
+work/jadx-out/sources/x/I2.java-223-
+work/jadx-out/sources/x/I2.java-224-    @Override // x.InterfaceC0247Qh
+work/jadx-out/sources/x/I2.java-225-    public boolean b(CharSequence charSequence, int i, int i2, XK xk) {
+work/jadx-out/sources/x/I2.java-226-        if ((xk.c & 4) > 0) {
+work/jadx-out/sources/x/I2.java-227-            return true;
+work/jadx-out/sources/x/I2.java-228-        }
+work/jadx-out/sources/x/I2.java-229-        if (((C0972lL) this.i) == null) {
+work/jadx-out/sources/x/I2.java-230-            this.i = new C0972lL(charSequence instanceof Spannable ? (Spannable) charSequence : new SpannableString(charSequence));
+work/jadx-out/sources/x/I2.java-231-        }
+work/jadx-out/sources/x/I2.java-232-        ((C0300Uc) this.j).getClass();
+work/jadx-out/sources/x/I2.java-233-        ((C0972lL) this.i).setSpan(new YK(xk), i, i2, 33);
+work/jadx-out/sources/x/I2.java-234-        return true;
+work/jadx-out/sources/x/I2.java-235-    }
+work/jadx-out/sources/x/I2.java-236-
+work/jadx-out/sources/x/I2.java-237-    public void d() {
+work/jadx-out/sources/x/I2.java-238-        this.i = null;
+work/jadx-out/sources/x/I2.java-239-        this.j = null;
+work/jadx-out/sources/x/I2.java-240-    }
+work/jadx-out/sources/x/I2.java-241-
+work/jadx-out/sources/x/I2.java-242-    @Override // x.InterfaceC1342sd
+work/jadx-out/sources/x/I2.java-243-    public InterfaceC1446ud e() {
+work/jadx-out/sources/x/I2.java-244-        return new C1084ne((Context) this.i, ((C0139Je) this.j).e());
+work/jadx-out/sources/x/I2.java-245-    }
+work/jadx-out/sources/x/I2.java-246-
+work/jadx-out/sources/x/I2.java-247-    public AbstractC0389a6[] g(Handler handler, SurfaceHolderCallbackC0881jj surfaceHolderCallbackC0881jj, SurfaceHolderCallbackC0881jj surfaceHolderCallbackC0881jj2, SurfaceHolderCallbackC0881jj surfaceHolderCallbackC0881jj3, SurfaceHolderCallbackC0881jj surfaceHolderCallbackC0881jj4) {
+work/jadx-out/sources/x/I2.java-248-        ArrayList arrayList = new ArrayList();
+work/jadx-out/sources/x/I2.java-249-        W1 w1 = (W1) this.i;
+work/jadx-out/sources/x/I2.java-250-        At at = new At(w1);
+work/jadx-out/sources/x/I2.java-251-        E6 e6 = (E6) this.j;
+work/jadx-out/sources/x/I2.java-252-        at.c = e6;
+work/jadx-out/sources/x/I2.java-253-        at.d = 5000L;
+work/jadx-out/sources/x/I2.java-254-        at.e = handler;
+work/jadx-out/sources/x/I2.java-255-        at.f = surfaceHolderCallbackC0881jj;
+work/jadx-out/sources/x/I2.java-256-        at.g = 50;
+work/jadx-out/sources/x/I2.java-257-        QK.z(!at.b);
+work/jadx-out/sources/x/I2.java-258-        Handler handler2 = at.e;
+work/jadx-out/sources/x/I2.java-259-        QK.z((handler2 == null && at.f == null) || !(handler2 == null || at.f == null));
+work/jadx-out/sources/x/I2.java-260-        at.b = true;
+work/jadx-out/sources/x/I2.java-261-        arrayList.add(new Ct(at));
+work/jadx-out/sources/x/I2.java-262-        C0515ce c0515ce = new C0515ce(w1);
+work/jadx-out/sources/x/I2.java-263-        QK.z(!c0515ce.a);
+work/jadx-out/sources/x/I2.java-264-        c0515ce.a = true;
+work/jadx-out/sources/x/I2.java-265-        if (((C1467uy) c0515ce.c) == null) {
+work/jadx-out/sources/x/I2.java-266-            c0515ce.c = new C1467uy(new O4[0]);
+work/jadx-out/sources/x/I2.java-267-        }
+work/jadx-out/sources/x/I2.java-268-        if (((C0956l5) c0515ce.e) == null) {
+work/jadx-out/sources/x/I2.java-269-            if (((I2) c0515ce.f) == null) {
+work/jadx-out/sources/x/I2.java-270-                c0515ce.f = new I2((Context) w1, 15);
+work/jadx-out/sources/x/I2.java-271-            }
+work/jadx-out/sources/x/I2.java-272-            if (((C1554wh) c0515ce.d) == null) {
+work/jadx-out/sources/x/I2.java-273-                c0515ce.d = C1554wh.m;
+work/jadx-out/sources/x/I2.java-274-            }
+work/jadx-out/sources/x/I2.java-275-            C0904k5 c0904k5 = new C0904k5(w1);
+work/jadx-out/sources/x/I2.java-276-            Context context = c0904k5.a;
+work/jadx-out/sources/x/I2.java-277-            if (context == null) {
+work/jadx-out/sources/x/I2.java-278-                c0904k5.d = null;
+work/jadx-out/sources/x/I2.java-279-            }
+work/jadx-out/sources/x/I2.java-280-            I2 i2 = (I2) c0515ce.f;
+work/jadx-out/sources/x/I2.java-281-            c0904k5.b = i2;
+work/jadx-out/sources/x/I2.java-282-            c0904k5.c = (C1554wh) c0515ce.d;
+work/jadx-out/sources/x/I2.java-283-            if (i2 == null) {
+work/jadx-out/sources/x/I2.java-284-                c0904k5.b = new I2(context, 15);
+work/jadx-out/sources/x/I2.java-285-            }
+work/jadx-out/sources/x/I2.java-286-            c0515ce.e = new C0956l5(c0904k5);
+work/jadx-out/sources/x/I2.java-287-        } else {
+work/jadx-out/sources/x/I2.java-288-            QK.z(((I2) c0515ce.f) == null);
+work/jadx-out/sources/x/I2.java-289-            QK.z(((C1554wh) c0515ce.d) == null);
+work/jadx-out/sources/x/I2.java-290-        }
+work/jadx-out/sources/x/I2.java:291:        arrayList.add(new C0943kt(w1, e6, handler, surfaceHolderCallbackC0881jj2, new C0722ge(c0515ce)));
+work/jadx-out/sources/x/I2.java-292-        arrayList.add(new VI(surfaceHolderCallbackC0881jj3, handler.getLooper()));
+work/jadx-out/sources/x/I2.java-293-        Looper looper = handler.getLooper();
+work/jadx-out/sources/x/I2.java-294-        for (int i = 0; i < 4; i++) {
+work/jadx-out/sources/x/I2.java-295-            arrayList.add(new C0635ev(surfaceHolderCallbackC0881jj4, looper));
+work/jadx-out/sources/x/I2.java-296-        }
+work/jadx-out/sources/x/I2.java-297-        arrayList.add(new C0597e8());
+work/jadx-out/sources/x/I2.java-298-        arrayList.add(new C0179Lo(new E6(w1)));
+work/jadx-out/sources/x/I2.java-299-        return (AbstractC0389a6[]) arrayList.toArray(new AbstractC0389a6[0]);
+work/jadx-out/sources/x/I2.java-300-    }
+work/jadx-out/sources/x/I2.java-301-
+work/jadx-out/sources/x/I2.java-302-    public byte[] h(C0023Bi c0023Bi) throws IOException {
+work/jadx-out/sources/x/I2.java-303-        DataOutputStream dataOutputStream = (DataOutputStream) this.j;
+work/jadx-out/sources/x/I2.java-304-        ByteArrayOutputStream byteArrayOutputStream = (ByteArrayOutputStream) this.i;
+work/jadx-out/sources/x/I2.java-305-        byteArrayOutputStream.reset();
+work/jadx-out/sources/x/I2.java-306-        try {
+work/jadx-out/sources/x/I2.java-307-            dataOutputStream.writeBytes(c0023Bi.a);
+work/jadx-out/sources/x/I2.java-308-            dataOutputStream.writeByte(0);
+work/jadx-out/sources/x/I2.java-309-            dataOutputStream.writeBytes(c0023Bi.b);
+work/jadx-out/sources/x/I2.java-310-            dataOutputStream.writeByte(0);
+work/jadx-out/sources/x/I2.java-311-            dataOutputStream.writeLong(c0023Bi.c);
+work/jadx-out/sources/x/I2.java-312-            dataOutputStream.writeLong(c0023Bi.d);
+work/jadx-out/sources/x/I2.java-313-            dataOutputStream.write(c0023Bi.e);
+work/jadx-out/sources/x/I2.java-314-            dataOutputStream.flush();
+work/jadx-out/sources/x/I2.java-315-            return byteArrayOutputStream.toByteArray();
+work/jadx-out/sources/x/I2.java-316-        } catch (IOException e) {
+work/jadx-out/sources/x/I2.java-317-            throw new RuntimeException(e);
+work/jadx-out/sources/x/I2.java-318-        }
+work/jadx-out/sources/x/I2.java-319-    }
+work/jadx-out/sources/x/I2.java-320-
+work/jadx-out/sources/x/I2.java-321-    public C1682z4 j(C0145Jk c0145Jk, C0749h4 c0749h4) {
+work/jadx-out/sources/x/I2.java-322-        boolean zBooleanValue;
+work/jadx-out/sources/x/I2.java-323-        c0145Jk.getClass();
+work/jadx-out/sources/x/I2.java-324-        int i = c0145Jk.L;
+work/jadx-out/sources/x/I2.java-325-        c0749h4.getClass();
+work/jadx-out/sources/x/I2.java-326-        int i2 = Build.VERSION.SDK_INT;
+work/jadx-out/sources/x/I2.java-327-        if (i2 < 29 || i == -1) {
+work/jadx-out/sources/x/I2.java-328-            return C1682z4.d;
+work/jadx-out/sources/x/I2.java-329-        }
+work/jadx-out/sources/x/I2.java-330-        Context context = (Context) this.i;
+work/jadx-out/sources/x/I2.java-331-        Boolean bool = (Boolean) this.j;
+work/jadx-out/sources/x/I2.java-332-        if (bool != null) {
+work/jadx-out/sources/x/I2.java-333-            zBooleanValue = bool.booleanValue();
+work/jadx-out/sources/x/I2.java-334-        } else {
+work/jadx-out/sources/x/I2.java-335-            if (context != null) {
+work/jadx-out/sources/x/I2.java-336-                String parameters = AbstractC1578x4.A(context).getParameters("offloadVariableRateSupported");
+work/jadx-out/sources/x/I2.java-337-                this.j = Boolean.valueOf(parameters != null && parameters.equals("offloadVariableRateSupported=1"));
+work/jadx-out/sources/x/I2.java-338-            } else {
+work/jadx-out/sources/x/I2.java-339-                this.j = Boolean.FALSE;
+work/jadx-out/sources/x/I2.java-340-            }
+work/jadx-out/sources/x/I2.java-341-            zBooleanValue = ((Boolean) this.j).booleanValue();
+work/jadx-out/sources/x/I2.java-342-        }
+work/jadx-out/sources/x/I2.java-343-        String str = c0145Jk.p;
+work/jadx-out/sources/x/I2.java-344-        str.getClass();
+work/jadx-out/sources/x/I2.java-345-        int iD = AbstractC0739gv.d(str, c0145Jk.l);
+work/jadx-out/sources/x/I2.java-346-        if (iD == 0 || i2 < AbstractC1595xL.p(iD)) {
+work/jadx-out/sources/x/I2.java-347-            return C1682z4.d;
+work/jadx-out/sources/x/I2.java-348-        }
+work/jadx-out/sources/x/I2.java-349-        int iQ = c0145Jk.K;
+work/jadx-out/sources/x/I2.java-350-        if (iQ == -1) {
+work/jadx-out/sources/x/I2.java-351-            iQ = AbstractC1595xL.q(c0145Jk.J);
+work/jadx-out/sources/x/I2.java-352-        }
+work/jadx-out/sources/x/I2.java-353-        if (iQ == 0) {
+work/jadx-out/sources/x/I2.java-354-            return C1682z4.d;
+work/jadx-out/sources/x/I2.java-355-        }
+work/jadx-out/sources/x/I2.java-356-        try {
+work/jadx-out/sources/x/I2.java-357-            AudioFormat audioFormatBuild = new AudioFormat.Builder().setSampleRate(i).setChannelMask(iQ).setEncoding(iD).build();
+work/jadx-out/sources/x/I2.java-358-            if (i2 >= 33) {
+work/jadx-out/sources/x/I2.java-359-                int directPlaybackSupport = AudioManager.getDirectPlaybackSupport(audioFormatBuild, c0749h4.a());
+work/jadx-out/sources/x/I2.java-360-                if ((directPlaybackSupport & 1) == 0) {
+work/jadx-out/sources/x/I2.java-361-                    return C1682z4.d;
+work/jadx-out/sources/x/I2.java-362-                }
+work/jadx-out/sources/x/I2.java-363-                z = (directPlaybackSupport & 3) == 3;
+work/jadx-out/sources/x/I2.java-364-                C1630y4 c1630y4 = new C1630y4();
+work/jadx-out/sources/x/I2.java-365-                c1630y4.a = true;
+work/jadx-out/sources/x/I2.java-366-                c1630y4.b = z;
+work/jadx-out/sources/x/I2.java-367-                c1630y4.c = zBooleanValue;
+work/jadx-out/sources/x/I2.java-368-                return c1630y4.a();
+work/jadx-out/sources/x/I2.java-369-            }
+work/jadx-out/sources/x/I2.java-370-            if (i2 < 31) {
+work/jadx-out/sources/x/I2.java-371-                if (!AudioManager.isOffloadedPlaybackSupported(audioFormatBuild, c0749h4.a())) {
+--
+work/jadx-out/sources/x/C0943kt.java-1-package x;
+work/jadx-out/sources/x/C0943kt.java-2-
+work/jadx-out/sources/x/C0943kt.java-3-import android.content.Context;
+work/jadx-out/sources/x/C0943kt.java-4-import android.media.AudioDeviceInfo;
+work/jadx-out/sources/x/C0943kt.java-5-import android.media.LoudnessCodecController;
+work/jadx-out/sources/x/C0943kt.java-6-import android.media.MediaCrypto;
+work/jadx-out/sources/x/C0943kt.java-7-import android.media.MediaFormat;
+work/jadx-out/sources/x/C0943kt.java-8-import android.os.Build;
+work/jadx-out/sources/x/C0943kt.java-9-import android.os.Bundle;
+work/jadx-out/sources/x/C0943kt.java-10-import android.os.Handler;
+work/jadx-out/sources/x/C0943kt.java-11-import android.os.Looper;
+work/jadx-out/sources/x/C0943kt.java-12-import android.os.SystemClock;
+work/jadx-out/sources/x/C0943kt.java-13-import android.util.Pair;
+work/jadx-out/sources/x/C0943kt.java-14-import java.math.RoundingMode;
+work/jadx-out/sources/x/C0943kt.java-15-import java.nio.ByteBuffer;
+work/jadx-out/sources/x/C0943kt.java-16-import java.nio.ByteOrder;
+work/jadx-out/sources/x/C0943kt.java-17-import java.util.ArrayDeque;
+work/jadx-out/sources/x/C0943kt.java-18-import java.util.ArrayList;
+work/jadx-out/sources/x/C0943kt.java-19-import java.util.Arrays;
+work/jadx-out/sources/x/C0943kt.java-20-import java.util.Collections;
+work/jadx-out/sources/x/C0943kt.java-21-import java.util.HashMap;
+work/jadx-out/sources/x/C0943kt.java-22-import java.util.HashSet;
+work/jadx-out/sources/x/C0943kt.java-23-import java.util.List;
+work/jadx-out/sources/x/C0943kt.java-24-import java.util.Objects;
+work/jadx-out/sources/x/C0943kt.java-25-import java.util.concurrent.atomic.AtomicInteger;
+work/jadx-out/sources/x/C0943kt.java-26-
+work/jadx-out/sources/x/C0943kt.java-27-/* renamed from: x.kt, reason: case insensitive filesystem */
+work/jadx-out/sources/x/C0943kt.java-28-/* loaded from: classes.dex */
+work/jadx-out/sources/x/C0943kt.java-29-public final class C0943kt extends AbstractC1255qt implements InterfaceC0737gt {
+work/jadx-out/sources/x/C0943kt.java-30-    public final Context Q0;
+work/jadx-out/sources/x/C0943kt.java-31-    public final R4 R0;
+work/jadx-out/sources/x/C0943kt.java-32-    public final C0722ge S0;
+work/jadx-out/sources/x/C0943kt.java-33-    public final C1467uy T0;
+work/jadx-out/sources/x/C0943kt.java-34-    public int U0;
+work/jadx-out/sources/x/C0943kt.java-35-    public boolean V0;
+work/jadx-out/sources/x/C0943kt.java-36-    public boolean W0;
+work/jadx-out/sources/x/C0943kt.java-37-    public C0145Jk X0;
+work/jadx-out/sources/x/C0943kt.java-38-    public C0145Jk Y0;
+work/jadx-out/sources/x/C0943kt.java-39-    public long Z0;
+work/jadx-out/sources/x/C0943kt.java-40-    public boolean a1;
+work/jadx-out/sources/x/C0943kt.java-41-    public boolean b1;
+work/jadx-out/sources/x/C0943kt.java-42-    public boolean c1;
+work/jadx-out/sources/x/C0943kt.java-43-    public boolean d1;
+work/jadx-out/sources/x/C0943kt.java-44-    public int e1;
+work/jadx-out/sources/x/C0943kt.java-45-    public boolean f1;
+work/jadx-out/sources/x/C0943kt.java-46-    public long g1;
+work/jadx-out/sources/x/C0943kt.java-47-    public long h1;
+work/jadx-out/sources/x/C0943kt.java-48-    public boolean i1;
+work/jadx-out/sources/x/C0943kt.java-49-
+work/jadx-out/sources/x/C0943kt.java-50-    /* JADX WARN: 'super' call moved to the top of the method (can break code semantics) */
+work/jadx-out/sources/x/C0943kt.java:51:    public C0943kt(W1 w1, InterfaceC0789ht interfaceC0789ht, Handler handler, SurfaceHolderCallbackC0881jj surfaceHolderCallbackC0881jj, C0722ge c0722ge) {
+work/jadx-out/sources/x/C0943kt.java-52-        super(w1.getApplicationContext(), 1, interfaceC0789ht);
+work/jadx-out/sources/x/C0943kt.java-53-        C1467uy c1467uy = Build.VERSION.SDK_INT >= 35 ? new C1467uy(13) : null;
+work/jadx-out/sources/x/C0943kt.java-54-        this.Q0 = w1.getApplicationContext();
+work/jadx-out/sources/x/C0943kt.java-55-        this.S0 = c0722ge;
+work/jadx-out/sources/x/C0943kt.java-56-        this.T0 = c1467uy;
+work/jadx-out/sources/x/C0943kt.java-57-        this.e1 = -1000;
+work/jadx-out/sources/x/C0943kt.java-58-        this.R0 = new R4(handler, surfaceHolderCallbackC0881jj, 0);
+work/jadx-out/sources/x/C0943kt.java-59-        this.g1 = -9223372036854775807L;
+work/jadx-out/sources/x/C0943kt.java-60-        this.h1 = -9223372036854775807L;
+work/jadx-out/sources/x/C0943kt.java-61-        this.i1 = false;
+work/jadx-out/sources/x/C0943kt.java-62-    }
+work/jadx-out/sources/x/C0943kt.java-63-
+work/jadx-out/sources/x/C0943kt.java-64-    /* JADX WARN: Removed duplicated region for block: B:28:0x0059  */
+work/jadx-out/sources/x/C0943kt.java-65-    /* JADX WARN: Removed duplicated region for block: B:45:0x00ad  */
+work/jadx-out/sources/x/C0943kt.java-66-    @Override // x.AbstractC1255qt
+work/jadx-out/sources/x/C0943kt.java-67-    /*
+work/jadx-out/sources/x/C0943kt.java-68-        Code decompiled incorrectly, please refer to instructions dump.
+work/jadx-out/sources/x/C0943kt.java-69-    */
+work/jadx-out/sources/x/C0943kt.java-70-    public final int A0(C0906k7 c0906k7, C0145Jk c0145Jk) {
+work/jadx-out/sources/x/C0943kt.java-71-        int iE0;
+work/jadx-out/sources/x/C0943kt.java-72-        C1481vB c1481vBN;
+work/jadx-out/sources/x/C0943kt.java-73-        boolean z;
+work/jadx-out/sources/x/C0943kt.java-74-        boolean z2;
+work/jadx-out/sources/x/C0943kt.java-75-        int iD = AbstractC0863jG.d(1, 0, 0, 0);
+work/jadx-out/sources/x/C0943kt.java-76-        String str = c0145Jk.p;
+work/jadx-out/sources/x/C0943kt.java-77-        String str2 = c0145Jk.p;
+work/jadx-out/sources/x/C0943kt.java-78-        if (!AbstractC0739gv.k(str)) {
+work/jadx-out/sources/x/C0943kt.java-79-            return AbstractC0863jG.d(0, 0, 0, 0);
+work/jadx-out/sources/x/C0943kt.java-80-        }
+work/jadx-out/sources/x/C0943kt.java-81-        int i = c0145Jk.T;
+work/jadx-out/sources/x/C0943kt.java-82-        boolean z3 = i != 0;
+work/jadx-out/sources/x/C0943kt.java-83-        boolean z4 = i == 0 || i == 2;
+work/jadx-out/sources/x/C0943kt.java-84-        int i2 = 8;
+work/jadx-out/sources/x/C0943kt.java-85-        C0722ge c0722ge = this.S0;
+work/jadx-out/sources/x/C0943kt.java-86-        if (z4) {
+work/jadx-out/sources/x/C0943kt.java-87-            if (z3) {
+work/jadx-out/sources/x/C0943kt.java-88-                List listE = AbstractC1618xt.e("audio/raw", false, false);
+work/jadx-out/sources/x/C0943kt.java-89-                if ((listE.isEmpty() ? null : (C1099nt) listE.get(0)) != null) {
+work/jadx-out/sources/x/C0943kt.java-90-                }
+work/jadx-out/sources/x/C0943kt.java-91-            }
+work/jadx-out/sources/x/C0943kt.java-92-            iE0 = E0(c0145Jk);
+work/jadx-out/sources/x/C0943kt.java-93-            if (c0722ge.h(c0145Jk) != 0) {
+work/jadx-out/sources/x/C0943kt.java-94-                return AbstractC0863jG.d(4, 8, 32, iE0);
+work/jadx-out/sources/x/C0943kt.java-95-            }
+work/jadx-out/sources/x/C0943kt.java-96-        } else {
+work/jadx-out/sources/x/C0943kt.java-97-            iE0 = 0;
+work/jadx-out/sources/x/C0943kt.java-98-        }
+work/jadx-out/sources/x/C0943kt.java-99-        if (!"audio/raw".equals(str2) || c0722ge.h(c0145Jk) != 0) {
+work/jadx-out/sources/x/C0943kt.java-100-            int i3 = c0145Jk.J;
+work/jadx-out/sources/x/C0943kt.java-101-            int i4 = c0145Jk.L;
+work/jadx-out/sources/x/C0943kt.java-102-            C0130Ik c0130Ik = new C0130Ik();
+work/jadx-out/sources/x/C0943kt.java-103-            c0130Ik.o = AbstractC0739gv.p("audio/raw");
+work/jadx-out/sources/x/C0943kt.java-104-            c0130Ik.I = i3;
+work/jadx-out/sources/x/C0943kt.java-105-            c0130Ik.K = i4;
+work/jadx-out/sources/x/C0943kt.java-106-            c0130Ik.L = 2;
+work/jadx-out/sources/x/C0943kt.java-107-            if (c0722ge.h(new C0145Jk(c0130Ik)) != 0) {
+work/jadx-out/sources/x/C0943kt.java-108-                if (str2 == null) {
+work/jadx-out/sources/x/C0943kt.java-109-                    c1481vBN = C1481vB.l;
+work/jadx-out/sources/x/C0943kt.java-110-                } else if (c0722ge.h(c0145Jk) != 0) {
+work/jadx-out/sources/x/C0943kt.java-111-                    List listE2 = AbstractC1618xt.e("audio/raw", false, false);
+work/jadx-out/sources/x/C0943kt.java-112-                    C1099nt c1099nt = listE2.isEmpty() ? null : (C1099nt) listE2.get(0);
+work/jadx-out/sources/x/C0943kt.java-113-                    c1481vBN = c1099nt != null ? AbstractC0577dp.n(c1099nt) : AbstractC1618xt.g(c0906k7, c0145Jk, false, false);
+work/jadx-out/sources/x/C0943kt.java-114-                }
+work/jadx-out/sources/x/C0943kt.java-115-                if (!c1481vBN.isEmpty()) {
+work/jadx-out/sources/x/C0943kt.java-116-                    if (!z4) {
+work/jadx-out/sources/x/C0943kt.java-117-                        return AbstractC0863jG.d(2, 0, 0, 0);
+work/jadx-out/sources/x/C0943kt.java-118-                    }
+work/jadx-out/sources/x/C0943kt.java-119-                    C1099nt c1099nt2 = (C1099nt) c1481vBN.get(0);
+work/jadx-out/sources/x/C0943kt.java-120-                    Context context = this.Q0;
+work/jadx-out/sources/x/C0943kt.java-121-                    boolean zE = c1099nt2.e(context, c0145Jk);
+work/jadx-out/sources/x/C0943kt.java-122-                    if (zE) {
+work/jadx-out/sources/x/C0943kt.java-123-                        z = zE;
+work/jadx-out/sources/x/C0943kt.java-124-                        z2 = true;
+work/jadx-out/sources/x/C0943kt.java-125-                    } else {
+work/jadx-out/sources/x/C0943kt.java-126-                        for (int i5 = 1; i5 < c1481vBN.k; i5++) {
+work/jadx-out/sources/x/C0943kt.java-127-                            C1099nt c1099nt3 = (C1099nt) c1481vBN.get(i5);
+work/jadx-out/sources/x/C0943kt.java-128-                            if (c1099nt3.e(context, c0145Jk)) {
+work/jadx-out/sources/x/C0943kt.java-129-                                z2 = false;
+work/jadx-out/sources/x/C0943kt.java-130-                                c1099nt2 = c1099nt3;
+work/jadx-out/sources/x/C0943kt.java-131-                                z = true;
+
+=== Factory candidates creating MediaCodecAudioRenderer (SMALI) ===
+work/apktool-out/smali/x/I2.smali-2431-    new-instance v2, Lx/l5;
+work/apktool-out/smali/x/I2.smali-2432-
+work/apktool-out/smali/x/I2.smali-2433-    .line 168
+work/apktool-out/smali/x/I2.smali-2434-    .line 169
+work/apktool-out/smali/x/I2.smali-2435-    invoke-direct {v2, v1}, Lx/l5;-><init>(Lx/k5;)V
+work/apktool-out/smali/x/I2.smali-2436-
+work/apktool-out/smali/x/I2.smali-2437-    .line 170
+work/apktool-out/smali/x/I2.smali-2438-    .line 171
+work/apktool-out/smali/x/I2.smali-2439-    .line 172
+work/apktool-out/smali/x/I2.smali-2440-    iput-object v2, p2, Lx/ce;->e:Ljava/lang/Object;
+work/apktool-out/smali/x/I2.smali-2441-
+work/apktool-out/smali/x/I2.smali-2442-    .line 173
+work/apktool-out/smali/x/I2.smali-2443-    .line 174
+work/apktool-out/smali/x/I2.smali-2444-    goto :goto_3
+work/apktool-out/smali/x/I2.smali-2445-
+work/apktool-out/smali/x/I2.smali-2446-    .line 175
+work/apktool-out/smali/x/I2.smali-2447-    :cond_8
+work/apktool-out/smali/x/I2.smali-2448-    iget-object v1, p2, Lx/ce;->f:Ljava/lang/Object;
+work/apktool-out/smali/x/I2.smali-2449-
+work/apktool-out/smali/x/I2.smali-2450-    .line 176
+work/apktool-out/smali/x/I2.smali-2451-    .line 177
+work/apktool-out/smali/x/I2.smali-2452-    check-cast v1, Lx/I2;
+work/apktool-out/smali/x/I2.smali-2453-
+work/apktool-out/smali/x/I2.smali-2454-    .line 178
+work/apktool-out/smali/x/I2.smali-2455-    .line 179
+work/apktool-out/smali/x/I2.smali-2456-    if-nez v1, :cond_9
+work/apktool-out/smali/x/I2.smali-2457-
+work/apktool-out/smali/x/I2.smali-2458-    .line 180
+work/apktool-out/smali/x/I2.smali-2459-    .line 181
+work/apktool-out/smali/x/I2.smali-2460-    move v1, v2
+work/apktool-out/smali/x/I2.smali-2461-
+work/apktool-out/smali/x/I2.smali-2462-    .line 182
+work/apktool-out/smali/x/I2.smali-2463-    goto :goto_1
+work/apktool-out/smali/x/I2.smali-2464-
+work/apktool-out/smali/x/I2.smali-2465-    .line 183
+work/apktool-out/smali/x/I2.smali-2466-    :cond_9
+work/apktool-out/smali/x/I2.smali-2467-    move v1, v8
+work/apktool-out/smali/x/I2.smali-2468-
+work/apktool-out/smali/x/I2.smali-2469-    .line 184
+work/apktool-out/smali/x/I2.smali-2470-    :goto_1
+work/apktool-out/smali/x/I2.smali-2471-    invoke-static {v1}, Lx/QK;->z(Z)V
+work/apktool-out/smali/x/I2.smali-2472-
+work/apktool-out/smali/x/I2.smali-2473-    .line 185
+work/apktool-out/smali/x/I2.smali-2474-    .line 186
+work/apktool-out/smali/x/I2.smali-2475-    .line 187
+work/apktool-out/smali/x/I2.smali-2476-    iget-object v1, p2, Lx/ce;->d:Ljava/lang/Object;
+work/apktool-out/smali/x/I2.smali-2477-
+work/apktool-out/smali/x/I2.smali-2478-    .line 188
+work/apktool-out/smali/x/I2.smali-2479-    .line 189
+work/apktool-out/smali/x/I2.smali-2480-    check-cast v1, Lx/wh;
+work/apktool-out/smali/x/I2.smali-2481-
+work/apktool-out/smali/x/I2.smali-2482-    .line 190
+work/apktool-out/smali/x/I2.smali-2483-    .line 191
+work/apktool-out/smali/x/I2.smali-2484-    if-nez v1, :cond_a
+work/apktool-out/smali/x/I2.smali-2485-
+work/apktool-out/smali/x/I2.smali-2486-    .line 192
+work/apktool-out/smali/x/I2.smali-2487-    .line 193
+work/apktool-out/smali/x/I2.smali-2488-    goto :goto_2
+work/apktool-out/smali/x/I2.smali-2489-
+work/apktool-out/smali/x/I2.smali-2490-    .line 194
+work/apktool-out/smali/x/I2.smali-2491-    :cond_a
+work/apktool-out/smali/x/I2.smali-2492-    move v2, v8
+work/apktool-out/smali/x/I2.smali-2493-
+work/apktool-out/smali/x/I2.smali-2494-    .line 195
+work/apktool-out/smali/x/I2.smali-2495-    :goto_2
+work/apktool-out/smali/x/I2.smali-2496-    invoke-static {v2}, Lx/QK;->z(Z)V
+work/apktool-out/smali/x/I2.smali-2497-
+work/apktool-out/smali/x/I2.smali-2498-    .line 196
+work/apktool-out/smali/x/I2.smali-2499-    .line 197
+work/apktool-out/smali/x/I2.smali-2500-    .line 198
+work/apktool-out/smali/x/I2.smali-2501-    :goto_3
+work/apktool-out/smali/x/I2.smali-2502-    new-instance v7, Lx/ge;
+work/apktool-out/smali/x/I2.smali-2503-
+work/apktool-out/smali/x/I2.smali-2504-    .line 199
+work/apktool-out/smali/x/I2.smali-2505-    .line 200
+work/apktool-out/smali/x/I2.smali-2506-    invoke-direct {v7, p2}, Lx/ge;-><init>(Lx/ce;)V
+work/apktool-out/smali/x/I2.smali-2507-
+work/apktool-out/smali/x/I2.smali-2508-    .line 201
+work/apktool-out/smali/x/I2.smali-2509-    .line 202
+work/apktool-out/smali/x/I2.smali-2510-    .line 203
+work/apktool-out/smali/x/I2.smali:2511:    new-instance v2, Lx/kt;
+work/apktool-out/smali/x/I2.smali-2512-
+work/apktool-out/smali/x/I2.smali-2513-    .line 204
+work/apktool-out/smali/x/I2.smali-2514-    .line 205
+work/apktool-out/smali/x/I2.smali-2515-    move-object v5, p1
+work/apktool-out/smali/x/I2.smali-2516-
+work/apktool-out/smali/x/I2.smali-2517-    .line 206
+work/apktool-out/smali/x/I2.smali-2518-    move-object v6, p3
+work/apktool-out/smali/x/I2.smali-2519-
+work/apktool-out/smali/x/I2.smali-2520-    .line 207
+work/apktool-out/smali/x/I2.smali:2521:    invoke-direct/range {v2 .. v7}, Lx/kt;-><init>(Lx/W1;Lx/ht;Landroid/os/Handler;Lx/jj;Lx/ge;)V
+work/apktool-out/smali/x/I2.smali-2522-
+work/apktool-out/smali/x/I2.smali-2523-    .line 208
+work/apktool-out/smali/x/I2.smali-2524-    .line 209
+work/apktool-out/smali/x/I2.smali-2525-    .line 210
+work/apktool-out/smali/x/I2.smali-2526-    invoke-virtual {v0, v2}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+work/apktool-out/smali/x/I2.smali-2527-
+work/apktool-out/smali/x/I2.smali-2528-    .line 211
+work/apktool-out/smali/x/I2.smali-2529-    .line 212
+work/apktool-out/smali/x/I2.smali-2530-    .line 213
+work/apktool-out/smali/x/I2.smali-2531-    invoke-virtual {v5}, Landroid/os/Handler;->getLooper()Landroid/os/Looper;
+work/apktool-out/smali/x/I2.smali-2532-
+work/apktool-out/smali/x/I2.smali-2533-    .line 214
+work/apktool-out/smali/x/I2.smali-2534-    .line 215
+work/apktool-out/smali/x/I2.smali-2535-    .line 216
+work/apktool-out/smali/x/I2.smali-2536-    move-result-object p1
+work/apktool-out/smali/x/I2.smali-2537-
+work/apktool-out/smali/x/I2.smali-2538-    .line 217
+work/apktool-out/smali/x/I2.smali-2539-    new-instance p2, Lx/VI;
+work/apktool-out/smali/x/I2.smali-2540-
+work/apktool-out/smali/x/I2.smali-2541-    .line 218
+work/apktool-out/smali/x/I2.smali-2542-    .line 219
+work/apktool-out/smali/x/I2.smali-2543-    invoke-direct {p2, p4, p1}, Lx/VI;-><init>(Lx/jj;Landroid/os/Looper;)V
+work/apktool-out/smali/x/I2.smali-2544-
+work/apktool-out/smali/x/I2.smali-2545-    .line 220
+work/apktool-out/smali/x/I2.smali-2546-    .line 221
+work/apktool-out/smali/x/I2.smali-2547-    .line 222
+work/apktool-out/smali/x/I2.smali-2548-    invoke-virtual {v0, p2}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+work/apktool-out/smali/x/I2.smali-2549-
+work/apktool-out/smali/x/I2.smali-2550-    .line 223
+work/apktool-out/smali/x/I2.smali-2551-    .line 224
+work/apktool-out/smali/x/I2.smali-2552-    .line 225
+work/apktool-out/smali/x/I2.smali-2553-    invoke-virtual {v5}, Landroid/os/Handler;->getLooper()Landroid/os/Looper;
+work/apktool-out/smali/x/I2.smali-2554-
+work/apktool-out/smali/x/I2.smali-2555-    .line 226
+work/apktool-out/smali/x/I2.smali-2556-    .line 227
+work/apktool-out/smali/x/I2.smali-2557-    .line 228
+work/apktool-out/smali/x/I2.smali-2558-    move-result-object p1
+work/apktool-out/smali/x/I2.smali-2559-
+work/apktool-out/smali/x/I2.smali-2560-    .line 229
+work/apktool-out/smali/x/I2.smali-2561-    move p2, v8
+work/apktool-out/smali/x/I2.smali-2562-
+work/apktool-out/smali/x/I2.smali-2563-    .line 230
+work/apktool-out/smali/x/I2.smali-2564-    :goto_4
+work/apktool-out/smali/x/I2.smali-2565-    const/4 p3, 0x4
+work/apktool-out/smali/x/I2.smali-2566-
+work/apktool-out/smali/x/I2.smali-2567-    .line 231
+work/apktool-out/smali/x/I2.smali-2568-    if-ge p2, p3, :cond_b
+work/apktool-out/smali/x/I2.smali-2569-
+work/apktool-out/smali/x/I2.smali-2570-    .line 232
+work/apktool-out/smali/x/I2.smali-2571-    .line 233
+work/apktool-out/smali/x/I2.smali-2572-    new-instance p3, Lx/ev;
+work/apktool-out/smali/x/I2.smali-2573-
+work/apktool-out/smali/x/I2.smali-2574-    .line 234
+work/apktool-out/smali/x/I2.smali-2575-    .line 235
+work/apktool-out/smali/x/I2.smali-2576-    invoke-direct {p3, p5, p1}, Lx/ev;-><init>(Lx/jj;Landroid/os/Looper;)V
+work/apktool-out/smali/x/I2.smali-2577-
+work/apktool-out/smali/x/I2.smali-2578-    .line 236
+work/apktool-out/smali/x/I2.smali-2579-    .line 237
+work/apktool-out/smali/x/I2.smali-2580-    .line 238
+work/apktool-out/smali/x/I2.smali-2581-    invoke-virtual {v0, p3}, Ljava/util/ArrayList;->add(Ljava/lang/Object;)Z
+work/apktool-out/smali/x/I2.smali-2582-
+work/apktool-out/smali/x/I2.smali-2583-    .line 239
+work/apktool-out/smali/x/I2.smali-2584-    .line 240
+work/apktool-out/smali/x/I2.smali-2585-    .line 241
+work/apktool-out/smali/x/I2.smali-2586-    add-int/lit8 p2, p2, 0x1
+work/apktool-out/smali/x/I2.smali-2587-
+work/apktool-out/smali/x/I2.smali-2588-    .line 242
+work/apktool-out/smali/x/I2.smali-2589-    .line 243
+work/apktool-out/smali/x/I2.smali-2590-    goto :goto_4
+work/apktool-out/smali/x/I2.smali-2591-
+work/apktool-out/smali/x/I2.smali-2592-    .line 244
+work/apktool-out/smali/x/I2.smali-2593-    :cond_b
+work/apktool-out/smali/x/I2.smali-2594-    new-instance p1, Lx/e8;
+work/apktool-out/smali/x/I2.smali-2595-
+work/apktool-out/smali/x/I2.smali-2596-    .line 245
+work/apktool-out/smali/x/I2.smali-2597-    .line 246
+work/apktool-out/smali/x/I2.smali-2598-    invoke-direct {p1}, Lx/e8;-><init>()V
+work/apktool-out/smali/x/I2.smali-2599-
+work/apktool-out/smali/x/I2.smali-2600-    .line 247
+work/apktool-out/smali/x/I2.smali-2601-    .line 248
+
+=== PlayerActivity player construction ===
+1-package com.cochi.client;
+2-
+3-import android.app.UiModeManager;
+4-import android.content.DialogInterface;
+5-import android.content.SharedPreferences;
+6-import android.content.pm.PackageManager;
+7-import android.net.Uri;
+8-import android.os.Bundle;
+9-import android.os.Handler;
+10-import android.os.Looper;
+11-import android.util.Base64;
+12-import android.view.KeyEvent;
+13-import android.view.MotionEvent;
+14-import android.view.View;
+15-import android.webkit.WebChromeClient;
+16-import android.webkit.WebSettings;
+17-import android.webkit.WebView;
+18-import android.webkit.WebViewClient;
+19-import android.widget.ImageButton;
+20-import android.widget.ProgressBar;
+21-import android.widget.TextView;
+22-import android.widget.Toast;
+23:import androidx.media3.ui.PlayerView;
+24-import com.cochi.client.PlayerActivity;
+25-import com.google.android.material.button.MaterialButton;
+26-import com.tuempresa.motor.MotorPrivado;
+27-import java.lang.reflect.InvocationTargetException;
+28-import java.net.URI;
+29-import java.nio.charset.StandardCharsets;
+30-import java.util.ArrayList;
+31-import java.util.Collections;
+32-import java.util.HashMap;
+33-import java.util.Iterator;
+34-import java.util.LinkedHashMap;
+35-import java.util.List;
+36-import java.util.Locale;
+37-import java.util.Map;
+38-import java.util.Objects;
+39-import java.util.Set;
+40-import java.util.UUID;
+41-import java.util.concurrent.Callable;
+42-import java.util.concurrent.ExecutorService;
+43-import java.util.concurrent.Executors;
+44-import java.util.concurrent.TimeUnit;
+45-import org.json.JSONObject;
+46-import x.AbstractC0192Mm;
+47-import x.AbstractC0863jG;
+48-import x.AbstractC0966lF;
+49-import x.AbstractC1070nF;
+50-import x.AbstractC1116o9;
+51-import x.AbstractC1259qx;
+52-import x.AbstractC1425u7;
+53-import x.C0139Je;
+54-import x.C0162Km;
+55-import x.C0177Lm;
+56-import x.C0273Sd;
+57-import x.C0314Vc;
+58-import x.C0336Wk;
+59-import x.C0376Zi;
+60-import x.C0413af;
+61-import x.C0475bp;
+62-import x.C0515ce;
+63-import x.C0609eK;
+64-import x.C0619ef;
+65-import x.C0760hF;
+66-import x.C0802i5;
+67-import x.C0806i9;
+68-import x.C0812iF;
+69-import x.C0839is;
+70-import x.C0848j1;
+71-import x.C0914kF;
+72-import x.C0934kk;
+73-import x.C1044mq;
+74-import x.C1056n1;
+75-import x.C1089nj;
+76-import x.C1318s4;
+77-import x.C1363sy;
+78-import x.C1447ue;
+79-import x.C1448uf;
+80-import x.C1481vB;
+81-import x.C1514vt;
+82-import x.C1725zw;
+83-import x.Cz;
+84-import x.E5;
+85-import x.Gy;
+86-import x.Ht;
+87-import x.It;
+88-import x.Jt;
+89-import x.Kt;
+90-import x.Lt;
+91-import x.Nt;
+92-import x.P8;
+93-import x.Py;
+94-import x.QK;
+95-import x.Rt;
+96-import x.RunnableC0586dy;
+97-import x.RunnableC0690fy;
+98-import x.RunnableC0742gy;
+99-import x.RunnableC0844iy;
+100-import x.RunnableC1052my;
+101-import x.RunnableC1311ry;
+102-import x.RunnableC1422u4;
+103-import x.ViewOnClickListenerC0638ey;
+104-import x.W1;
+105-import x.W6;
+106-import x.Y5;
+107-
+108-/* loaded from: classes.dex */
+109-public class PlayerActivity extends W1 {
+110-    public static final long[] z0 = {300, 700, 1400, 2500};
+111-    public C1089nj E;
+112:    public PlayerView F;
+113-    public WebView G;
+114-    public ProgressBar H;
+115-    public View I;
+116-    public TextView J;
+117-    public TextView K;
+118-    public View L;
+119-    public MaterialButton M;
+120-    public MaterialButton N;
+121-    public MaterialButton O;
+122-    public View P;
+123-    public ImageButton Q;
+124-    public ImageButton R;
+125-    public ImageButton S;
+126-    public boolean X;
+127-    public boolean Y;
+128-    public P8 Z;
+129-    public C0806i9 g0;
+130-    public RunnableC0690fy h0;
+131-    public RunnableC0690fy i0;
+132-    public boolean j0;
+133-    public boolean k0;
+134-    public boolean l0;
+135-    public RunnableC1422u4 m0;
+136-    public boolean o0;
+137-    public boolean p0;
+138-    public boolean q0;
+139-    public boolean r0;
+140-    public volatile boolean s0;
+141-    public boolean t0;
+142-    public Runnable u0;
+143-    public C0760hF T = new C0760hF(null, null, -1);
+144-    public final Handler U = new Handler(Looper.getMainLooper());
+145-    public final RunnableC0586dy V = new RunnableC0586dy(this, 0);
+146-    public final ExecutorService W = Executors.newSingleThreadExecutor();
+147-    public int a0 = 0;
+148-    public int b0 = 0;
+149-    public int c0 = -1;
+150-    public int d0 = 0;
+151-    public long e0 = 0;
+152-    public int f0 = 0;
+153-    public final RunnableC1311ry n0 = new RunnableC1311ry(this, 0);
+154-    public final RunnableC1311ry v0 = new RunnableC1311ry(this, 1);
+155-    public final RunnableC1311ry w0 = new RunnableC1311ry(this, 2);
+156-    public final RunnableC1311ry x0 = new RunnableC1311ry(this, 3);
+157-    public final RunnableC1311ry y0 = new RunnableC1311ry(this, 4);
+158-
+159-    public static byte[] C(String str) {
+160-        String strTrim = str.replace("-", "").replace(" ", "").trim();
+161-        if (!G(strTrim)) {
+162-            throw new IllegalArgumentException("KID/KEY inválido");
+--
+270-            sb.append("\",\"k\":\"");
+271-            sb.append(strEncodeToString2);
+272-            sb.append("\"}");
+273-        }
+274-        sb.append("],\"type\":\"temporary\"}");
+275-        return sb.toString();
+276-    }
+277-
+278-    public static Nt y(C0806i9 c0806i9, String str) {
+279-        C0934kk c0934kk = new C0934kk();
+280-        new C1514vt();
+281-        List list = Collections.EMPTY_LIST;
+282-        C1481vB c1481vB = C1481vB.l;
+283-        It it = new It();
+284-        Lt lt = Lt.a;
+285-        String str2 = null;
+286-        Uri uri = str == null ? null : Uri.parse(str);
+287-        String str3 = c0806i9.d;
+288-        String lowerCase = str3 == null ? "" : str3.trim().toLowerCase(Locale.ROOT);
+289-        if ("hls".equals(lowerCase) || "m3u8".equals(lowerCase)) {
+290-            str2 = "application/x-mpegURL";
+291-        } else if ("dash".equals(lowerCase) || "mpd".equals(lowerCase)) {
+292-            str2 = "application/dash+xml";
+293-        }
+294-        return new Nt("", new Ht(c0934kk), uri != null ? new Kt(uri, str2, null, list, c1481vB, -9223372036854775807L) : null, new Jt(it), Rt.C, lt);
+295-    }
+296-
+297-    public final void A() {
+298-        RunnableC0690fy runnableC0690fy = this.h0;
+299-        Handler handler = this.U;
+300-        if (runnableC0690fy != null) {
+301-            handler.removeCallbacks(runnableC0690fy);
+302-            this.h0 = null;
+303-        }
+304-        RunnableC0690fy runnableC0690fy2 = this.i0;
+305-        if (runnableC0690fy2 != null) {
+306-            handler.removeCallbacks(runnableC0690fy2);
+307-            this.i0 = null;
+308-        }
+309-    }
+310-
+311-    public final void B() {
+312-        RunnableC1422u4 runnableC1422u4 = this.m0;
+313-        if (runnableC1422u4 != null) {
+314-            this.U.removeCallbacks(runnableC1422u4);
+315-            this.m0 = null;
+316-        }
+317-    }
+318-
+319-    public final void D() {
+320:        PlayerView playerView;
+321-        if (!this.X || (playerView = this.F) == null) {
+322-            return;
+323-        }
+324-        playerView.e();
+325:        PlayerView playerView2 = this.F;
+326-        Objects.requireNonNull(playerView2);
+327-        RunnableC0844iy runnableC0844iy = new RunnableC0844iy(playerView2, 0);
+328-        Handler handler = this.U;
+329-        handler.post(runnableC0844iy);
+330:        PlayerView playerView3 = this.F;
+331-        Objects.requireNonNull(playerView3);
+332-        handler.postDelayed(new RunnableC0844iy(playerView3, 0), 120L);
+333:        PlayerView playerView4 = this.F;
+334-        Objects.requireNonNull(playerView4);
+335-        handler.postDelayed(new RunnableC0844iy(playerView4, 0), 350L);
+336-    }
+337-
+338-    public final void E() {
+339-        View view = this.L;
+340-        if (view != null) {
+341-            view.setVisibility(8);
+342-        }
+343-        MaterialButton materialButton = this.M;
+344-        if (materialButton != null) {
+345-            materialButton.setVisibility(8);
+346-        }
+347-        MaterialButton materialButton2 = this.N;
+348-        if (materialButton2 != null) {
+349-            materialButton2.setVisibility(8);
+350-        }
+351-        MaterialButton materialButton3 = this.O;
+352-        if (materialButton3 != null) {
+353-            materialButton3.setVisibility(8);
+354-        }
+355-    }
+356-
+357-    public final void F() {
+358-        float f;
+359-        ImageButton imageButton;
+360:        PlayerView playerView = this.F;
+361-        if (playerView == null) {
+362-            return;
+363-        }
+364-        View viewFindViewById = playerView.findViewById(R.id.exo_prev);
+365-        View viewFindViewById2 = this.F.findViewById(R.id.exo_next);
+366-        View viewFindViewById3 = this.F.findViewById(R.id.exo_rew);
+367-        if (viewFindViewById3 == null) {
+368-            viewFindViewById3 = this.F.findViewById(R.id.exo_rew_with_amount);
+369-        }
+370-        View viewFindViewById4 = this.F.findViewById(R.id.exo_ffwd);
+371-        if (viewFindViewById4 == null) {
+372-            viewFindViewById4 = this.F.findViewById(R.id.exo_ffwd_with_amount);
+373-        }
+374-        View viewFindViewById5 = this.F.findViewById(R.id.exo_settings);
+375-        View viewFindViewById6 = this.F.findViewById(R.id.exo_play_pause);
+376-        View viewFindViewById7 = this.F.findViewById(R.id.exo_progress);
+377-        C1089nj c1089nj = this.E;
+378-        boolean z = true;
+379-        boolean z2 = c1089nj != null && c1089nj.g();
+380-        boolean zH = H();
+381-        final boolean z3 = this.X && AbstractC1116o9.d() > 1;
+382-        if (viewFindViewById != null) {
+383-            boolean z4 = this.X;
+384-            if (z4 && zH) {
+385-                viewFindViewById.setEnabled(z2);
+386-                viewFindViewById.setAlpha(z2 ? 1.0f : 0.35f);
+387-                viewFindViewById.setContentDescription("Retroceder 5 minutos ");
+388-                viewFindViewById.setOnClickListener(new ViewOnClickListenerC0638ey(this, 1));
+389-            } else if (z4) {
+390-                viewFindViewById.setEnabled(z3);
+391-                viewFindViewById.setAlpha(z3 ? 1.0f : 0.35f);
+392-                viewFindViewById.setContentDescription("Canal anterior");
+393-                final int i = 0;
+394-                viewFindViewById.setOnClickListener(new View.OnClickListener(this) { // from class: x.hy
+395-                    public final /* synthetic */ PlayerActivity i;
+396-
+397-                    {
+398-                        this.i = this;
+399-                    }
+400-
+401-                    @Override // android.view.View.OnClickListener
+402-                    public final void onClick(View view) {
+403-                        int i2 = i;
+404-                        boolean z5 = z3;
+405-                        PlayerActivity playerActivity = this.i;
+406-                        switch (i2) {
+407-                            case 0:
+408-                                long[] jArr = PlayerActivity.z0;
+409-                                if (!z5) {
+410-                                    playerActivity.getClass();
+--
+1156-        if (c1089nj == null) {
+1157-            return;
+1158-        }
+1159-        C0475bp c0475bpListIterator = c1089nj.A().a.listIterator(0);
+1160-        while (c0475bpListIterator.hasNext()) {
+1161-            C0609eK c0609eK = (C0609eK) c0475bpListIterator.next();
+1162-            if (c0609eK.b.c == 3 && c0609eK.a > 0) {
+1163-                C0515ce c0515ce = new C0515ce(this, "Subtítulos", this.E, 3);
+1164-                c0515ce.a = true;
+1165-                c0515ce.a().show();
+1166-                return;
+1167-            }
+1168-        }
+1169-        C1056n1 title = new C1056n1(this).setTitle("Subtítulos");
+1170-        title.a.f = "Subtítulos no disponibles para este contenido";
+1171-        title.b("Aceptar", null);
+1172-        title.c();
+1173-    }
+1174-
+1175-    public final void Y(String str, int i) {
+1176-        C1089nj c1089nj = this.E;
+1177-        if (c1089nj == null) {
+1178-            return;
+1179-        }
+1180-        C0515ce c0515ce = new C0515ce(this, str, c1089nj, i);
+1181-        c0515ce.a = false;
+1182-        c0515ce.a().show();
+1183-    }
+1184-
+1185-    public final void Z(W6 w6, String str) {
+1186-        C1089nj c1089nj = this.E;
+1187-        if (c1089nj == null || w6 == null) {
+1188-            return;
+1189-        }
+1190-        long j = w6.b;
+1191-        if (j > w6.a) {
+1192-            if (!c1089nj.g()) {
+1193-                Toast.makeText(this, "Este contenido no permite saltar", 0).show();
+1194-                return;
+1195-            }
+1196-            this.E.k(5, j);
+1197-            this.E.i();
+1198-            b0();
+1199-            Toast.makeText(this, str, 0).show();
+1200-        }
+1201-    }
+1202-
+1203-    public final void a0() {
+1204-        boolean z;
+1205-        boolean z2;
+1206:        PlayerView playerView = this.F;
+1207-        if (playerView == null) {
+1208-            return;
+1209-        }
+1210-        Gy gy = playerView.s;
+1211-        boolean z3 = gy != null && gy.j();
+1212-        if (this.S != null) {
+1213-            if (H() || !z3) {
+1214-                this.S.setVisibility(8);
+1215-            } else {
+1216-                this.S.setVisibility(0);
+1217-                this.S.setEnabled(true);
+1218-                this.S.setClickable(true);
+1219-                this.S.setAlpha(1.0f);
+1220-                this.S.bringToFront();
+1221-            }
+1222-        }
+1223-        View view = this.P;
+1224-        if (view == null || (z = this.X) || !(z2 = this.Y)) {
+1225-            if (view != null) {
+1226-                view.setVisibility(8);
+1227-                return;
+1228-            }
+1229-            return;
+1230-        }
+1231-        if (!z3) {
+1232-            view.setVisibility(8);
+1233-            return;
+1234-        }
+1235-        if (!z && z2) {
+1236-            view.setVisibility(0);
+1237-            this.P.bringToFront();
+1238-            boolean z4 = this.c0 > 0 && AbstractC1116o9.d() > 0;
+1239-            int i = this.c0;
+1240-            boolean z5 = i >= 0 && i + 1 < AbstractC1116o9.d();
+1241-            boolean z6 = this.Z == P8.j;
+1242-            this.Q.setEnabled(z4);
+1243-            this.Q.setClickable(z4);
+1244-            this.Q.setAlpha(z4 ? 1.0f : 0.32f);
+1245-            this.Q.setVisibility(0);
+1246-            ImageButton imageButton = this.Q;
+1247-            P8 p8 = this.Z;
+1248-            P8 p82 = P8.k;
+1249-            imageButton.setContentDescription(p8 == p82 ? "Capítulo anterior" : z6 ? "Película anterior" : "Contenido anterior");
+1250-            this.R.setEnabled(z5);
+1251-            this.R.setClickable(z5);
+1252-            this.R.setAlpha(z5 ? 1.0f : 0.32f);
+1253-            this.R.setVisibility(0);
+1254-            this.R.setContentDescription(this.Z == p82 ? "Capítulo siguiente" : z6 ? "Película siguiente" : "Contenido siguiente");
+1255-        }
+1256-        ImageButton imageButton2 = this.S;
+--
+1309-                runnableC0690fy.run();
+1310-                return;
+1311-            }
+1312-            return;
+1313-        }
+1314-        if (this.t0) {
+1315-            return;
+1316-        }
+1317-        if (runnableC0690fy != null && AbstractC1070nF.o0()) {
+1318-            runnableC0690fy.run();
+1319-            return;
+1320-        }
+1321-        if (this.s0) {
+1322-            if (runnableC0690fy != null) {
+1323-                this.u0 = runnableC0690fy;
+1324-                return;
+1325-            }
+1326-            return;
+1327-        }
+1328-        boolean z2 = true;
+1329-        this.s0 = true;
+1330-        if (!z && runnableC0690fy == null) {
+1331-            z2 = false;
+1332-        }
+1333-        if (z2) {
+1334-            this.H.setVisibility(0);
+1335-        }
+1336-        new Thread(new RunnableC1052my(this, z2, runnableC0690fy, z), "cochi-series-player-access").start();
+1337-    }
+1338-
+1339-    public final void d0(int i) {
+1340-        S();
+1341-        if (AbstractC1116o9.d() >= 2) {
+1342-            D();
+1343-            L(this.c0 + i, 0L);
+1344-            D();
+1345-        } else {
+1346-            C0806i9 c0806i9A = AbstractC1116o9.a(this.c0);
+1347-            if (c0806i9A != null) {
+1348-                V(c0806i9A);
+1349-            }
+1350-            D();
+1351-        }
+1352-    }
+1353-
+1354-    @Override // x.W1, x.AbstractActivityC0326Wa, android.app.Activity, android.view.Window.Callback
+1355-    public final boolean dispatchKeyEvent(KeyEvent keyEvent) {
+1356-        Gy gy;
+1357-        if (this.X && keyEvent.getAction() == 0 && keyEvent.getRepeatCount() == 0) {
+1358-            int keyCode = keyEvent.getKeyCode();
+1359:            PlayerView playerView = this.F;
+1360-            boolean z = (playerView == null || (gy = playerView.s) == null || !gy.j()) ? false : true;
+1361-            if (keyCode == 166 || (keyCode == 19 && !z)) {
+1362-                d0(1);
+1363-                return true;
+1364-            }
+1365-            if (keyCode == 167 || (keyCode == 20 && !z)) {
+1366-                d0(-1);
+1367-                return true;
+1368-            }
+1369-            if (keyCode == 165) {
+1370-                C0806i9 c0806i9A = AbstractC1116o9.a(this.c0);
+1371-                if (c0806i9A != null) {
+1372-                    V(c0806i9A);
+1373-                }
+1374-                return true;
+1375-            }
+1376-            if (keyCode == 82) {
+1377-                W();
+1378-                return true;
+1379-            }
+1380-        }
+1381-        return super.dispatchKeyEvent(keyEvent);
+1382-    }
+1383-
+1384-    @Override // android.app.Activity, android.view.Window.Callback
+1385-    public final boolean dispatchTouchEvent(MotionEvent motionEvent) {
+1386-        boolean zDispatchTouchEvent = super.dispatchTouchEvent(motionEvent);
+1387-        if (motionEvent != null && motionEvent.getActionMasked() == 0 && this.Y && !this.X) {
+1388-            this.U.postDelayed(new RunnableC0586dy(this, 2), 80L);
+1389-        }
+1390-        return zDispatchTouchEvent;
+1391-    }
+1392-
+1393-    /* JADX WARN: Multi-variable type inference failed */
+1394-    /* JADX WARN: Type inference failed for: r0v23, types: [x.ky] */
+1395-    /* JADX WARN: Type inference failed for: r15v79, types: [x.ly] */
+1396-    @Override // x.W1, x.AbstractActivityC0340Xa, x.AbstractActivityC0326Wa, android.app.Activity
+1397-    public final void onCreate(Bundle bundle) {
+1398-        super.onCreate(bundle);
+1399-        setContentView(R.layout.activity_player);
+1400-        MotorPrivado.initialize(getApplicationContext());
+1401-        getWindow().addFlags(128);
+1402-        getWindow().addFlags(8192);
+1403:        this.F = (PlayerView) findViewById(R.id.playerView);
+1404-        this.G = (WebView) findViewById(R.id.youtubeWebView);
+1405-        this.H = (ProgressBar) findViewById(R.id.loading);
+1406-        this.I = findViewById(R.id.channelInfo);
+1407-        this.J = (TextView) findViewById(R.id.channelNumber);
+1408-        this.K = (TextView) findViewById(R.id.channelName);
+1409-        this.L = findViewById(R.id.episodeActions);
+1410-        this.M = (MaterialButton) findViewById(R.id.skipRecapButton);
+1411-        this.N = (MaterialButton) findViewById(R.id.skipIntroButton);
+1412-        this.O = (MaterialButton) findViewById(R.id.nextEpisodeButton);
+1413-        this.P = findViewById(R.id.cochiNavOverlay);
+1414-        this.Q = (ImageButton) findViewById(R.id.cochiPreviousButton);
+1415-        this.R = (ImageButton) findViewById(R.id.cochiNextButton);
+1416-        this.S = (ImageButton) findViewById(R.id.cochiSettingsButton);
+1417-        this.M.setOnClickListener(new ViewOnClickListenerC0638ey(this, 6));
+1418-        this.N.setOnClickListener(new ViewOnClickListenerC0638ey(this, 7));
+1419-        this.O.setOnClickListener(new ViewOnClickListenerC0638ey(this, 8));
+1420-        this.Q.setOnClickListener(new ViewOnClickListenerC0638ey(this, 9));
+1421-        this.R.setOnClickListener(new ViewOnClickListenerC0638ey(this, 10));
+1422-        final int i = 0;
+1423-        this.S.setOnClickListener(new ViewOnClickListenerC0638ey(this, i));
+1424-        this.P.setVisibility(8);
+1425-        this.X = getIntent().getBooleanExtra("cochi.extra.TV_MODE", false);
+1426-        this.Y = getIntent().getBooleanExtra("cochi.extra.STORE_ITEM", false);
+1427-        if (this.X) {
+1428-            this.F.setControllerAutoShow(false);
+1429-            this.F.e();
+1430-        }
+1431-        String stringExtra = getIntent().getStringExtra("cochi.extra.CATALOG_SOURCE");
+1432-        if (stringExtra != null) {
+1433-            try {
+1434-                this.Z = P8.valueOf(stringExtra);
+1435-            } catch (Exception unused) {
+1436-            }
+1437-        }
+1438-        this.o0 = getIntent().getBooleanExtra("cochi.extra.FORCE_START", false);
+1439-        this.p0 = getIntent().getBooleanExtra("cochi.extra.AUTO_RESUME", false);
+1440-        this.q0 = getIntent().getBooleanExtra("cochi.extra.AUTO_NEXT_SERIES", false);
+1441-        this.F.setControllerVisibilityListener(new C0802i5(22, this));
+1442-        Handler handler = this.U;
+1443-        RunnableC1311ry runnableC1311ry = this.x0;
+1444-        handler.removeCallbacks(runnableC1311ry);
+1445-        if (!H() || (this.Y && !this.X)) {
+1446-            handler.post(runnableC1311ry);
+1447-        }
+1448-        if (this.Z == P8.k) {
+1449-            RunnableC1311ry runnableC1311ry2 = this.y0;
+1450-            handler.removeCallbacks(runnableC1311ry2);
+1451-            handler.postDelayed(runnableC1311ry2, 30000L);
+1452-        }
+1453-        if (this.X || this.Y) {
 
 === Version matches ===
 work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1732-            }
