@@ -26,13 +26,14 @@ jobs:
       - name: Preserve focused decompile
         run: |
           set -eux
-          rm -rf tools/cochi94/focused93
-          mkdir -p tools/cochi94/focused93/java tools/cochi94/focused93/smali
+          rm -rf tools/cochi94/focused93 tools/cochi94/base93java
+          mkdir -p tools/cochi94/focused93/java tools/cochi94/focused93/smali tools/cochi94/base93java
           for f in C0376Zi C1318s4 I2 C1504vj C1089nj C0619ef; do
             test -f work/jadx-out/sources/x/$f.java && cp work/jadx-out/sources/x/$f.java tools/cochi94/focused93/java/ || true
           done
           cp work/decoded/smali/x/I2.smali tools/cochi94/focused93/smali/
           cp work/decoded/smali/com/cochi/client/PlayerActivity.smali tools/cochi94/focused93/smali/
+          cp work/jadx-out/sources/com/cochi/client/*.java tools/cochi94/base93java/
       - name: Commit focused analysis
         run: |
           set -eux
