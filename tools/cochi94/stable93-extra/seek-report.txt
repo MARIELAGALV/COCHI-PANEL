@@ -1,0 +1,569 @@
+=== seek and retry matches ===
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4964-                if (webView != null) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4965-                    webView.setVisibility(8);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4966-                }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4967-                AbstractC1259qx.u(str, this.U);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4968-                return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4969-            }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4970-            if (strTrim.isEmpty()) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4971-                this.U.setImageResource(R.drawable.cochi_tv_banner);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4972-            } else {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4973-                AbstractC1259qx.u(strTrim, this.U);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4974-            }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4975-            M();
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4976-            if (str == null || str.trim().isEmpty()) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4977-                return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4978-            }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4979-            String lowerCase = str.toLowerCase(Locale.ROOT);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4980-            if (lowerCase.contains("youtube.com/") || lowerCase.contains("youtu.be/")) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4981-                if (this.W == null || (strL = AbstractC1259qx.L(str)) == null || strL.trim().isEmpty()) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4982-                    return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4983-                }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4984-                try {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4985-                    try {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4986-                        WebSettings settings = this.W.getSettings();
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4987-                        settings.setJavaScriptEnabled(true);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4988-                        settings.setDomStorageEnabled(true);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4989-                        settings.setMediaPlaybackRequiresUserGesture(false);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4990-                        this.W.setWebChromeClient(new WebChromeClient());
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4991-                        this.W.setWebViewClient(new WebViewClient());
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4992-                        this.W.setVisibility(0);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4993-                        String strReplaceAll = strL.replaceAll("[^A-Za-z0-9_-]", "");
+work/jadx-out/sources/com/cochi/client/MainActivity.java:4994:                        this.W.loadDataWithBaseURL("https://www.youtube-nocookie.com", "<html><head><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><script src='https://www.youtube.com/iframe_api'></script></head><body style='margin:0;background:#000;overflow:hidden;position:relative'><div id='player' style='position:absolute;width:120%;height:120%;left:-10%;top:-10%'></div><script>var p;function onYouTubeIframeAPIReady(){p=new YT.Player('player',{width:'100%',height:'100%',videoId:'" + strReplaceAll + "',playerVars:{autoplay:1,controls:0,loop:1,playlist:'" + strReplaceAll + "',playsinline:1,rel:0,modestbranding:1},events:{onReady:function(e){try{e.target.setPlaybackQuality('hd1080');e.target.unMute();e.target.setVolume(100);e.target.playVideo();}catch(x){}},onStateChange:function(e){if(e.data===YT.PlayerState.ENDED){try{e.target.seekTo(0);e.target.playVideo();}catch(x){}}}}});}</script></body></html>", "text/html", "UTF-8", null);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4995-                        return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4996-                    } catch (Exception unused) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4997-                        this.W.setVisibility(8);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4998-                        return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-4999-                    }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5000-                } catch (Exception unused2) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5001-                    return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5002-                }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5003-            }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5004-            if (this.V == null) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5005-                return;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5006-            }
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5007-            try {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5008-                C0376Zi c0376Zi = new C0376Zi(this);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5009-                QK.z(!c0376Zi.z);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5010-                c0376Zi.z = true;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5011-                C1089nj c1089nj = new C1089nj(c0376Zi);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5012-                this.Y = c1089nj;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5013-                this.V.setPlayer(c1089nj);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5014-                this.V.setUseController(false);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5015-                this.V.setVisibility(0);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5016-                C1089nj c1089nj2 = this.Y;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5017-                c1089nj2.c0();
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5018-                final float fH = AbstractC1595xL.h(0.0f, 0.0f, 1.0f);
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5019-                if (c1089nj2.b0 != fH) {
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5020-                    c1089nj2.b0 = fH;
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5021-                    c1089nj2.l.n.c(32, Float.valueOf(fH)).b();
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5022-                    c1089nj2.m.e(22, new InterfaceC0889jr() { // from class: x.dj
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5023-                        @Override // x.InterfaceC0889jr
+work/jadx-out/sources/com/cochi/client/MainActivity.java-5024-                        public final void b(Object obj) {
+--
+work/jadx-out/sources/x/C0839is.java-477-                                                                                    str = "ERROR_CODE_DRM_DISALLOWED_OPERATION";
+work/jadx-out/sources/x/C0839is.java-478-                                                                                    break;
+work/jadx-out/sources/x/C0839is.java-479-                                                                                case 6006:
+work/jadx-out/sources/x/C0839is.java-480-                                                                                    str = "ERROR_CODE_DRM_SYSTEM_ERROR";
+work/jadx-out/sources/x/C0839is.java-481-                                                                                    break;
+work/jadx-out/sources/x/C0839is.java-482-                                                                                case 6007:
+work/jadx-out/sources/x/C0839is.java-483-                                                                                    str = "ERROR_CODE_DRM_DEVICE_REVOKED";
+work/jadx-out/sources/x/C0839is.java-484-                                                                                    break;
+work/jadx-out/sources/x/C0839is.java-485-                                                                                case 6008:
+work/jadx-out/sources/x/C0839is.java-486-                                                                                    str = "ERROR_CODE_DRM_LICENSE_EXPIRED";
+work/jadx-out/sources/x/C0839is.java-487-                                                                                    break;
+work/jadx-out/sources/x/C0839is.java-488-                                                                                default:
+work/jadx-out/sources/x/C0839is.java-489-                                                                                    if (i2 < 1000000) {
+work/jadx-out/sources/x/C0839is.java-490-                                                                                        str = "invalid error code";
+work/jadx-out/sources/x/C0839is.java-491-                                                                                        break;
+work/jadx-out/sources/x/C0839is.java-492-                                                                                    } else {
+work/jadx-out/sources/x/C0839is.java-493-                                                                                        str = "custom error code";
+work/jadx-out/sources/x/C0839is.java-494-                                                                                        break;
+work/jadx-out/sources/x/C0839is.java-495-                                                                                    }
+work/jadx-out/sources/x/C0839is.java-496-                                                                            }
+work/jadx-out/sources/x/C0839is.java-497-                                                                    }
+work/jadx-out/sources/x/C0839is.java-498-                                                            }
+work/jadx-out/sources/x/C0839is.java-499-                                                    }
+work/jadx-out/sources/x/C0839is.java-500-                                            }
+work/jadx-out/sources/x/C0839is.java-501-                                    }
+work/jadx-out/sources/x/C0839is.java-502-                            }
+work/jadx-out/sources/x/C0839is.java-503-                        } else {
+work/jadx-out/sources/x/C0839is.java-504-                            str = "ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED";
+work/jadx-out/sources/x/C0839is.java-505-                        }
+work/jadx-out/sources/x/C0839is.java-506-                    } else {
+work/jadx-out/sources/x/C0839is.java:507:                        str = "PLAYBACK_ERROR";
+work/jadx-out/sources/x/C0839is.java-508-                    }
+work/jadx-out/sources/x/C0839is.java:509:                    Log.w((c0348Xi != null && (i = c0348Xi.h) >= 6000 && i < 7000) ? "COCHI-DRM" : "COCHI-NET", "Reconexion silenciosa #" + playerActivity.d0 + " en " + j + " ms: " + str);
+work/jadx-out/sources/x/C0839is.java-510-                    handler.removeCallbacks(runnableC1311ry);
+work/jadx-out/sources/x/C0839is.java-511-                    handler.postDelayed(runnableC1311ry, j);
+work/jadx-out/sources/x/C0839is.java-512-                    break;
+work/jadx-out/sources/x/C0839is.java-513-                }
+work/jadx-out/sources/x/C0839is.java-514-                break;
+work/jadx-out/sources/x/C0839is.java-515-        }
+work/jadx-out/sources/x/C0839is.java-516-    }
+work/jadx-out/sources/x/C0839is.java-517-
+work/jadx-out/sources/x/C0839is.java-518-    @Override // x.Zx
+work/jadx-out/sources/x/C0839is.java-519-    public final /* synthetic */ void M(boolean z) {
+work/jadx-out/sources/x/C0839is.java-520-        int i = this.h;
+work/jadx-out/sources/x/C0839is.java-521-    }
+work/jadx-out/sources/x/C0839is.java-522-
+work/jadx-out/sources/x/C0839is.java-523-    @Override // x.Zx
+work/jadx-out/sources/x/C0839is.java-524-    public final /* synthetic */ void b(C1129oM c1129oM) {
+work/jadx-out/sources/x/C0839is.java-525-        int i = this.h;
+work/jadx-out/sources/x/C0839is.java-526-    }
+work/jadx-out/sources/x/C0839is.java-527-
+work/jadx-out/sources/x/C0839is.java-528-    @Override // x.Zx
+work/jadx-out/sources/x/C0839is.java-529-    public final /* synthetic */ void c(int i) {
+work/jadx-out/sources/x/C0839is.java-530-        int i2 = this.h;
+work/jadx-out/sources/x/C0839is.java-531-    }
+work/jadx-out/sources/x/C0839is.java-532-
+work/jadx-out/sources/x/C0839is.java-533-    @Override // x.Zx
+work/jadx-out/sources/x/C0839is.java-534-    public final /* synthetic */ void d(Xx xx) {
+work/jadx-out/sources/x/C0839is.java-535-        int i = this.h;
+work/jadx-out/sources/x/C0839is.java-536-    }
+work/jadx-out/sources/x/C0839is.java-537-
+work/jadx-out/sources/x/C0839is.java-538-    @Override // x.Zx
+work/jadx-out/sources/x/C0839is.java-539-    public final /* synthetic */ void e(int i) {
+--
+work/jadx-out/sources/x/RunnableC1311ry.java-6-/* renamed from: x.ry, reason: case insensitive filesystem */
+work/jadx-out/sources/x/RunnableC1311ry.java-7-/* loaded from: classes.dex */
+work/jadx-out/sources/x/RunnableC1311ry.java-8-public final class RunnableC1311ry implements Runnable {
+work/jadx-out/sources/x/RunnableC1311ry.java-9-    public final /* synthetic */ int h;
+work/jadx-out/sources/x/RunnableC1311ry.java-10-    public final /* synthetic */ PlayerActivity i;
+work/jadx-out/sources/x/RunnableC1311ry.java-11-
+work/jadx-out/sources/x/RunnableC1311ry.java-12-    public /* synthetic */ RunnableC1311ry(PlayerActivity playerActivity, int i) {
+work/jadx-out/sources/x/RunnableC1311ry.java-13-        this.h = i;
+work/jadx-out/sources/x/RunnableC1311ry.java-14-        this.i = playerActivity;
+work/jadx-out/sources/x/RunnableC1311ry.java-15-    }
+work/jadx-out/sources/x/RunnableC1311ry.java-16-
+work/jadx-out/sources/x/RunnableC1311ry.java-17-    @Override // java.lang.Runnable
+work/jadx-out/sources/x/RunnableC1311ry.java-18-    public final void run() {
+work/jadx-out/sources/x/RunnableC1311ry.java-19-        int i = this.h;
+work/jadx-out/sources/x/RunnableC1311ry.java-20-        PlayerActivity playerActivity = this.i;
+work/jadx-out/sources/x/RunnableC1311ry.java-21-        switch (i) {
+work/jadx-out/sources/x/RunnableC1311ry.java-22-            case 0:
+work/jadx-out/sources/x/RunnableC1311ry.java-23-                if (playerActivity.E != null && !playerActivity.isFinishing() && !playerActivity.isDestroyed()) {
+work/jadx-out/sources/x/RunnableC1311ry.java-24-                    try {
+work/jadx-out/sources/x/RunnableC1311ry.java-25-                        if (playerActivity.U()) {
+work/jadx-out/sources/x/RunnableC1311ry.java-26-                            long j = playerActivity.e0;
+work/jadx-out/sources/x/RunnableC1311ry.java-27-                            if (j > 0) {
+work/jadx-out/sources/x/RunnableC1311ry.java-28-                                playerActivity.E.k(5, j);
+work/jadx-out/sources/x/RunnableC1311ry.java-29-                            }
+work/jadx-out/sources/x/RunnableC1311ry.java-30-                        }
+work/jadx-out/sources/x/RunnableC1311ry.java-31-                        playerActivity.E.N();
+work/jadx-out/sources/x/RunnableC1311ry.java-32-                        playerActivity.E.i();
+work/jadx-out/sources/x/RunnableC1311ry.java-33-                        playerActivity.t();
+work/jadx-out/sources/x/RunnableC1311ry.java-34-                        break;
+work/jadx-out/sources/x/RunnableC1311ry.java-35-                    } catch (Exception e) {
+work/jadx-out/sources/x/RunnableC1311ry.java:36:                        Log.w("COCHI-NET", "Reintento de reproducción falló", e);
+work/jadx-out/sources/x/RunnableC1311ry.java-37-                        return;
+work/jadx-out/sources/x/RunnableC1311ry.java-38-                    }
+work/jadx-out/sources/x/RunnableC1311ry.java-39-                }
+work/jadx-out/sources/x/RunnableC1311ry.java-40-                break;
+work/jadx-out/sources/x/RunnableC1311ry.java-41-            case 1:
+work/jadx-out/sources/x/RunnableC1311ry.java-42-                long[] jArr = PlayerActivity.z0;
+work/jadx-out/sources/x/RunnableC1311ry.java-43-                playerActivity.S();
+work/jadx-out/sources/x/RunnableC1311ry.java-44-                playerActivity.U.postDelayed(this, 10000L);
+work/jadx-out/sources/x/RunnableC1311ry.java-45-                break;
+work/jadx-out/sources/x/RunnableC1311ry.java-46-            case 2:
+work/jadx-out/sources/x/RunnableC1311ry.java-47-                long[] jArr2 = PlayerActivity.z0;
+work/jadx-out/sources/x/RunnableC1311ry.java-48-                playerActivity.b0();
+work/jadx-out/sources/x/RunnableC1311ry.java-49-                playerActivity.a0();
+work/jadx-out/sources/x/RunnableC1311ry.java-50-                playerActivity.U.postDelayed(this, 500L);
+work/jadx-out/sources/x/RunnableC1311ry.java-51-                break;
+work/jadx-out/sources/x/RunnableC1311ry.java-52-            case 3:
+work/jadx-out/sources/x/RunnableC1311ry.java-53-                long[] jArr3 = PlayerActivity.z0;
+work/jadx-out/sources/x/RunnableC1311ry.java-54-                playerActivity.a0();
+work/jadx-out/sources/x/RunnableC1311ry.java-55-                boolean zH = playerActivity.H();
+work/jadx-out/sources/x/RunnableC1311ry.java-56-                if (!zH || (playerActivity.Y && !playerActivity.X)) {
+work/jadx-out/sources/x/RunnableC1311ry.java-57-                    playerActivity.U.postDelayed(this, zH ? 250L : 160L);
+work/jadx-out/sources/x/RunnableC1311ry.java-58-                    break;
+work/jadx-out/sources/x/RunnableC1311ry.java-59-                }
+work/jadx-out/sources/x/RunnableC1311ry.java-60-                break;
+work/jadx-out/sources/x/RunnableC1311ry.java-61-            default:
+work/jadx-out/sources/x/RunnableC1311ry.java-62-                if (playerActivity.Z == P8.k && !playerActivity.isFinishing() && !playerActivity.isDestroyed()) {
+work/jadx-out/sources/x/RunnableC1311ry.java-63-                    playerActivity.c0(false, null);
+work/jadx-out/sources/x/RunnableC1311ry.java-64-                    playerActivity.U.postDelayed(this, 30000L);
+work/jadx-out/sources/x/RunnableC1311ry.java-65-                    break;
+work/jadx-out/sources/x/RunnableC1311ry.java-66-                }
+=== 5min matches ===
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-375-        View viewFindViewById6 = this.F.findViewById(R.id.exo_play_pause);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-376-        View viewFindViewById7 = this.F.findViewById(R.id.exo_progress);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-377-        C1089nj c1089nj = this.E;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-378-        boolean z = true;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-379-        boolean z2 = c1089nj != null && c1089nj.g();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-380-        boolean zH = H();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-381-        final boolean z3 = this.X && AbstractC1116o9.d() > 1;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-382-        if (viewFindViewById != null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-383-            boolean z4 = this.X;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-384-            if (z4 && zH) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-385-                viewFindViewById.setEnabled(z2);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-386-                viewFindViewById.setAlpha(z2 ? 1.0f : 0.35f);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:387:                viewFindViewById.setContentDescription("Retroceder 5 minutos ");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-388-                viewFindViewById.setOnClickListener(new ViewOnClickListenerC0638ey(this, 1));
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-389-            } else if (z4) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-390-                viewFindViewById.setEnabled(z3);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-391-                viewFindViewById.setAlpha(z3 ? 1.0f : 0.35f);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-392-                viewFindViewById.setContentDescription("Canal anterior");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-393-                final int i = 0;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-394-                viewFindViewById.setOnClickListener(new View.OnClickListener(this) { // from class: x.hy
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-395-                    public final /* synthetic */ PlayerActivity i;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-396-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-397-                    {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-398-                        this.i = this;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-399-                    }
+--
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-426-                    }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-427-                });
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-428-            } else {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-429-                viewFindViewById.setVisibility(4);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-430-                viewFindViewById.setEnabled(false);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-431-            }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-432-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-433-        if (viewFindViewById2 != null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-434-            boolean z5 = this.X;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-435-            if (z5 && zH) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-436-                viewFindViewById2.setEnabled(z2);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-437-                viewFindViewById2.setAlpha(z2 ? 1.0f : 0.35f);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:438:                viewFindViewById2.setContentDescription("Avanzar 5 minutos ");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-439-                viewFindViewById2.setOnClickListener(new ViewOnClickListenerC0638ey(this, 2));
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-440-            } else if (z5) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-441-                viewFindViewById2.setEnabled(z3);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-442-                viewFindViewById2.setAlpha(z3 ? 1.0f : 0.35f);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-443-                viewFindViewById2.setContentDescription("Canal siguiente");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-444-                final int i2 = 1;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-445-                viewFindViewById2.setOnClickListener(new View.OnClickListener(this) { // from class: x.hy
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-446-                    public final /* synthetic */ PlayerActivity i;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-447-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-448-                    {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-449-                        this.i = this;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-450-                    }
+--
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-563-                }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-564-                ImageButton imageButton3 = this.R;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-565-                if (imageButton3 != null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-566-                    imageButton3.setNextFocusUpId(id);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-567-                }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-568-                if (viewFindViewById5 != null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-569-                    viewFindViewById7.setNextFocusDownId(viewFindViewById5.getId());
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-570-                    viewFindViewById5.setNextFocusUpId(id);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-571-                } else if (viewFindViewById6 != null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-572-                    viewFindViewById7.setNextFocusDownId(viewFindViewById6.getId());
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-573-                }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-574-            } else {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:575:                viewFindViewById7.setContentDescription(z2 ? "Barra DVR. Izquierda y derecha mueven 5 minutos " : "Canal en vivo sin DVR");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-576-            }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-577-            if ((viewFindViewById7 instanceof C1448uf) && this.X) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:578:                ((C1448uf) viewFindViewById7).setKeyTimeIncrement(300000L);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-579-            }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-580-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-581-    }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-582-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-583-    public final boolean H() {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-584-        UiModeManager uiModeManager = (UiModeManager) getSystemService("uimode");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-585-        return (uiModeManager != null && uiModeManager.getCurrentModeType() == 4) || getPackageManager().hasSystemFeature("android.software.leanback") || getPackageManager().hasSystemFeature("android.hardware.type.television");
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-586-    }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-587-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-588-    /* JADX WARN: Removed duplicated region for block: B:37:0x00c5  */
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-589-    /*
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-590-        Code decompiled incorrectly, please refer to instructions dump.
+--
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1066-            this.E.k(5, Math.max(0L, j2));
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1067-        } else {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1068-            if (j2 >= jC - 1500 && this.E.f()) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1069-                C1089nj c1089nj2 = this.E;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1070-                c1089nj2.getClass();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1071-                c1089nj2.j(c1089nj2.v(), -9223372036854775807L, false);
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1072-                this.E.i();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1073-                Toast.makeText(this, "EN VIVO", 0).show();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1074-                return;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1075-            }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1076-            this.E.k(5, Math.min(j2, jC));
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1077-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:1078:        Toast.makeText(this, j < 0 ? "−5 min " : "+5 min ", 0).show();
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1079-    }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1080-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1081-    public final boolean U() {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1082-        P8 p8;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1083-        if (!this.Y || (p8 = this.Z) == null) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1084-            return false;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1085-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1086-        return p8 == P8.j || p8 == P8.k;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1087-    }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1088-
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1089-    public final void V(C0806i9 c0806i9) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1090-        this.J.setText(String.format(Locale.US, "%03d", Integer.valueOf(c0806i9.b)));
+--
+work/jadx-out/sources/x/C1044mq.java-956-                    c1176pH.c.e(new Uy(this, 4, c1072nH));
+work/jadx-out/sources/x/C1044mq.java-957-                    C1176pH c1176pH2 = (C1176pH) this.i;
+work/jadx-out/sources/x/C1044mq.java-958-                    Uri uriD0 = c1176pH2.d;
+work/jadx-out/sources/x/C1044mq.java-959-                    uriD0.getClass();
+work/jadx-out/sources/x/C1044mq.java-960-                    Uri uri = c1072nH.c;
+work/jadx-out/sources/x/C1044mq.java-961-                    if (uri != null) {
+work/jadx-out/sources/x/C1044mq.java-962-                        String string = uri.toString();
+work/jadx-out/sources/x/C1044mq.java-963-                        uriD0 = (string == null || AbstractC0431ax.B(string)[0] == -1) ? AbstractC0431ax.d0(uriD0.toString(), uri.toString()) : uri;
+work/jadx-out/sources/x/C1044mq.java-964-                    }
+work/jadx-out/sources/x/C1044mq.java-965-                    c1176pH2.d = uriD0;
+work/jadx-out/sources/x/C1044mq.java-966-                    long j3 = c1072nH.b;
+work/jadx-out/sources/x/C1044mq.java-967-                    if (j3 == -9223372036854775807L) {
+work/jadx-out/sources/x/C1044mq.java:968:                        j3 = 300000;
+work/jadx-out/sources/x/C1044mq.java-969-                    }
+work/jadx-out/sources/x/C1044mq.java-970-                    C1696zI c1696zI = ((C1176pH) this.i).h;
+work/jadx-out/sources/x/C1044mq.java-971-                    c1696zI.getClass();
+work/jadx-out/sources/x/C1044mq.java-972-                    c1696zI.a.postDelayed(new RunnableC1124oH((C1176pH) this.i, 0), j3);
+work/jadx-out/sources/x/C1044mq.java-973-                    C1512vr c1512vrA = C1176pH.a(c1414tx, j, j2);
+work/jadx-out/sources/x/C1044mq.java-974-                    C0026Bl c0026Bl = ((C1176pH) this.i).f;
+work/jadx-out/sources/x/C1044mq.java-975-                    c0026Bl.getClass();
+work/jadx-out/sources/x/C1044mq.java-976-                    c0026Bl.n(c1512vrA, 8);
+work/jadx-out/sources/x/C1044mq.java-977-                    return;
+work/jadx-out/sources/x/C1044mq.java-978-                }
+work/jadx-out/sources/x/C1044mq.java-979-                return;
+work/jadx-out/sources/x/C1044mq.java-980-        }
+--
+work/jadx-out/sources/x/C1044mq.java-1053-                C1176pH c1176pH = (C1176pH) this.i;
+work/jadx-out/sources/x/C1044mq.java-1054-                if (c1176pH.j) {
+work/jadx-out/sources/x/C1044mq.java-1055-                    int i2 = iOException instanceof C0990lo ? ((C0990lo) iOException).j : Integer.MAX_VALUE;
+work/jadx-out/sources/x/C1044mq.java-1056-                    if (i2 == 410) {
+work/jadx-out/sources/x/C1044mq.java-1057-                        C1467uy c1467uy = c1176pH.i;
+work/jadx-out/sources/x/C1044mq.java-1058-                        c1467uy.getClass();
+work/jadx-out/sources/x/C1044mq.java-1059-                        c1467uy.K(null);
+work/jadx-out/sources/x/C1044mq.java-1060-                        C1696zI c1696zI = c1176pH.h;
+work/jadx-out/sources/x/C1044mq.java-1061-                        c1696zI.getClass();
+work/jadx-out/sources/x/C1044mq.java-1062-                        c1696zI.f();
+work/jadx-out/sources/x/C1044mq.java-1063-                        j3 = -9223372036854775807L;
+work/jadx-out/sources/x/C1044mq.java-1064-                    } else {
+work/jadx-out/sources/x/C1044mq.java:1065:                        j3 = 300000;
+work/jadx-out/sources/x/C1044mq.java-1066-                        if (i2 == 429) {
+work/jadx-out/sources/x/C1044mq.java-1067-                            List list = (List) c1414tx.k.k.get("Retry-After");
+work/jadx-out/sources/x/C1044mq.java-1068-                            if (list != null) {
+work/jadx-out/sources/x/C1044mq.java-1069-                                try {
+work/jadx-out/sources/x/C1044mq.java-1070-                                    j3 = 1000 * Long.parseLong((String) list.get(0));
+work/jadx-out/sources/x/C1044mq.java-1071-                                } catch (NumberFormatException unused) {
+work/jadx-out/sources/x/C1044mq.java-1072-                                    AbstractC1578x4.f0("SteeringManifestTracker", "Retry-After header string doesn't contain a parsable long");
+work/jadx-out/sources/x/C1044mq.java-1073-                                }
+work/jadx-out/sources/x/C1044mq.java-1074-                            }
+work/jadx-out/sources/x/C1044mq.java-1075-                        } else {
+work/jadx-out/sources/x/C1044mq.java-1076-                            C1072nH c1072nH = c1176pH.g;
+work/jadx-out/sources/x/C1044mq.java-1077-                            if (c1072nH != null) {
+--
+work/jadx-out/sources/x/C0826ie.java-1-package x;
+work/jadx-out/sources/x/C0826ie.java-2-
+work/jadx-out/sources/x/C0826ie.java-3-import android.content.Context;
+work/jadx-out/sources/x/C0826ie.java-4-import android.os.Handler;
+work/jadx-out/sources/x/C0826ie.java-5-import java.util.HashMap;
+work/jadx-out/sources/x/C0826ie.java-6-import java.util.Iterator;
+work/jadx-out/sources/x/C0826ie.java-7-import java.util.concurrent.CopyOnWriteArrayList;
+work/jadx-out/sources/x/C0826ie.java-8-import java.util.concurrent.Executor;
+work/jadx-out/sources/x/C0826ie.java-9-
+work/jadx-out/sources/x/C0826ie.java-10-/* renamed from: x.ie, reason: case insensitive filesystem */
+work/jadx-out/sources/x/C0826ie.java-11-/* loaded from: classes.dex */
+work/jadx-out/sources/x/C0826ie.java-12-public final class C0826ie implements I5, InterfaceC0713gK {
+work/jadx-out/sources/x/C0826ie.java:13:    public static final C1481vB p = AbstractC0577dp.m(4300000L, 3200000L, 2400000L, 1700000L, 860000L);
+work/jadx-out/sources/x/C0826ie.java-14-    public static final C1481vB q = AbstractC0577dp.m(1500000L, 980000L, 750000L, 520000L, 290000L);
+work/jadx-out/sources/x/C0826ie.java:15:    public static final C1481vB r = AbstractC0577dp.m(2000000L, 1300000L, 1000000L, 860000L, 610000L);
+work/jadx-out/sources/x/C0826ie.java-16-    public static final C1481vB s = AbstractC0577dp.m(2500000L, 1700000L, 1200000L, 970000L, 680000L);
+work/jadx-out/sources/x/C0826ie.java-17-    public static final C1481vB t = AbstractC0577dp.m(4700000L, 2800000L, 2100000L, 1700000L, 980000L);
+work/jadx-out/sources/x/C0826ie.java:18:    public static final C1481vB u = AbstractC0577dp.m(2700000L, 2000000L, 1600000L, 1300000L, 1000000L);
+work/jadx-out/sources/x/C0826ie.java-19-    public static C0826ie v;
+work/jadx-out/sources/x/C0826ie.java-20-    public final Context a;
+work/jadx-out/sources/x/C0826ie.java-21-    public final AB b;
+work/jadx-out/sources/x/C0826ie.java-22-    public final C0951l0 c;
+work/jadx-out/sources/x/C0826ie.java-23-    public final C1592xI d;
+work/jadx-out/sources/x/C0826ie.java-24-    public final boolean e;
+work/jadx-out/sources/x/C0826ie.java-25-    public final ZF f;
+work/jadx-out/sources/x/C0826ie.java-26-    public int g;
+work/jadx-out/sources/x/C0826ie.java-27-    public long h;
+work/jadx-out/sources/x/C0826ie.java-28-    public long i;
+work/jadx-out/sources/x/C0826ie.java-29-    public long j;
+work/jadx-out/sources/x/C0826ie.java-30-    public long k;
+--
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-17-
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-18-    @Override // android.view.View.OnClickListener
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-19-    public final void onClick(View view) {
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-20-        int i = this.h;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-21-        PlayerActivity playerActivity = this.i;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-22-        switch (i) {
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-23-            case 0:
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-24-                long[] jArr = PlayerActivity.z0;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-25-                playerActivity.W();
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-26-                break;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-27-            case 1:
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-28-                long[] jArr2 = PlayerActivity.z0;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java:29:                playerActivity.T(-300000L);
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-30-                break;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-31-            case 2:
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-32-                long[] jArr3 = PlayerActivity.z0;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java:33:                playerActivity.T(300000L);
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-34-                break;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-35-            case 3:
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-36-                C1089nj c1089nj = playerActivity.E;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-37-                if (c1089nj != null) {
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-38-                    if (!c1089nj.g()) {
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-39-                        Toast.makeText(playerActivity, "Este contenido no permite retroceder", 0).show();
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-40-                        break;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-41-                    } else {
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-42-                        C1089nj c1089nj2 = playerActivity.E;
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-43-                        c1089nj2.getClass();
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-44-                        c1089nj2.c0();
+work/jadx-out/sources/x/ViewOnClickListenerC0638ey.java-45-                        c1089nj2.m(11, -c1089nj2.j0);
+--
+work/jadx-out/sources/x/N0.java-262-                }
+work/jadx-out/sources/x/N0.java-263-                return;
+work/jadx-out/sources/x/N0.java-264-            case 13:
+work/jadx-out/sources/x/N0.java-265-                DialogC0354Ya.b((DialogC0354Ya) this.i);
+work/jadx-out/sources/x/N0.java-266-                return;
+work/jadx-out/sources/x/N0.java-267-            case 14:
+work/jadx-out/sources/x/N0.java-268-                C0371Zd c0371Zd = (C0371Zd) this.i;
+work/jadx-out/sources/x/N0.java-269-                c0371Zd.S(c0371Zd.N(), 1028, new C0315Vd(i2));
+work/jadx-out/sources/x/N0.java-270-                c0371Zd.m.d();
+work/jadx-out/sources/x/N0.java-271-                return;
+work/jadx-out/sources/x/N0.java-272-            case 15:
+work/jadx-out/sources/x/N0.java-273-                C0722ge c0722ge = (C0722ge) this.i;
+work/jadx-out/sources/x/N0.java:274:                if (c0722ge.b0 >= 300000) {
+work/jadx-out/sources/x/N0.java-275-                    ((C0943kt) c0722ge.n.i).c1 = true;
+work/jadx-out/sources/x/N0.java-276-                    c0722ge.b0 = 0L;
+work/jadx-out/sources/x/N0.java-277-                    return;
+work/jadx-out/sources/x/N0.java-278-                }
+work/jadx-out/sources/x/N0.java-279-                return;
+work/jadx-out/sources/x/N0.java-280-            case 16:
+work/jadx-out/sources/x/N0.java-281-                C1395te c1395te = (C1395te) this.i;
+work/jadx-out/sources/x/N0.java-282-                if (c1395te.j) {
+work/jadx-out/sources/x/N0.java-283-                    return;
+work/jadx-out/sources/x/N0.java-284-                }
+work/jadx-out/sources/x/N0.java-285-                InterfaceC0261Rg interfaceC0261Rg = c1395te.i;
+work/jadx-out/sources/x/N0.java-286-                if (interfaceC0261Rg != null) {
+--
+work/jadx-out/sources/x/C1725zw.java-19-        if (!(iOException instanceof C0990lo)) {
+work/jadx-out/sources/x/C1725zw.java-20-            return null;
+work/jadx-out/sources/x/C1725zw.java-21-        }
+work/jadx-out/sources/x/C1725zw.java-22-        int i = ((C0990lo) iOException).j;
+work/jadx-out/sources/x/C1725zw.java-23-        if (i != 403 && i != 404 && i != 410 && i != 416 && i != 500 && i != 503) {
+work/jadx-out/sources/x/C1725zw.java-24-            return null;
+work/jadx-out/sources/x/C1725zw.java-25-        }
+work/jadx-out/sources/x/C1725zw.java-26-        if (c1408tr.e) {
+work/jadx-out/sources/x/C1725zw.java-27-            if (c1408tr.a(2)) {
+work/jadx-out/sources/x/C1725zw.java-28-                return new Fp(2, 60000L);
+work/jadx-out/sources/x/C1725zw.java-29-            }
+work/jadx-out/sources/x/C1725zw.java-30-            if (c1408tr.a(1)) {
+work/jadx-out/sources/x/C1725zw.java:31:                return new Fp(1, 300000L);
+work/jadx-out/sources/x/C1725zw.java-32-            }
+work/jadx-out/sources/x/C1725zw.java-33-            return null;
+work/jadx-out/sources/x/C1725zw.java-34-        }
+work/jadx-out/sources/x/C1725zw.java-35-        if (c1408tr.a(1)) {
+work/jadx-out/sources/x/C1725zw.java:36:            return new Fp(1, 300000L);
+work/jadx-out/sources/x/C1725zw.java-37-        }
+work/jadx-out/sources/x/C1725zw.java-38-        if (c1408tr.a(2)) {
+work/jadx-out/sources/x/C1725zw.java-39-            return new Fp(2, 60000L);
+work/jadx-out/sources/x/C1725zw.java-40-        }
+work/jadx-out/sources/x/C1725zw.java-41-        return null;
+work/jadx-out/sources/x/C1725zw.java-42-    }
+work/jadx-out/sources/x/C1725zw.java-43-
+work/jadx-out/sources/x/C1725zw.java-44-    public static long c(P6 p6) {
+work/jadx-out/sources/x/C1725zw.java-45-        for (Throwable cause = (IOException) p6.j; cause != null; cause = cause.getCause()) {
+work/jadx-out/sources/x/C1725zw.java-46-            if ((cause instanceof C1310rx) || (cause instanceof FileNotFoundException) || (cause instanceof C0835io) || (cause instanceof Ar)) {
+work/jadx-out/sources/x/C1725zw.java-47-                return -9223372036854775807L;
+work/jadx-out/sources/x/C1725zw.java-48-            }
+--
+work/jadx-out/sources/x/O8.java-1985-
+work/jadx-out/sources/x/O8.java-1986-    public static void x(Context context, P8 p8, L8 l8) {
+work/jadx-out/sources/x/O8.java-1987-        Context applicationContext = context.getApplicationContext();
+work/jadx-out/sources/x/O8.java-1988-        if (p8 == P8.k) {
+work/jadx-out/sources/x/O8.java-1989-            new Thread(new RunnableC0747h2(applicationContext, 10, l8), "cochi-series-load").start();
+work/jadx-out/sources/x/O8.java-1990-            return;
+work/jadx-out/sources/x/O8.java-1991-        }
+work/jadx-out/sources/x/O8.java-1992-        boolean z = p8 == P8.h || p8 == P8.i;
+work/jadx-out/sources/x/O8.java-1993-        EnumMap enumMap = c;
+work/jadx-out/sources/x/O8.java-1994-        synchronized (enumMap) {
+work/jadx-out/sources/x/O8.java-1995-            try {
+work/jadx-out/sources/x/O8.java-1996-                M8 m8 = (M8) enumMap.get(p8);
+work/jadx-out/sources/x/O8.java:1997:                if (!z && m8 != null && !m8.a.isEmpty() && System.currentTimeMillis() - m8.b <= 300000) {
+work/jadx-out/sources/x/O8.java-1998-                    new Handler(Looper.getMainLooper()).post(new RunnableC0747h2(l8, 11, new ArrayList(m8.a)));
+work/jadx-out/sources/x/O8.java-1999-                    return;
+work/jadx-out/sources/x/O8.java-2000-                }
+work/jadx-out/sources/x/O8.java-2001-                EnumMap enumMap2 = d;
+work/jadx-out/sources/x/O8.java-2002-                List list = (List) enumMap2.get(p8);
+work/jadx-out/sources/x/O8.java-2003-                if (list != null) {
+work/jadx-out/sources/x/O8.java-2004-                    list.add(l8);
+work/jadx-out/sources/x/O8.java-2005-                    return;
+work/jadx-out/sources/x/O8.java-2006-                }
+work/jadx-out/sources/x/O8.java-2007-                ArrayList arrayList = new ArrayList();
+work/jadx-out/sources/x/O8.java-2008-                arrayList.add(l8);
+work/jadx-out/sources/x/O8.java-2009-                enumMap2.put((EnumMap) p8, (P8) arrayList);
+--
+work/jadx-out/sources/x/C1447ue.java-50-        this.i = C0026Bl.l;
+work/jadx-out/sources/x/C1447ue.java-51-        this.j = et;
+work/jadx-out/sources/x/C1447ue.java-52-        this.k = map;
+work/jadx-out/sources/x/C1447ue.java-53-        this.l = z;
+work/jadx-out/sources/x/C1447ue.java-54-        this.m = iArr;
+work/jadx-out/sources/x/C1447ue.java-55-        this.n = z2;
+work/jadx-out/sources/x/C1447ue.java-56-        this.p = c1725zw;
+work/jadx-out/sources/x/C1447ue.java-57-        this.o = new I2(17);
+work/jadx-out/sources/x/C1447ue.java-58-        this.q = new C1291re(this);
+work/jadx-out/sources/x/C1447ue.java-59-        this.s = new ArrayList();
+work/jadx-out/sources/x/C1447ue.java-60-        this.t = Collections.newSetFromMap(new IdentityHashMap());
+work/jadx-out/sources/x/C1447ue.java-61-        this.u = Collections.newSetFromMap(new IdentityHashMap());
+work/jadx-out/sources/x/C1447ue.java:62:        this.r = 300000L;
+work/jadx-out/sources/x/C1447ue.java-63-    }
+work/jadx-out/sources/x/C1447ue.java-64-
+work/jadx-out/sources/x/C1447ue.java-65-    public static boolean c(C1240qe c1240qe) {
+work/jadx-out/sources/x/C1447ue.java-66-        c1240qe.o();
+work/jadx-out/sources/x/C1447ue.java-67-        if (c1240qe.p != 1) {
+work/jadx-out/sources/x/C1447ue.java-68-            return false;
+work/jadx-out/sources/x/C1447ue.java-69-        }
+work/jadx-out/sources/x/C1447ue.java-70-        C0246Qg c0246QgF = c1240qe.f();
+work/jadx-out/sources/x/C1447ue.java-71-        c0246QgF.getClass();
+work/jadx-out/sources/x/C1447ue.java-72-        Throwable cause = c0246QgF.getCause();
+work/jadx-out/sources/x/C1447ue.java-73-        return (cause instanceof ResourceBusyException) || AbstractC0431ax.H(cause);
+work/jadx-out/sources/x/C1447ue.java-74-    }
+--
+work/jadx-out/sources/x/C1099nt.java-257-            }
+work/jadx-out/sources/x/C1099nt.java-258-            if (this.i || str4.equals("audio/ac4") || i3 == 42) {
+work/jadx-out/sources/x/C1099nt.java-259-                MediaCodecInfo.CodecCapabilities codecCapabilities = this.d;
+work/jadx-out/sources/x/C1099nt.java-260-                if (codecCapabilities == null || (codecProfileLevelArr = codecCapabilities.profileLevels) == null) {
+work/jadx-out/sources/x/C1099nt.java-261-                    codecProfileLevelArr = new MediaCodecInfo.CodecProfileLevel[0];
+work/jadx-out/sources/x/C1099nt.java-262-                }
+work/jadx-out/sources/x/C1099nt.java-263-                if (!str4.equals("audio/ac4") || codecProfileLevelArr.length != 0) {
+work/jadx-out/sources/x/C1099nt.java-264-                    r16 = 0;
+work/jadx-out/sources/x/C1099nt.java-265-                    i = 4;
+work/jadx-out/sources/x/C1099nt.java-266-                    if (Build.VERSION.SDK_INT == 23 && "video/x-vnd.on2.vp9".equals(str4) && codecProfileLevelArr.length == 0) {
+work/jadx-out/sources/x/C1099nt.java-267-                        int iIntValue = (codecCapabilities != null || (videoCapabilities = codecCapabilities.getVideoCapabilities()) == null) ? r16 : ((Integer) videoCapabilities.getBitrateRange().getUpper()).intValue();
+work/jadx-out/sources/x/C1099nt.java-268-                        codecProfileLevelArr = new MediaCodecInfo.CodecProfileLevel[1];
+work/jadx-out/sources/x/C1099nt.java:269:                        codecProfileLevelArr[r16] = AbstractC1618xt.b(1, iIntValue < 180000000 ? 1024 : iIntValue >= 120000000 ? 512 : iIntValue >= 60000000 ? 256 : iIntValue >= 30000000 ? 128 : iIntValue >= 18000000 ? 64 : iIntValue >= 12000000 ? 32 : iIntValue >= 7200000 ? 16 : iIntValue >= 3600000 ? 8 : iIntValue >= 1800000 ? i : iIntValue >= 800000 ? 2 : 1);
+work/jadx-out/sources/x/C1099nt.java-270-                    }
+work/jadx-out/sources/x/C1099nt.java-271-                    length = codecProfileLevelArr.length;
+work/jadx-out/sources/x/C1099nt.java-272-                    for (i2 = r16; i2 < length; i2++) {
+work/jadx-out/sources/x/C1099nt.java-273-                        MediaCodecInfo.CodecProfileLevel codecProfileLevel = codecProfileLevelArr[i2];
+work/jadx-out/sources/x/C1099nt.java-274-                        if (codecProfileLevel.profile == i3 && (codecProfileLevel.level >= i4 || !z)) {
+work/jadx-out/sources/x/C1099nt.java-275-                            HashSet hashSet = Ot.a;
+work/jadx-out/sources/x/C1099nt.java-276-                            if ("video/hevc".equals(str4) && 2 == i3) {
+work/jadx-out/sources/x/C1099nt.java-277-                                String str5 = Build.DEVICE;
+work/jadx-out/sources/x/C1099nt.java-278-                                if ("sailfish".equals(str5) || "marlin".equals(str5)) {
+work/jadx-out/sources/x/C1099nt.java-279-                                }
+work/jadx-out/sources/x/C1099nt.java-280-                            }
+work/jadx-out/sources/x/C1099nt.java-281-                        }
+--
+work/jadx-out/sources/x/C1099nt.java-293-                    length = codecProfileLevelArr.length;
+work/jadx-out/sources/x/C1099nt.java-294-                    while (i2 < length) {
+work/jadx-out/sources/x/C1099nt.java-295-                    }
+work/jadx-out/sources/x/C1099nt.java-296-                    h("codec.profileLevel, " + c0145Jk.l + ", " + str2);
+work/jadx-out/sources/x/C1099nt.java-297-                    return r16;
+work/jadx-out/sources/x/C1099nt.java-298-                }
+work/jadx-out/sources/x/C1099nt.java-299-                codecProfileLevelArr = new MediaCodecInfo.CodecProfileLevel[]{AbstractC1618xt.b(1026, i5)};
+work/jadx-out/sources/x/C1099nt.java-300-                r16 = 0;
+work/jadx-out/sources/x/C1099nt.java-301-                i = 4;
+work/jadx-out/sources/x/C1099nt.java-302-                if (Build.VERSION.SDK_INT == 23) {
+work/jadx-out/sources/x/C1099nt.java-303-                    if (codecCapabilities != null) {
+work/jadx-out/sources/x/C1099nt.java-304-                        codecProfileLevelArr = new MediaCodecInfo.CodecProfileLevel[1];
+work/jadx-out/sources/x/C1099nt.java:305:                        codecProfileLevelArr[r16] = AbstractC1618xt.b(1, iIntValue < 180000000 ? 1024 : iIntValue >= 120000000 ? 512 : iIntValue >= 60000000 ? 256 : iIntValue >= 30000000 ? 128 : iIntValue >= 18000000 ? 64 : iIntValue >= 12000000 ? 32 : iIntValue >= 7200000 ? 16 : iIntValue >= 3600000 ? 8 : iIntValue >= 1800000 ? i : iIntValue >= 800000 ? 2 : 1);
+work/jadx-out/sources/x/C1099nt.java-306-                    }
+work/jadx-out/sources/x/C1099nt.java-307-                }
+work/jadx-out/sources/x/C1099nt.java-308-                length = codecProfileLevelArr.length;
+work/jadx-out/sources/x/C1099nt.java-309-                while (i2 < length) {
+work/jadx-out/sources/x/C1099nt.java-310-                }
+work/jadx-out/sources/x/C1099nt.java-311-                h("codec.profileLevel, " + c0145Jk.l + ", " + str2);
+work/jadx-out/sources/x/C1099nt.java-312-                return r16;
+work/jadx-out/sources/x/C1099nt.java-313-            }
+work/jadx-out/sources/x/C1099nt.java-314-        }
+work/jadx-out/sources/x/C1099nt.java-315-        return true;
+work/jadx-out/sources/x/C1099nt.java-316-    }
+work/jadx-out/sources/x/C1099nt.java-317-
