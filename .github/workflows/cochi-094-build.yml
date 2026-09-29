@@ -64,13 +64,16 @@ jobs:
           if renderer_import not in p:
               p = p.replace(load_import, load_import + "\n" + renderer_import)
 
-          old = """        return new ExoPlayer.Builder(this)
-                  .setMediaSourceFactory(mediaSourceFactory)
-                  .setLoadControl(loadControl)
-                  .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
-                  .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
-                  .build();"""
-          new = """        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
+          import re
+          pattern = re.compile(
+              r"return\s+new\s+ExoPlayer\.Builder\(this\)\s*"
+              r"\.setMediaSourceFactory\(mediaSourceFactory\)\s*"
+              r"\.setLoadControl\(loadControl\)\s*"
+              r"\.setSeekBackIncrementMs\(SEEK_INCREMENT_MS\)\s*"
+              r"\.setSeekForwardIncrementMs\(SEEK_INCREMENT_MS\)\s*"
+              r"\.build\(\);"
+          )
+          new = """DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
                   .setEnableDecoderFallback(true)
                   .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
 
@@ -80,8 +83,8 @@ jobs:
                   .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
                   .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
                   .build();"""
-          assert old in p, "No se encontró buildStablePlayer esperado"
-          p = p.replace(old, new)
+          p, count = pattern.subn(new, p, count=1)
+          assert count == 1, "No se encontró buildStablePlayer esperado"
           player.write_text(p)
 
           # Mantener layout TV de la estable 0.23.93: 3 capítulos por fila.
