@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.8';
+const VERSION = '1.1.9';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -447,6 +447,7 @@ ensureColumn('clients','adult_fail_count','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','device_limit','INTEGER NOT NULL DEFAULT 2');
 ensureColumn('clients','extra_device_blocks','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','extra_device_allowance','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('clients','preview_hidden_content','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('rescue_resolver_channels','retry_count','INTEGER NOT NULL DEFAULT 5');
 ensureColumn('rescue_resolver_channels','retry_delay_seconds','INTEGER NOT NULL DEFAULT 1');
 ensureColumn('rescue_resolver_channels','timeout_seconds','INTEGER NOT NULL DEFAULT 10');
@@ -2150,20 +2151,22 @@ function applySelectedPlaybackSource(item,{stripConfig=false}={}){
   if(stripConfig){delete x.playbackSources;delete x.activePlaybackSource;delete x.backupUris;}
   return x;
 }
-function publishedContentView(key,json){
+function publishedContentView(key,json,{includeHidden=false}={}){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
   return json.filter(group=>{
     if(!group||typeof group!=='object')return true;
+    if(includeHidden)return true;
     if(group._cochiHidden===true)return false;
     const at=validAutoHideAt(group._cochiAutoHideAt);return at===null||at>nowMs;
   }).map(group=>{
     const out=cloneJson(group||{});delete out._cochiHidden;delete out._cochiAutoHideAt;delete out._cochiRemoteM3uId;
     const samples=Array.isArray(group?.samples)?group.samples:[];
     out.samples=samples.filter(item=>{
+      if(includeHidden)return true;
       if(item?._cochiHidden===true)return false;
       const at=validAutoHideAt(item?._cochiAutoHideAt);return at===null||at>nowMs;
-    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;
+    }).map(item=>{const x=applySelectedPlaybackSource(item,{stripConfig:true});delete x._cochiHidden;delete x._cochiAutoHideAt;delete x._remoteSourceGroup;
       if(x.isTemplate===true&&typeof x.template==='string'&&x.template.includes('{nombre2}')){
         const nombre2=String(x.nameRedirect2||x.name_redirect2||x.nameRedirect||x.name_redirect||'').trim();
         if(nombre2)x.template=x.template.split('{nombre2}').join(nombre2);
@@ -2172,6 +2175,14 @@ function publishedContentView(key,json){
       return x;});
     return out;
   });
+}
+function hiddenPreviewPayload(key){
+  if(!['tv1','tv2'].includes(String(key||'')))return null;
+  const row=db.prepare('SELECT json_text,updated_at FROM managed_content WHERE source_key=?').get(key);
+  if(!row?.json_text)return null;
+  const clear=decryptManagedContent(JSON.parse(row.json_text));
+  const view=publishedContentView(key,clear,{includeHidden:true});
+  return {json_text:JSON.stringify(encryptManagedContent(view)),updated_at:row.updated_at||nowIso()};
 }
 function hiddenContentCount(key,json){
   if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;
@@ -3256,7 +3267,8 @@ async function route(req,res){
     d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
     const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get('tv2');if(!src||!src.enabled)return sendJson(res,404,{error:'TV2 deshabilitada'});
     processAutoHideTimers();
-    const r=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get('tv2');if(!r||!r.json_text)return sendJson(res,404,{error:'TV2 todavía no publicada'});
+    let r=db.prepare('SELECT json_text FROM published_content WHERE source_key=?').get('tv2');if(!r||!r.json_text)return sendJson(res,404,{error:'TV2 todavía no publicada'});
+    const previewHidden=Boolean(c?.preview_hidden_content);if(previewHidden){try{r=hiddenPreviewPayload('tv2')||r}catch(e){console.warn('[CO-CHI PREVIEW] TV2 resolve fallback normal: '+String(e?.message||e));}}
     try{
       const sec=playbackSecurityState();
       let clear=decryptManagedContent(JSON.parse(r.json_text));
@@ -3286,7 +3298,9 @@ async function route(req,res){
     d=refreshDeviceState(d);const c=d.client_id?clientRow(d.client_id):null,st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
     const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get(publicContent[1]);if(!src||!src.enabled)return sendJson(res,404,{error:'Fuente deshabilitada'});
     if(['tv1','tv2'].includes(publicContent[1]))processAutoHideTimers();
-    const r=db.prepare('SELECT json_text,updated_at FROM published_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});
+    let r=db.prepare('SELECT json_text,updated_at FROM published_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});
+    const previewHidden=Boolean(c?.preview_hidden_content)&&['tv1','tv2'].includes(publicContent[1]);
+    if(previewHidden){try{r=hiddenPreviewPayload(publicContent[1])||r}catch(e){console.warn('[CO-CHI PREVIEW] '+publicContent[1]+' fallback normal: '+String(e?.message||e));}}
     try{
       const sec=playbackSecurityState();
       const sourceKey=publicContent[1];
@@ -3499,7 +3513,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -3842,7 +3856,7 @@ async function route(req,res){
 
     if(p==='/api/admin/clients'&&m==='GET'){
       let rows=actor.role_level===1?db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id ORDER BY c.id DESC`).all():db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY c.id DESC`).all(actor.id);
-      rows=rows.map(c=>({...c,active:Boolean(c.active),days_remaining:daysRemaining(c.expires_at),renew_available:!c.expires_at||daysRemaining(c.expires_at)<=RENEW_WINDOW_DAYS,shared_expiry:true,...clientStatusSummary(c)}));
+      rows=rows.map(c=>({...c,active:Boolean(c.active),preview_hidden_content:Boolean(c.preview_hidden_content),days_remaining:daysRemaining(c.expires_at),renew_available:!c.expires_at||daysRemaining(c.expires_at)<=RENEW_WINDOW_DAYS,shared_expiry:true,...clientStatusSummary(c)}));
       return sendJson(res,200,{clients:rows,serverTime:nowIso(),sharedExpiry:true});
     }
     if(p==='/api/admin/clients'&&m==='POST'){
@@ -3850,14 +3864,16 @@ async function route(req,res){
       if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.deviceLimit!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede definir la cantidad de dispositivos'});
       let deviceLimit=globalClientDeviceBlockSize();
       if(b.deviceLimit!==undefined)return sendJson(res,409,{error:'El límite base se define globalmente desde ADMINISTRACIÓN'});
-      const t=nowIso();const r=db.prepare('INSERT INTO clients(name,owner_account_id,notes,active,expires_at,device_limit,created_at,updated_at) VALUES (?,?,?,1,NULL,?,?,?)').run(name,owner,String(b.notes||'').trim(),deviceLimit,t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),deviceLimit});
+      const previewHidden=actor.role_level===1&&b.previewHiddenContent===true?1:0;
+      const t=nowIso();const r=db.prepare('INSERT INTO clients(name,owner_account_id,notes,active,expires_at,device_limit,preview_hidden_content,created_at,updated_at) VALUES (?,?,?,1,NULL,?,?,?,?,?)').run(name,owner,String(b.notes||'').trim(),deviceLimit,previewHidden,t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),deviceLimit,previewHiddenContent:Boolean(previewHidden)});
     }
     const cm=p.match(/^\/api\/admin\/clients\/(\d+)$/);
     if(cm&&m==='PUT'){
       const c=clientRow(Number(cm[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés editar clientes directos'});const b=await readJson(req);let owner=c.owner_account_id;if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.ownerAccountId!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede mover clientes'});
       if(b.deviceLimit!==undefined)return sendJson(res,409,{error:'El límite base se define globalmente desde ADMINISTRACIÓN'});
-      let deviceLimit=clientDeviceLimit(c);
-      db.prepare('UPDATE clients SET name=?,owner_account_id=?,notes=?,active=?,device_limit=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():c.name,owner,b.notes!==undefined?String(b.notes).trim():c.notes,b.active!==undefined?(b.active?1:0):c.active,deviceLimit,nowIso(),c.id);return sendJson(res,200,{ok:true,deviceLimit});
+      if(b.previewHiddenContent!==undefined&&actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede habilitar contenido oculto de prueba'});
+      let deviceLimit=clientDeviceLimit(c),previewHidden=b.previewHiddenContent!==undefined?(b.previewHiddenContent?1:0):Number(c.preview_hidden_content||0);
+      db.prepare('UPDATE clients SET name=?,owner_account_id=?,notes=?,active=?,device_limit=?,preview_hidden_content=?,updated_at=? WHERE id=?').run(b.name!==undefined?String(b.name).trim():c.name,owner,b.notes!==undefined?String(b.notes).trim():c.notes,b.active!==undefined?(b.active?1:0):c.active,deviceLimit,previewHidden,nowIso(),c.id);audit(actor.id,'client_preview_hidden_changed','client',c.id,previewHidden?'enabled':'disabled');return sendJson(res,200,{ok:true,deviceLimit,previewHiddenContent:Boolean(previewHidden)});
     }
     if(cm&&m==='DELETE'){
       const c=clientRow(Number(cm[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});
