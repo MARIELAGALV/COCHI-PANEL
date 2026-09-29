@@ -1923,7 +1923,7 @@ function bulkUaApplyItem(item,value,writeMode){
 }
 function bulkUaReadConfig(){
   const scope=$('#bulkUaScope')?.value||'both',matchMode=$('#bulkUaMatchMode')?.value||'contains',needle=String($('#bulkUaNeedle')?.value||'').trim(),value=String($('#bulkUaValue')?.value||'').trim(),writeMode=$('#bulkUaWriteMode')?.value||'replace';
-  const fields=new Set($('.bulk-ua-field:checked').map(x=>x.value));
+  const fields=new Set($$('.bulk-ua-field:checked').map(x=>x.value));
   if(!needle)throw new Error('Escribí la palabra o proveedor que querés buscar.');
   if(!fields.size)throw new Error('Elegí al menos un campo: Nombre, URL o Headers.');
   if(!value)throw new Error('Pegá el nuevo User-Agent.');
@@ -1985,7 +1985,7 @@ async function bulkUaPublishOne(key,json){
 }
 async function bulkUaApply(){
   const preview=state.bulkUaPreview;if(!preview)return msg($('#bulkUaMsg'),'Primero tocá PREVISUALIZAR COINCIDENCIAS.');
-  const selected=$('.bulk-ua-select:checked').map(x=>Number(x.dataset.match)).filter(Number.isInteger);
+  const selected=$$('.bulk-ua-select:checked').map(x=>Number(x.dataset.match)).filter(Number.isInteger);
   if(!selected.length)return msg($('#bulkUaMsg'),'No hay canales seleccionados.');
   const chosen=selected.map(i=>preview.matches[i]).filter(Boolean);
   const byKey=new Map();chosen.forEach(x=>{if(!byKey.has(x.key))byKey.set(x.key,[]);byKey.get(x.key).push(x);});
@@ -2029,12 +2029,12 @@ async function bulkUaUndo(){
 function initBulkUaEditor(){
   const saved=localStorage.getItem('cochi_bulk_ua_last');if(saved&&$('#bulkUaValue'))$('#bulkUaValue').value=saved;
   ['bulkUaScope','bulkUaMatchMode','bulkUaNeedle','bulkUaWriteMode','bulkUaValue'].forEach(id=>$('#'+id)?.addEventListener(id==='bulkUaNeedle'||id==='bulkUaValue'?'input':'change',bulkUaInvalidatePreview));
-  $('.bulk-ua-field').forEach(x=>x.addEventListener('change',bulkUaInvalidatePreview));
+  $$('.bulk-ua-field').forEach(x=>x.addEventListener('change',bulkUaInvalidatePreview));
   $('#bulkUaPreviewBtn')?.addEventListener('click',bulkUaPreview);
   $('#bulkUaApplyBtn')?.addEventListener('click',bulkUaApply);
   $('#bulkUaUndoBtn')?.addEventListener('click',bulkUaUndo);
-  $('#bulkUaSelectAllBtn')?.addEventListener('click',()=>{$('.bulk-ua-select:not(:disabled)').forEach(x=>x.checked=true);});
-  $('#bulkUaSelectNoneBtn')?.addEventListener('click',()=>{$('.bulk-ua-select:not(:disabled)').forEach(x=>x.checked=false);});
+  $('#bulkUaSelectAllBtn')?.addEventListener('click',()=>{$$('.bulk-ua-select:not(:disabled)').forEach(x=>x.checked=true);});
+  $('#bulkUaSelectNoneBtn')?.addEventListener('click',()=>{$$('.bulk-ua-select:not(:disabled)').forEach(x=>x.checked=false);});
 }
 initBulkUaEditor();
 
