@@ -1,0 +1,357 @@
+CO-CHI 0.23.93 AUDIO ANALYSIS
+Generated: 2026-09-29T01:15:08Z
+
+=== JADX files containing player/renderers terms ===
+work/jadx-out/sources/x/C1044mq.java
+work/jadx-out/sources/x/C0943kt.java
+work/jadx-out/sources/x/C1504vj.java
+
+=== JADX contextual matches ===
+work/jadx-out/sources/x/C1044mq.java-598-                if (((List) AbstractC0431ax.u(c0239Po, AbstractC0254Qo.a)).isEmpty()) {
+work/jadx-out/sources/x/C1044mq.java-599-                    return new C1411tu(str, map);
+work/jadx-out/sources/x/C1044mq.java-600-                }
+work/jadx-out/sources/x/C1044mq.java-601-                LinkedHashMap linkedHashMapP = AbstractC1357ss.P(map);
+work/jadx-out/sources/x/C1044mq.java-602-                linkedHashMapP.put("coil#size", c0534cx.b.toString());
+work/jadx-out/sources/x/C1044mq.java-603-                return new C1411tu(str, linkedHashMapP);
+work/jadx-out/sources/x/C1044mq.java-604-            }
+work/jadx-out/sources/x/C1044mq.java-605-        }
+work/jadx-out/sources/x/C1044mq.java-606-        return null;
+work/jadx-out/sources/x/C1044mq.java-607-    }
+work/jadx-out/sources/x/C1044mq.java-608-
+work/jadx-out/sources/x/C1044mq.java-609-    public void H(Exception exc) {
+work/jadx-out/sources/x/C1044mq.java:610:        AbstractC1578x4.u("MediaCodecAudioRenderer", "Audio sink error", exc);
+work/jadx-out/sources/x/C1044mq.java-611-        R4 r4 = ((C0943kt) this.i).R0;
+work/jadx-out/sources/x/C1044mq.java-612-        Handler handler = r4.b;
+work/jadx-out/sources/x/C1044mq.java-613-        if (handler != null) {
+work/jadx-out/sources/x/C1044mq.java-614-            handler.post(new P4(r4, exc, 8));
+work/jadx-out/sources/x/C1044mq.java-615-        }
+work/jadx-out/sources/x/C1044mq.java-616-    }
+work/jadx-out/sources/x/C1044mq.java-617-
+work/jadx-out/sources/x/C1044mq.java-618-    public C0760hF K(int i, int i2) {
+work/jadx-out/sources/x/C1044mq.java-619-        C0862jF c0862jF = (C0862jF) ((Map) this.i).get(Integer.valueOf(i));
+work/jadx-out/sources/x/C1044mq.java-620-        if (c0862jF == null) {
+work/jadx-out/sources/x/C1044mq.java-621-            return new C0760hF(null, null, -1L);
+work/jadx-out/sources/x/C1044mq.java-622-        }
+--
+work/jadx-out/sources/x/C0943kt.java-407-        }
+work/jadx-out/sources/x/C0943kt.java-408-        if (i2 >= 32) {
+work/jadx-out/sources/x/C0943kt.java-409-            mediaFormat.setInteger("max-output-channel-count", 99);
+work/jadx-out/sources/x/C0943kt.java-410-        }
+work/jadx-out/sources/x/C0943kt.java-411-        if (i2 >= 35) {
+work/jadx-out/sources/x/C0943kt.java-412-            mediaFormat.setInteger("importance", Math.max(0, -this.e1));
+work/jadx-out/sources/x/C0943kt.java-413-        }
+work/jadx-out/sources/x/C0943kt.java-414-        if (Objects.equals(str4, "audio/iamf")) {
+work/jadx-out/sources/x/C0943kt.java-415-            I4 i42 = c0722ge.r;
+work/jadx-out/sources/x/C0943kt.java-416-            C0955l4 c0955l4 = i42 instanceof C0956l5 ? ((C0956l5) i42).h : null;
+work/jadx-out/sources/x/C0943kt.java-417-            int i7 = 12;
+work/jadx-out/sources/x/C0943kt.java-418-            if (c0955l4 == null) {
+work/jadx-out/sources/x/C0943kt.java:419:                AbstractC1578x4.f0("MediaCodecAudioRenderer", "AudioCapabilities from the AudioSink are null, using default stereo output layout.");
+work/jadx-out/sources/x/C0943kt.java-420-                mediaFormat.setInteger("channel-mask", 12);
+work/jadx-out/sources/x/C0943kt.java-421-                mediaFormat.setInteger("max-output-channel-count", 2);
+work/jadx-out/sources/x/C0943kt.java-422-            } else {
+work/jadx-out/sources/x/C0943kt.java-423-                AbstractC0785hp abstractC0785hp = AbstractC1353so.a;
+work/jadx-out/sources/x/C0943kt.java-424-                AbstractC0577dp abstractC0577dp = c0955l4.d;
+work/jadx-out/sources/x/C0943kt.java-425-                int size = abstractC0577dp.size();
+work/jadx-out/sources/x/C0943kt.java-426-                int i8 = 0;
+work/jadx-out/sources/x/C0943kt.java-427-                while (true) {
+work/jadx-out/sources/x/C0943kt.java-428-                    if (i8 >= size) {
+work/jadx-out/sources/x/C0943kt.java-429-                        iIntValue = 0;
+work/jadx-out/sources/x/C0943kt.java-430-                        break;
+work/jadx-out/sources/x/C0943kt.java-431-                    }
+--
+work/jadx-out/sources/x/C0943kt.java-504-        boolean z = this.c1;
+work/jadx-out/sources/x/C0943kt.java-505-        this.c1 = false;
+work/jadx-out/sources/x/C0943kt.java-506-        return z;
+work/jadx-out/sources/x/C0943kt.java-507-    }
+work/jadx-out/sources/x/C0943kt.java-508-
+work/jadx-out/sources/x/C0943kt.java-509-    @Override // x.InterfaceC0737gt
+work/jadx-out/sources/x/C0943kt.java-510-    public final Ox b() {
+work/jadx-out/sources/x/C0943kt.java-511-        return this.S0.f75x;
+work/jadx-out/sources/x/C0943kt.java-512-    }
+work/jadx-out/sources/x/C0943kt.java-513-
+work/jadx-out/sources/x/C0943kt.java-514-    @Override // x.AbstractC1255qt
+work/jadx-out/sources/x/C0943kt.java-515-    public final void b0(Exception exc) {
+work/jadx-out/sources/x/C0943kt.java:516:        AbstractC1578x4.u("MediaCodecAudioRenderer", "Audio codec error", exc);
+work/jadx-out/sources/x/C0943kt.java-517-        R4 r4 = this.R0;
+work/jadx-out/sources/x/C0943kt.java-518-        Handler handler = r4.b;
+work/jadx-out/sources/x/C0943kt.java-519-        if (handler != null) {
+work/jadx-out/sources/x/C0943kt.java-520-            handler.post(new P4(r4, exc, 0));
+work/jadx-out/sources/x/C0943kt.java-521-        }
+work/jadx-out/sources/x/C0943kt.java-522-    }
+work/jadx-out/sources/x/C0943kt.java-523-
+work/jadx-out/sources/x/C0943kt.java-524-    /* JADX WARN: Removed duplicated region for block: B:50:0x0098  */
+work/jadx-out/sources/x/C0943kt.java-525-    @Override // x.AbstractC1255qt, x.AbstractC0389a6, x.Ry
+work/jadx-out/sources/x/C0943kt.java-526-    /*
+work/jadx-out/sources/x/C0943kt.java-527-        Code decompiled incorrectly, please refer to instructions dump.
+work/jadx-out/sources/x/C0943kt.java-528-    */
+--
+work/jadx-out/sources/x/C0943kt.java-882-            throw f(e, e.h, false, 5001);
+work/jadx-out/sources/x/C0943kt.java-883-        }
+work/jadx-out/sources/x/C0943kt.java-884-        zo = null;
+work/jadx-out/sources/x/C0943kt.java-885-    }
+work/jadx-out/sources/x/C0943kt.java-886-
+work/jadx-out/sources/x/C0943kt.java-887-    @Override // x.AbstractC1255qt
+work/jadx-out/sources/x/C0943kt.java-888-    public final void h0(long j) {
+work/jadx-out/sources/x/C0943kt.java-889-        this.S0.H = j;
+work/jadx-out/sources/x/C0943kt.java-890-    }
+work/jadx-out/sources/x/C0943kt.java-891-
+work/jadx-out/sources/x/C0943kt.java-892-    @Override // x.AbstractC0389a6
+work/jadx-out/sources/x/C0943kt.java-893-    public final String j() {
+work/jadx-out/sources/x/C0943kt.java:894:        return "MediaCodecAudioRenderer";
+work/jadx-out/sources/x/C0943kt.java-895-    }
+work/jadx-out/sources/x/C0943kt.java-896-
+work/jadx-out/sources/x/C0943kt.java-897-    @Override // x.AbstractC1255qt
+work/jadx-out/sources/x/C0943kt.java-898-    public final void j0() {
+work/jadx-out/sources/x/C0943kt.java-899-        this.S0.E = true;
+work/jadx-out/sources/x/C0943kt.java-900-    }
+work/jadx-out/sources/x/C0943kt.java-901-
+work/jadx-out/sources/x/C0943kt.java-902-    @Override // x.AbstractC0389a6
+work/jadx-out/sources/x/C0943kt.java-903-    public final boolean l() {
+work/jadx-out/sources/x/C0943kt.java-904-        if (!this.B0) {
+work/jadx-out/sources/x/C0943kt.java-905-            return false;
+work/jadx-out/sources/x/C0943kt.java-906-        }
+--
+work/jadx-out/sources/x/C1504vj.java-821-    public final void J() {
+work/jadx-out/sources/x/C1504vj.java-822-        this.P.f(1);
+work/jadx-out/sources/x/C1504vj.java-823-        throw null;
+work/jadx-out/sources/x/C1504vj.java-824-    }
+work/jadx-out/sources/x/C1504vj.java-825-
+work/jadx-out/sources/x/C1504vj.java-826-    public final void K() {
+work/jadx-out/sources/x/C1504vj.java-827-        this.P.f(1);
+work/jadx-out/sources/x/C1504vj.java-828-        P(false, false, false, true);
+work/jadx-out/sources/x/C1504vj.java-829-        C0413af c0413af = (C0413af) this.m;
+work/jadx-out/sources/x/C1504vj.java-830-        ConcurrentHashMap concurrentHashMap = c0413af.q;
+work/jadx-out/sources/x/C1504vj.java-831-        long id = Thread.currentThread().getId();
+work/jadx-out/sources/x/C1504vj.java-832-        long j = c0413af.r;
+work/jadx-out/sources/x/C1504vj.java:833:        QK.y("Players that share the same LoadControl must share the same playback thread. See ExoPlayer.Builder.setPlaybackLooper(Looper).", j == -1 || j == id);
+work/jadx-out/sources/x/C1504vj.java-834-        c0413af.r = id;
+work/jadx-out/sources/x/C1504vj.java-835-        Py py = this.B;
+work/jadx-out/sources/x/C1504vj.java-836-        C0372Ze c0372Ze = (C0372Ze) concurrentHashMap.get(py);
+work/jadx-out/sources/x/C1504vj.java-837-        if (c0372Ze == null) {
+work/jadx-out/sources/x/C1504vj.java-838-            C0372Ze c0372Ze2 = new C0372Ze();
+work/jadx-out/sources/x/C1504vj.java-839-            c0372Ze2.a = 1;
+work/jadx-out/sources/x/C1504vj.java-840-            concurrentHashMap.put(py, c0372Ze2);
+work/jadx-out/sources/x/C1504vj.java-841-        } else {
+work/jadx-out/sources/x/C1504vj.java-842-            c0372Ze.a++;
+work/jadx-out/sources/x/C1504vj.java-843-        }
+work/jadx-out/sources/x/C1504vj.java-844-        C0372Ze c0372Ze3 = (C0372Ze) concurrentHashMap.get(py);
+work/jadx-out/sources/x/C1504vj.java-845-        c0372Ze3.getClass();
+
+=== SMALI contextual matches ===
+work/apktool-out/smali/x/Gy.smali-1206-    invoke-direct {v8, v11, v1}, Lx/Px;-><init>(ILjava/lang/Object;)V
+work/apktool-out/smali/x/Gy.smali-1207-
+work/apktool-out/smali/x/Gy.smali-1208-    .line 497
+work/apktool-out/smali/x/Gy.smali-1209-    .line 498
+work/apktool-out/smali/x/Gy.smali-1210-    .line 499
+work/apktool-out/smali/x/Gy.smali-1211-    iput-object v8, v1, Lx/Gy;->a0:Lx/Px;
+work/apktool-out/smali/x/Gy.smali-1212-
+work/apktool-out/smali/x/Gy.smali-1213-    .line 500
+work/apktool-out/smali/x/Gy.smali-1214-    .line 501
+work/apktool-out/smali/x/Gy.smali-1215-    :try_start_1
+work/apktool-out/smali/x/Gy.smali:1216:    const-class v8, Landroidx/media3/exoplayer/ExoPlayer;
+work/apktool-out/smali/x/Gy.smali-1217-    :try_end_1
+work/apktool-out/smali/x/Gy.smali-1218-    .catch Ljava/lang/ClassNotFoundException; {:try_start_1 .. :try_end_1} :catch_1
+work/apktool-out/smali/x/Gy.smali-1219-    .catch Ljava/lang/NoSuchMethodException; {:try_start_1 .. :try_end_1} :catch_1
+work/apktool-out/smali/x/Gy.smali-1220-
+work/apktool-out/smali/x/Gy.smali-1221-    .line 502
+work/apktool-out/smali/x/Gy.smali-1222-    .line 503
+work/apktool-out/smali/x/Gy.smali-1223-    move/from16 v28, v7
+work/apktool-out/smali/x/Gy.smali-1224-
+work/apktool-out/smali/x/Gy.smali-1225-    .line 504
+work/apktool-out/smali/x/Gy.smali-1226-    .line 505
+--
+work/apktool-out/smali/x/kt.smali-3142-    .line 367
+work/apktool-out/smali/x/kt.smali-3143-    .line 368
+work/apktool-out/smali/x/kt.smali-3144-    const-string v12, "channel-mask"
+work/apktool-out/smali/x/kt.smali-3145-
+work/apktool-out/smali/x/kt.smali-3146-    .line 369
+work/apktool-out/smali/x/kt.smali-3147-    .line 370
+work/apktool-out/smali/x/kt.smali-3148-    if-nez v3, :cond_f
+work/apktool-out/smali/x/kt.smali-3149-
+work/apktool-out/smali/x/kt.smali-3150-    .line 371
+work/apktool-out/smali/x/kt.smali-3151-    .line 372
+work/apktool-out/smali/x/kt.smali:3152:    const-string v3, "MediaCodecAudioRenderer"
+work/apktool-out/smali/x/kt.smali-3153-
+work/apktool-out/smali/x/kt.smali-3154-    .line 373
+work/apktool-out/smali/x/kt.smali-3155-    .line 374
+work/apktool-out/smali/x/kt.smali-3156-    const-string v8, "AudioCapabilities from the AudioSink are null, using default stereo output layout."
+work/apktool-out/smali/x/kt.smali-3157-
+work/apktool-out/smali/x/kt.smali-3158-    .line 375
+work/apktool-out/smali/x/kt.smali-3159-    .line 376
+work/apktool-out/smali/x/kt.smali-3160-    invoke-static {v3, v8}, Lx/x4;->f0(Ljava/lang/String;Ljava/lang/String;)V
+work/apktool-out/smali/x/kt.smali-3161-
+work/apktool-out/smali/x/kt.smali-3162-    .line 377
+--
+work/apktool-out/smali/x/kt.smali-3665-
+work/apktool-out/smali/x/kt.smali-3666-    .line 4
+work/apktool-out/smali/x/kt.smali-3667-    .line 5
+work/apktool-out/smali/x/kt.smali-3668-    return-object v0
+work/apktool-out/smali/x/kt.smali-3669-.end method
+work/apktool-out/smali/x/kt.smali-3670-
+work/apktool-out/smali/x/kt.smali-3671-.method public final b0(Ljava/lang/Exception;)V
+work/apktool-out/smali/x/kt.smali-3672-    .locals 4
+work/apktool-out/smali/x/kt.smali-3673-
+work/apktool-out/smali/x/kt.smali-3674-    .line 1
+work/apktool-out/smali/x/kt.smali:3675:    const-string v0, "MediaCodecAudioRenderer"
+work/apktool-out/smali/x/kt.smali-3676-
+work/apktool-out/smali/x/kt.smali-3677-    .line 2
+work/apktool-out/smali/x/kt.smali-3678-    .line 3
+work/apktool-out/smali/x/kt.smali-3679-    const-string v1, "Audio codec error"
+work/apktool-out/smali/x/kt.smali-3680-
+work/apktool-out/smali/x/kt.smali-3681-    .line 4
+work/apktool-out/smali/x/kt.smali-3682-    .line 5
+work/apktool-out/smali/x/kt.smali-3683-    invoke-static {v0, v1, p1}, Lx/x4;->u(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+work/apktool-out/smali/x/kt.smali-3684-
+work/apktool-out/smali/x/kt.smali-3685-    .line 6
+--
+work/apktool-out/smali/x/kt.smali-5776-    .locals 0
+work/apktool-out/smali/x/kt.smali-5777-
+work/apktool-out/smali/x/kt.smali-5778-    .line 1
+work/apktool-out/smali/x/kt.smali-5779-    return-object p0
+work/apktool-out/smali/x/kt.smali-5780-.end method
+work/apktool-out/smali/x/kt.smali-5781-
+work/apktool-out/smali/x/kt.smali-5782-.method public final j()Ljava/lang/String;
+work/apktool-out/smali/x/kt.smali-5783-    .locals 1
+work/apktool-out/smali/x/kt.smali-5784-
+work/apktool-out/smali/x/kt.smali-5785-    .line 1
+work/apktool-out/smali/x/kt.smali:5786:    const-string v0, "MediaCodecAudioRenderer"
+work/apktool-out/smali/x/kt.smali-5787-
+work/apktool-out/smali/x/kt.smali-5788-    .line 2
+work/apktool-out/smali/x/kt.smali-5789-    .line 3
+work/apktool-out/smali/x/kt.smali-5790-    return-object v0
+work/apktool-out/smali/x/kt.smali-5791-.end method
+work/apktool-out/smali/x/kt.smali-5792-
+work/apktool-out/smali/x/kt.smali-5793-.method public final j0()V
+work/apktool-out/smali/x/kt.smali-5794-    .locals 2
+work/apktool-out/smali/x/kt.smali-5795-
+work/apktool-out/smali/x/kt.smali-5796-    .line 1
+--
+work/apktool-out/smali/x/mq.smali-3847-    .packed-switch 0x0
+work/apktool-out/smali/x/mq.smali-3848-        :pswitch_1
+work/apktool-out/smali/x/mq.smali-3849-        :pswitch_0
+work/apktool-out/smali/x/mq.smali-3850-    .end packed-switch
+work/apktool-out/smali/x/mq.smali-3851-.end method
+work/apktool-out/smali/x/mq.smali-3852-
+work/apktool-out/smali/x/mq.smali-3853-.method public H(Ljava/lang/Exception;)V
+work/apktool-out/smali/x/mq.smali-3854-    .locals 4
+work/apktool-out/smali/x/mq.smali-3855-
+work/apktool-out/smali/x/mq.smali-3856-    .line 1
+work/apktool-out/smali/x/mq.smali:3857:    const-string v0, "MediaCodecAudioRenderer"
+work/apktool-out/smali/x/mq.smali-3858-
+work/apktool-out/smali/x/mq.smali-3859-    .line 2
+work/apktool-out/smali/x/mq.smali-3860-    .line 3
+work/apktool-out/smali/x/mq.smali-3861-    const-string v1, "Audio sink error"
+work/apktool-out/smali/x/mq.smali-3862-
+work/apktool-out/smali/x/mq.smali-3863-    .line 4
+work/apktool-out/smali/x/mq.smali-3864-    .line 5
+work/apktool-out/smali/x/mq.smali-3865-    invoke-static {v0, v1, p1}, Lx/x4;->u(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+work/apktool-out/smali/x/mq.smali-3866-
+work/apktool-out/smali/x/mq.smali-3867-    .line 6
+--
+work/apktool-out/smali/x/nj.smali-1-.class public final Lx/nj;
+work/apktool-out/smali/x/nj.smali-2-.super Lx/Z5;
+work/apktool-out/smali/x/nj.smali-3-.source "SourceFile"
+work/apktool-out/smali/x/nj.smali-4-
+work/apktool-out/smali/x/nj.smali-5-# interfaces
+work/apktool-out/smali/x/nj.smali:6:.implements Landroidx/media3/exoplayer/ExoPlayer;
+work/apktool-out/smali/x/nj.smali-7-
+work/apktool-out/smali/x/nj.smali-8-
+work/apktool-out/smali/x/nj.smali-9-# instance fields
+work/apktool-out/smali/x/nj.smali-10-.field public final A:Lx/lp;
+work/apktool-out/smali/x/nj.smali-11-
+work/apktool-out/smali/x/nj.smali-12-.field public final B:J
+work/apktool-out/smali/x/nj.smali-13-
+work/apktool-out/smali/x/nj.smali-14-.field public final C:Lx/Y1;
+work/apktool-out/smali/x/nj.smali-15-
+work/apktool-out/smali/x/nj.smali-16-.field public final D:Lx/KH;
+--
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali:1:.class public interface abstract Landroidx/media3/exoplayer/ExoPlayer;
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-2-.super Ljava/lang/Object;
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-3-.source "SourceFile"
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-4-
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-5-# interfaces
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-6-.implements Lx/cy;
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-7-
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-8-
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-9-# virtual methods
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-10-.method public abstract isScrubbingModeEnabled()Z
+work/apktool-out/smali/androidx/media3/exoplayer/ExoPlayer.smali-11-.end method
+--
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1157-    .line 517
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1158-    iput-object v4, v1, Landroidx/media3/ui/PlayerView;->n:Landroid/widget/ImageView;
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1159-
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1160-    .line 518
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1161-    .line 519
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1162-    iput v5, v1, Landroidx/media3/ui/PlayerView;->E:I
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1163-
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1164-    .line 520
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1165-    .line 521
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1166-    :try_start_3
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali:1167:    const-class v4, Landroidx/media3/exoplayer/ExoPlayer;
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1168-
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1169-    .line 522
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1170-    .line 523
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1171-    const-class v5, Landroidx/media3/exoplayer/image/ImageOutput;
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1172-
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1173-    .line 524
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1174-    .line 525
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1175-    const-string v7, "setImageOutput"
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1176-
+work/apktool-out/smali/androidx/media3/ui/PlayerView.smali-1177-    .line 526
+
+=== Version matches ===
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1732-            }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1733-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1734-        if (str2 == null || str2.trim().isEmpty()) {
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java:1735:            str2 = "CO-CHI/0.23.93";
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1736-        }
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1737-        boolean z = this.X;
+work/jadx-out/sources/com/cochi/client/PlayerActivity.java-1738-        int i2 = z ? 2500 : 7000;
+--
+work/jadx-out/sources/x/AbstractC0431ax.java-2062-        httpURLConnection.setRequestMethod(str);
+work/jadx-out/sources/x/AbstractC0431ax.java-2063-        httpURLConnection.setRequestProperty("Accept", "application/json");
+work/jadx-out/sources/x/AbstractC0431ax.java-2064-        httpURLConnection.setRequestProperty("Cache-Control", "no-cache");
+work/jadx-out/sources/x/AbstractC0431ax.java:2065:        httpURLConnection.setRequestProperty("User-Agent", "CO-CHI-Android/0.23.93");
+work/jadx-out/sources/x/AbstractC0431ax.java-2066-        httpURLConnection.setRequestProperty("X-COCHI-Package", context.getPackageName());
+work/jadx-out/sources/x/AbstractC0431ax.java:2067:        httpURLConnection.setRequestProperty("X-COCHI-Version", "0.23.93");
+work/jadx-out/sources/x/AbstractC0431ax.java-2068-        String strR0 = QK.r0(context);
+work/jadx-out/sources/x/AbstractC0431ax.java-2069-        if (!strR0.isEmpty()) {
+work/jadx-out/sources/x/AbstractC0431ax.java-2070-            httpURLConnection.setRequestProperty("X-COCHI-Signature", strR0);
+--
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-8-
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-9-/* compiled from: DebugProbes.kt */
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-10-@Metadata(mv = {2, 1, 0}, k = 2, xi = 48, d1 = {"��\u0012\n��\n\u0002\u0018\u0002\n\u0002\b\u0003\n\u0002\u0010\u0002\n\u0002\b\u0003\u001a\"\u0010��\u001a\b\u0012\u0004\u0012\u0002H\u00020\u0001\"\u0004\b��\u0010\u00022\f\u0010\u0003\u001a\b\u0012\u0004\u0012\u0002H\u00020\u0001H��\u001a\u0014\u0010\u0004\u001a\u00020\u00052\n\u0010\u0006\u001a\u0006\u0012\u0002\b\u00030\u0001H��\u001a\u0014\u0010\u0007\u001a\u00020\u00052\n\u0010\u0006\u001a\u0006\u0012\u0002\b\u00030\u0001H��¨\u0006\b"}, d2 = {"probeCoroutineCreated", "Lkotlin/coroutines/Continuation;", "T", "completion", "probeCoroutineResumed", "", "frame", "probeCoroutineSuspended", "kotlinx-coroutines-integration-testing_debugAgentTest"})
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java:11:/* loaded from: CO-CHI-0.23.93.apk:DebugProbesKt.bin */
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-12-public final class DebugProbesKt {
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-13-    @NotNull
+work/jadx-out/sources/kotlin/coroutines/jvm/internal/DebugProbesKt.java-14-    public static final <T> Continuation<T> probeCoroutineCreated(@NotNull Continuation<? super T> continuation) {
+--
+work/apktool-out/apktool.yml-1-version: 2.9.3
+work/apktool-out/apktool.yml:2:apkFileName: CO-CHI-0.23.93.apk
+work/apktool-out/apktool.yml-3-isFrameworkApk: false
+work/apktool-out/apktool.yml-4-usesFramework:
+work/apktool-out/apktool.yml-5-  ids:
+--
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12429-    .line 250
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12430-    .line 251
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12431-    :cond_d
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali:12432:    const-string v0, "CO-CHI/0.23.93"
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12433-
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12434-    .line 252
+work/apktool-out/smali/com/cochi/client/PlayerActivity.smali-12435-    .line 253
+--
+work/apktool-out/smali/x/ax.smali-13776-
+work/apktool-out/smali/x/ax.smali-13777-    .line 74
+work/apktool-out/smali/x/ax.smali-13778-    .line 75
+work/apktool-out/smali/x/ax.smali:13779:    const-string v0, "CO-CHI-Android/0.23.93"
+work/apktool-out/smali/x/ax.smali-13780-
+work/apktool-out/smali/x/ax.smali-13781-    .line 76
+work/apktool-out/smali/x/ax.smali-13782-    .line 77
+--
+work/apktool-out/smali/x/ax.smali-13806-
+work/apktool-out/smali/x/ax.smali-13807-    .line 90
+work/apktool-out/smali/x/ax.smali-13808-    .line 91
+work/apktool-out/smali/x/ax.smali:13809:    const-string v0, "0.23.93"
+work/apktool-out/smali/x/ax.smali-13810-
+work/apktool-out/smali/x/ax.smali-13811-    .line 92
+work/apktool-out/smali/x/ax.smali-13812-    .line 93
