@@ -6,11 +6,6 @@ on:
     paths:
       - '.github/workflows/cochi-apk94-audio-test.yml'
       - 'tools/cochi94/**'
-  push:
-    branches: [cochi-apk94-audio-test]
-    paths:
-      - '.github/workflows/cochi-apk94-audio-test.yml'
-      - 'tools/cochi94/**'
 
 permissions:
   contents: write
@@ -53,6 +48,15 @@ jobs:
             echo "=== SMALI contextual matches ==="
             grep -RInE -C 10 'DefaultRenderersFactory|setExtensionRendererMode|setRenderersFactory|MediaCodecAudioRenderer|Landroidx/media3/exoplayer/ExoPlayer' work/apktool-out/smali* 2>/dev/null | head -3000 || true
             echo
+            echo "=== Factory candidates creating MediaCodecAudioRenderer (JADX) ==="
+            grep -RInE -C 80 'new C0943kt\b|C0943kt\(' work/jadx-out/sources/x 2>/dev/null | head -5000 || true
+            echo
+            echo "=== Factory candidates creating MediaCodecAudioRenderer (SMALI) ==="
+            grep -RInE -C 80 'new-instance .*Lx/kt;|Lx/kt;-><init>' work/apktool-out/smali/x 2>/dev/null | head -5000 || true
+            echo
+            echo "=== PlayerActivity player construction ==="
+            grep -nE -C 50 'C1504vj|C0943kt|ExoPlayer|PlayerView|prepare\(|setMediaItem|setMediaSource' work/jadx-out/sources/com/cochi/client/PlayerActivity.java 2>/dev/null | head -6000 || true
+            echo
             echo "=== Version matches ==="
             grep -RInE -C 3 '0\.23\.93|CO-CHI-Android/0\.23\.93|CO-CHI/0\.23\.93' work/jadx-out/sources work/apktool-out 2>/dev/null | head -500 || true
           } > tools/cochi94/analysis.txt
@@ -65,4 +69,5 @@ jobs:
           git add tools/cochi94/analysis.txt
           git diff --cached --quiet && exit 0
           git commit -m "Analyze CO-CHI 0.23.93 audio renderer path"
+          git pull --rebase origin cochi-apk94-audio-test
           git push origin HEAD:cochi-apk94-audio-test
