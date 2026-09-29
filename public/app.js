@@ -487,7 +487,7 @@ function renderClients(){
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b></td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
@@ -532,6 +532,7 @@ function openClientModal(c=null){
       <label>Nombre<input id="cName" required value="${esc(c?.name||'')}"></label>
       ${admin?`<label>Propietario<select id="cOwner"><option value="${state.me.id}">${esc(state.me.name)} — PANEL PRINCIPAL</option>${owners.filter(x=>x.id!==state.me.id).map(x=>`<option value="${x.id}" ${c?.owner_account_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label><div class="client-code-box muted"><b>Capacidad global</b><span>Base y ampliaciones se administran con la regla global de dispositivos. No se modifica manualmente por cliente.</span></div>`:''}
       <label>Notas<textarea id="cNotes" rows="3">${esc(c?.notes||'')}</textarea></label>
+      ${admin?`<div class="client-manage-card"><h4>Cuenta de prueba</h4><label class="switch-row"><input id="cPreviewHidden" type="checkbox" ${c?.preview_hidden_content?'checked':''}> Ver categorías y canales ocultos en CO-CHI</label><p class="muted small">Solo esta cuenta/dispositivos recibirán el contenido oculto. Los clientes normales continúan filtrados.</p></div>`:''}
       ${c?`<label class="switch-row"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Cliente habilitado</label>`:
       `<div class="client-code-box muted"><b>Códigos CO-CHI</b><span>Primero guardá el cliente. Luego podrás vincular sus dispositivos.</span></div>`}
       <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div>
@@ -569,7 +570,7 @@ function openClientModal(c=null){
     e.preventDefault();
     try{
       const body={name:$('#cName').value,notes:$('#cNotes').value};
-      if(admin){body.ownerAccountId=Number($('#cOwner').value);}
+      if(admin){body.ownerAccountId=Number($('#cOwner').value);body.previewHiddenContent=$('#cPreviewHidden')?.checked===true;}
       if(c)body.active=$('#cActive').checked;
       const r=await api(c?`/api/admin/clients/${c.id}`:'/api/admin/clients',{method:c?'PUT':'POST',body});
       closeModal();
@@ -1111,7 +1112,7 @@ function renderContentVisual(){
       <div class="content-items ${isOpen?'':'collapsed'}">${shown.map(({x,si})=>{const timer=isTvGrid?contentAutoHideLabel(x):'';const leadControl=isTvGrid?`<button class="ghost mini content-item-edit-lead" title="Editar canal" data-content-edit="${gi}:${si}">EDITAR</button>`:(x?.icon?`<img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`:'');const rightEdit=isTvGrid?'':`<button class="ghost mini" data-content-edit="${gi}:${si}">EDITAR</button>`;return `<div class="content-item ${isTvGrid?'content-item-tv':''} ${contentItemHidden(x)?'content-item-hidden':''}">
         ${leadControl}
         <div class="content-item-main"><strong>${esc(contentItemName(x))}${contentItemHidden(x)?' <span class="hidden-channel-badge">OCULTO</span>':''}${timer?` <span class="scheduled-hide-badge">⏱ ${esc(timer)}</span>`:''}</strong><span class="muted small">${esc(contentItemMeta(x))}</span><span class="muted tiny">Posición ${si+1}/${items.length}${contentItemHidden(x)?' · no aparece en CO-CHI':''}</span></div>
-        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-item="${gi}:${si}">⏱</button><button class="${contentItemHidden(x)?'primary':'ghost'} mini" data-content-visibility="${gi}:${si}">${contentItemHidden(x)?'MOSTRAR':'OCULTAR'}</button>`:''}${rightEdit}<button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
+        <div class="content-item-actions"><button class="order-btn" title="Subir contenido" data-item-quick="${gi}:${si}:up">↑</button><button class="order-btn" title="Bajar contenido" data-item-quick="${gi}:${si}:down">↓</button>${isTvGrid?`<button class="ghost mini timer-btn" title="Programar ocultamiento automático" data-auto-hide-item="${gi}:${si}">⏱</button><button class="${contentItemHidden(x)?'primary':'ghost'} mini" data-content-visibility="${gi}:${si}">${contentItemHidden(x)?'MOSTRAR':'OCULTAR'}</button><button class="ghost mini" data-content-transfer="${gi}:${si}">MOVER / PUBLICAR</button>`:''}${rightEdit}<button class="danger mini" data-content-delete="${gi}:${si}">ELIMINAR</button></div>
       </div>`}).join('')||'<div class="empty muted small">Sin contenidos.</div>'}</div>
     </div>`;
   }).join('');
@@ -1135,7 +1136,8 @@ function renderContentVisual(){
     moveArrayItem(items,i,to);d[g].samples=items;state.contentOpen.add(g);setContentPlain(d);
   });
   $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
-  $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
+  $('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
+  $('[data-content-transfer]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentTransfer.split(':').map(Number);openContentTransfer(g,i);});
   $$('[data-content-visibility]').forEach(b=>b.onclick=async()=>{
     const [g,i]=b.dataset.contentVisibility.split(':').map(Number),d=contentPlain(),item=d[g]?.samples?.[i];if(!item)return;
     const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
@@ -1177,6 +1179,92 @@ function renderContentVisual(){
     if(confirm(`¿Eliminar la categoría ${d[i]?.name||''} y todos sus contenidos?`)){d.splice(i,1);state.contentOpen=new Set();setContentPlain(d);}
   });
 }
+function contentTransferCleanItem(item){
+  const x=structuredClone(item||{});
+  delete x._cochiHidden;delete x._cochiAutoHideAt;delete x._remoteSourceGroup;
+  delete x._resolverId;delete x._resolverType;delete x._resolverPage;
+  return x;
+}
+function contentTransferUri(item){
+  return String(item?.uri||item?.url||item?.playbackSources?.[Number(item?.activePlaybackSource)||0]?.url||'').trim();
+}
+function contentTransferHasDuplicate(group,item){
+  const name=String(contentItemName(item)||'').trim().toLowerCase(),uri=contentTransferUri(item);
+  return (Array.isArray(group?.samples)?group.samples:[]).some(x=>String(contentItemName(x)||'').trim().toLowerCase()===name&&contentTransferUri(x)===uri);
+}
+async function openContentTransfer(groupIndex,itemIndex){
+  const sourceKey=String($('#contentKey')?.value||'').toLowerCase();
+  if(!['tv1','tv2'].includes(sourceKey))return;
+  let sourceData;try{sourceData=contentPlain();}catch(e){return alert(e.message);}
+  const sourceGroup=sourceData[groupIndex],sourceItem=sourceGroup?.samples?.[itemIndex];if(!sourceGroup||!sourceItem)return;
+  const remoteSource=Number(sourceGroup?._cochiRemoteM3uId||0)>0;
+  let catalogs={};
+  try{
+    const otherKey=sourceKey==='tv1'?'tv2':'tv1';
+    const other=await api('/api/admin/content/'+otherKey);
+    catalogs[sourceKey]=structuredClone(sourceData);
+    catalogs[otherKey]=Array.isArray(other.json)?structuredClone(other.json):[];
+  }catch(e){return alert('No se pudieron cargar las categorías de destino: '+e.message);}
+  const categoryOptions=key=>(catalogs[key]||[]).map(g=>String(g?.name||'').trim()).filter(Boolean);
+  openModal(`<h3>Mover / publicar canal</h3>
+    <div class="client-code-box muted"><b>${esc(contentItemName(sourceItem))}</b><span>Origen: ${esc(sourceKey.toUpperCase())} · ${esc(sourceGroup.name||'Sin categoría')}${remoteSource?' · FUENTE REMOTA':''}</span></div>
+    ${remoteSource?'<div class="warning-card"><b>Fuente remota</b><span>Este canal se publicará como copia independiente. La categoría remota de prueba se conserva para que sus próximas actualizaciones no borren tu canal ya aprobado.</span></div>':''}
+    <form id="contentTransferForm">
+      <div class="form-row">
+        <label>Destino<select id="ctDestination"><option value="tv1" ${sourceKey==='tv1'?'selected':''}>TV1</option><option value="tv2" ${sourceKey==='tv2'?'selected':''}>TV2</option></select></label>
+        <label>Acción<select id="ctMode"><option value="copy" ${remoteSource?'selected':''}>COPIAR / PUBLICAR</option><option value="move" ${remoteSource?'disabled':''}>MOVER (quitar del origen)</option></select></label>
+      </div>
+      <label>Categoría existente<select id="ctCategorySelect"></select></label>
+      <label>Categoría destino<input id="ctCategoryName" value="${esc(sourceGroup.name||'')}" placeholder="Ej.: DEPORTES / CHILE / INTERNACIONALES" required></label>
+      <p class="muted small">Se conserva URL, logo, headers, User-Agent, DRM, cookies y fuentes alternativas del canal. Al publicarlo se eliminan únicamente las marcas internas de prueba/ocultamiento.</p>
+      <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">${remoteSource?'PUBLICAR CANAL':'APLICAR'}</button></div>
+      <div id="contentTransferMsg" class="msg"></div>
+    </form>`);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);
+  const dest=$('#ctDestination'),select=$('#ctCategorySelect'),nameInput=$('#ctCategoryName'),mode=$('#ctMode');
+  const renderCategories=()=>{
+    const cats=categoryOptions(dest.value);
+    select.innerHTML='<option value="__new__">+ NUEVA CATEGORÍA</option>'+cats.map(x=>'<option value="'+esc(x)+'" '+(x.toLowerCase()===String(nameInput.value||'').trim().toLowerCase()?'selected':'')+'>'+esc(x)+'</option>').join('');
+  };
+  dest.addEventListener('change',()=>{const cats=categoryOptions(dest.value);if(cats.length&&!cats.some(x=>x.toLowerCase()===String(nameInput.value||'').trim().toLowerCase()))nameInput.value=cats[0];renderCategories();});
+  select.addEventListener('change',()=>{if(select.value!=='__new__')nameInput.value=select.value;else nameInput.value='';});
+  renderCategories();
+  $('#contentTransferForm').onsubmit=async e=>{
+    e.preventDefault();const submit=e.submitter;
+    try{
+      const destination=dest.value,targetCategory=String(nameInput.value||'').trim(),action=remoteSource?'copy':mode.value;
+      if(!['tv1','tv2'].includes(destination))throw new Error('Destino inválido.');
+      if(!targetCategory)throw new Error('Indicá la categoría destino.');
+      if(destination===sourceKey&&String(sourceGroup.name||'').trim().toLowerCase()===targetCategory.toLowerCase())throw new Error('Elegí otra categoría o la otra lista; el canal ya está en ese destino.');
+      if(submit){submit.disabled=true;submit.textContent='PUBLICANDO...';}
+      const clean=contentTransferCleanItem(sourceItem);
+      if(destination===sourceKey){
+        const data=contentPlain();
+        const srcGroup=data[groupIndex],srcItem=srcGroup?.samples?.[itemIndex];if(!srcItem)throw new Error('El canal de origen cambió. Volvé a abrir esta acción.');
+        let target=data.find(g=>String(g?.name||'').trim().toLowerCase()===targetCategory.toLowerCase());
+        if(!target){target={name:targetCategory,samples:[]};data.push(target);}
+        if(contentTransferHasDuplicate(target,clean))throw new Error('Ese canal ya existe en la categoría destino.');
+        if(action==='move')srcGroup.samples.splice(itemIndex,1);
+        target.samples.push(clean);
+        await quickPublishContent(sourceKey,data,{syncOriginal:true,successText:(action==='move'?'CANAL MOVIDO':'CANAL PUBLICADO')});
+      }else{
+        const targetFresh=await api('/api/admin/content/'+destination),targetData=Array.isArray(targetFresh.json)?structuredClone(targetFresh.json):[];
+        let target=targetData.find(g=>String(g?.name||'').trim().toLowerCase()===targetCategory.toLowerCase());
+        if(!target){target={name:targetCategory,samples:[]};targetData.push(target);}
+        if(contentTransferHasDuplicate(target,clean))throw new Error('Ese canal ya existe en '+destination.toUpperCase()+' · '+targetCategory+'.');
+        target.samples.push(clean);
+        await quickPublishContent(destination,targetData,{syncOriginal:true,successText:'CANAL PUBLICADO'});
+        if(action==='move'){
+          const srcData=contentPlain(),srcGroup=srcData[groupIndex];
+          if(srcGroup?.samples?.[itemIndex]){srcGroup.samples.splice(itemIndex,1);await quickPublishContent(sourceKey,srcData,{syncOriginal:true,successText:'ORIGEN ACTUALIZADO'});}
+        }
+      }
+      const verb=action==='move'?'movido':'publicado';
+      closeModal();toast(contentItemName(sourceItem)+' '+verb+' en '+destination.toUpperCase()+' · '+targetCategory,'ok');await loadContent(true);
+    }catch(err){msg($('#contentTransferMsg'),err.message);if(submit){submit.disabled=false;submit.textContent=remoteSource?'PUBLICAR CANAL':'APLICAR';}}
+  };
+}
+
 function openAutoHideScheduler(kind,groupIndex,itemIndex=null){
   let d;try{d=contentPlain();}catch(e){return alert(e.message);}
   const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
@@ -2160,7 +2248,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.8-bulk-ua-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.9-preview-transfer-1').catch(()=>{}));
 }
 bootstrap();
 

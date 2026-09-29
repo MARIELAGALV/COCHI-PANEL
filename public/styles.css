@@ -1,5 +1,5 @@
-/* CO-CHI PANEL v1.1.8 — edición masiva de User-Agent + estilos heredados. */
-@import url("/styles-core-v1.1.7.css?v=1.1.8");
+/* CO-CHI PANEL v1.1.9 — vista de prueba oculta + mover/publicar canales + estilos heredados. */
+@import url("/styles-core-v1.1.7.css?v=1.1.9");
 
 @media (max-width:660px){
   body[data-view="clients"] .main{
