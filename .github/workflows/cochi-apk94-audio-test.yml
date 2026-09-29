@@ -60,13 +60,16 @@ jobs:
             echo "=== Version matches ==="
             grep -RInE -C 3 '0\.23\.93|CO-CHI-Android/0\.23\.93|CO-CHI/0\.23\.93' work/jadx-out/sources work/apktool-out 2>/dev/null | head -500 || true
           } > tools/cochi94/analysis.txt
+          rm -rf tools/cochi94/decompiled93
+          mkdir -p tools/cochi94/decompiled93
+          cp -a work/jadx-out/sources/com/cochi/client/. tools/cochi94/decompiled93/
 
       - name: Commit analysis
         run: |
           set -euxo pipefail
           git config user.name "cochi-build-bot"
           git config user.email "cochi-build-bot@users.noreply.github.com"
-          git add tools/cochi94/analysis.txt
+          git add tools/cochi94/analysis.txt tools/cochi94/decompiled93
           git diff --cached --quiet && exit 0
           git commit -m "Analyze CO-CHI 0.23.93 audio renderer path"
           git pull --rebase origin cochi-apk94-audio-test
