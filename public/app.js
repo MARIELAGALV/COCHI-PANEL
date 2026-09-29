@@ -1220,7 +1220,7 @@ async function openContentTransfer(groupIndex,itemIndex){
       <div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">${remoteSource?'PUBLICAR CANAL':'APLICAR'}</button></div>
       <div id="contentTransferMsg" class="msg"></div>
     </form>`);
-  $('[data-close]').forEach(x=>x.onclick=closeModal);
+  $$('[data-close]').forEach(x=>x.onclick=closeModal);
   const dest=$('#ctDestination'),select=$('#ctCategorySelect'),nameInput=$('#ctCategoryName'),mode=$('#ctMode');
   const renderCategories=()=>{
     const cats=categoryOptions(dest.value);
