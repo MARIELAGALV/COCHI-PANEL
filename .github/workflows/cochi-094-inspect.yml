@@ -6,24 +6,22 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Download tools and APK
+      - name: Download and decode
         run: |
           set -eux
           wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar -O apktool.jar
           wget -q https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk -O cochi93.apk
-          sha256sum cochi93.apk
-      - name: Decode
-        run: |
           java -jar apktool.jar d -f -r cochi93.apk -o decoded
-      - name: Inspect player
+      - name: Inspect renderers factory and player construction
         run: |
           set -e
-          echo "=== PlayerActivity files ==="
-          find decoded -type f -path '*com/cochi/client/PlayerActivity*.smali' -print
-          echo "=== Media3 references in PlayerActivity ==="
-          for f in $(find decoded -type f -path '*com/cochi/client/PlayerActivity*.smali'); do
-            echo "===== $f ====="
-            grep -n -E 'ExoPlayer|Renderers|MediaCodec|setRenderers|new-instance|->build|PlayerView' "$f" | head -300 || true
-          done
-          echo "=== Extension/Ffmpeg strings across smali ==="
-          grep -R -n -E 'DefaultRenderersFactory|EXTENSION_RENDERER|Ffmpeg|Libopus|Libflac|Error instantiating' decoded/smali* | head -300 || true
+          echo "=== x/I2 header + constructors ==="
+          sed -n '1,520p' decoded/smali/x/I2.smali
+          echo "=== x/I2 extension area ==="
+          sed -n '3000,3520p' decoded/smali/x/I2.smali
+          echo "=== PlayerActivity construction A ==="
+          sed -n '3920,4100p' decoded/smali/com/cochi/client/PlayerActivity.smali
+          echo "=== PlayerActivity construction B ==="
+          sed -n '5560,5820p' decoded/smali/com/cochi/client/PlayerActivity.smali
+          echo "=== PlayerActivity construction C ==="
+          sed -n '11680,11820p' decoded/smali/com/cochi/client/PlayerActivity.smali
