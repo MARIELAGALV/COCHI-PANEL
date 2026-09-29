@@ -11,36 +11,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: cochi-094-audio-test-build
-      - name: Download and decode
+      - name: Download and decompile stable 93
         run: |
           set -eux
           rm -rf work
           mkdir -p work
-          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar -O work/apktool.jar
           wget -q https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip -O work/jadx.zip
           unzip -q work/jadx.zip -d work/jadx
           chmod +x work/jadx/bin/jadx
           wget -q https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk -O work/cochi93.apk
-          java -jar work/apktool.jar d -f -r work/cochi93.apk -o work/decoded
           work/jadx/bin/jadx --show-bad-code -d work/jadx-out work/cochi93.apk || true
-      - name: Preserve focused decompile
+      - name: Preserve motor and focused sources
         run: |
           set -eux
-          rm -rf tools/cochi94/focused93 tools/cochi94/base93java
-          mkdir -p tools/cochi94/focused93/java tools/cochi94/focused93/smali tools/cochi94/base93java
-          for f in C0376Zi C1318s4 I2 C1504vj C1089nj C0619ef; do
-            test -f work/jadx-out/sources/x/$f.java && cp work/jadx-out/sources/x/$f.java tools/cochi94/focused93/java/ || true
-          done
-          cp work/decoded/smali/x/I2.smali tools/cochi94/focused93/smali/
-          cp work/decoded/smali/com/cochi/client/PlayerActivity.smali tools/cochi94/focused93/smali/
-          cp work/jadx-out/sources/com/cochi/client/*.java tools/cochi94/base93java/\n          mkdir -p tools/cochi94/base93java/motor\n          cp work/jadx-out/sources/com/tuempresa/motor/*.java tools/cochi94/base93java/motor/ 2>/dev/null || true\n          cp work/jadx-out/sources/com/tuempresa/motor/internal/*.java tools/cochi94/base93java/motor/ 2>/dev/null || true
-      - name: Commit focused analysis
+          rm -rf tools/cochi94/stable93-extra
+          mkdir -p tools/cochi94/stable93-extra
+          if [ -d work/jadx-out/sources/com/cochi/motorprivado ]; then
+            cp -a work/jadx-out/sources/com/cochi/motorprivado tools/cochi94/stable93-extra/
+          fi
+          {
+            echo "=== motorprivado files ==="
+            find work/jadx-out/sources -path '*motorprivado*' -type f -print || true
+            echo "=== redirect/token matches ==="
+            grep -RInE -C 12 '/out/|/live/|resolveGeneratedVideoUrl|SA_Live_dash|nameRedirect2|\{nombre2\}' work/jadx-out/sources 2>/dev/null | head -5000 || true
+            echo "=== series load 20 matches ==="
+            grep -RInE -C 10 '20[^0-9]|subList|notifyItemRangeInserted|cap[ií]tulos|episode' work/jadx-out/sources/com/cochi/client work/jadx-out/sources/x 2>/dev/null | head -5000 || true
+          } > tools/cochi94/stable93-extra/analysis-extra.txt
+      - name: Commit
         run: |
           set -eux
           git config user.name "cochi-build-bot"
           git config user.email "cochi-build-bot@users.noreply.github.com"
-          git add tools/cochi94/focused93 tools/cochi94/base93java
+          git add tools/cochi94/stable93-extra
           git diff --cached --quiet && exit 0
-          git commit -m "Guardar ruta enfocada del reproductor 0.23.93"
+          git commit -m "Inspeccionar motor y cambios finales de 0.23.93"
           git pull --rebase origin cochi-094-audio-test-build
           git push origin HEAD:cochi-094-audio-test-build
