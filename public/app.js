@@ -2004,6 +2004,7 @@ async function bulkUaApply(){
     const totalChanged=Object.values(changedByKey).reduce((a,b)=>a+b,0);
     if(!totalChanged)throw new Error('Los canales seleccionados no necesitaron cambios.');
     state.bulkUaUndo={snapshots,changedByKey,createdAt:Date.now(),needle:cfg.needle};
+    $('#bulkUaUndoBtn').disabled=false;
     for(const key of byKey.keys()){if(changedByKey[key]>0)await bulkUaPublishOne(key,working[key]);}
     localStorage.setItem('cochi_bulk_ua_last',cfg.value);
     $('#bulkUaUndoBtn').disabled=false;
