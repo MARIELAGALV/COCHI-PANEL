@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: cochi-094-audio-test-build
-      - name: Download and decompile stable 93
+      - name: Decompile stable 93
         run: |
           set -eux
           rm -rf work
@@ -21,29 +21,23 @@ jobs:
           chmod +x work/jadx/bin/jadx
           wget -q https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk -O work/cochi93.apk
           work/jadx/bin/jadx --show-bad-code -d work/jadx-out work/cochi93.apk || true
-      - name: Preserve motor and focused sources
+      - name: Extract seek/retry behavior
         run: |
           set -eux
-          rm -rf tools/cochi94/stable93-extra
           mkdir -p tools/cochi94/stable93-extra
-          if [ -d work/jadx-out/sources/com/cochi/motorprivado ]; then
-            cp -a work/jadx-out/sources/com/cochi/motorprivado tools/cochi94/stable93-extra/
-          fi
           {
-            echo "=== motorprivado files ==="
-            find work/jadx-out/sources -path '*motorprivado*' -type f -print || true
-            echo "=== redirect/token matches ==="
-            grep -RInE -C 12 '/out/|/live/|resolveGeneratedVideoUrl|SA_Live_dash|nameRedirect2|\{nombre2\}' work/jadx-out/sources 2>/dev/null | head -5000 || true
-            echo "=== series load 20 matches ==="
-            grep -RInE -C 10 '20[^0-9]|subList|notifyItemRangeInserted|cap[ií]tulos|episode' work/jadx-out/sources/com/cochi/client work/jadx-out/sources/x 2>/dev/null | head -5000 || true
-          } > tools/cochi94/stable93-extra/analysis-extra.txt
+            echo "=== seek and retry matches ==="
+            grep -RInE -C 30 'Reconexion silenciosa|PLAYBACK_ERROR|Reintento de reproducción|reintento|reconex|currentPosition|getCurrentPosition|seekToDefaultPosition|seekTo\(' work/jadx-out/sources 2>/dev/null | head -12000 || true
+            echo "=== 5min matches ==="
+            grep -RInE -C 12 '300000|5 min|15 min' work/jadx-out/sources/com/cochi/client work/jadx-out/sources/x 2>/dev/null | head -4000 || true
+          } > tools/cochi94/stable93-extra/seek-report.txt
       - name: Commit
         run: |
           set -eux
           git config user.name "cochi-build-bot"
           git config user.email "cochi-build-bot@users.noreply.github.com"
-          git add tools/cochi94/stable93-extra
+          git add tools/cochi94/stable93-extra/seek-report.txt
           git diff --cached --quiet && exit 0
-          git commit -m "Inspeccionar motor y cambios finales de 0.23.93"
+          git commit -m "Inspeccionar corrección de seek de 0.23.93"
           git pull --rebase origin cochi-094-audio-test-build
           git push origin HEAD:cochi-094-audio-test-build
