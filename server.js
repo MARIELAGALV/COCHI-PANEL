@@ -3861,11 +3861,11 @@ async function route(req,res){
     }
     if(p==='/api/admin/clients'&&m==='POST'){
       const b=await readJson(req),name=String(b.name||'').trim();if(name.length<2)return sendJson(res,400,{error:'Nombre requerido'});let owner=actor.id;
-      if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.deviceLimit!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede definir la cantidad de dispositivos'});
+      if(actor.role_level===1&&b.ownerAccountId!==undefined){owner=Number(b.ownerAccountId);if(!accountRaw(owner))return sendJson(res,400,{error:'Propietario inválido'});}else if(actor.role_level!==1&&b.deviceLimit!==undefined)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede definir la cantidad de dispositivos'});if(b.previewHiddenContent!==undefined&&actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede habilitar contenido oculto de prueba'});
       let deviceLimit=globalClientDeviceBlockSize();
       if(b.deviceLimit!==undefined)return sendJson(res,409,{error:'El límite base se define globalmente desde ADMINISTRACIÓN'});
       const previewHidden=actor.role_level===1&&b.previewHiddenContent===true?1:0;
-      const t=nowIso();const r=db.prepare('INSERT INTO clients(name,owner_account_id,notes,active,expires_at,device_limit,preview_hidden_content,created_at,updated_at) VALUES (?,?,?,1,NULL,?,?,?,?,?)').run(name,owner,String(b.notes||'').trim(),deviceLimit,previewHidden,t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),deviceLimit,previewHiddenContent:Boolean(previewHidden)});
+      const t=nowIso();const r=db.prepare('INSERT INTO clients(name,owner_account_id,notes,active,expires_at,device_limit,preview_hidden_content,created_at,updated_at) VALUES (?,?,?,1,NULL,?,?,?,?)').run(name,owner,String(b.notes||'').trim(),deviceLimit,previewHidden,t,t);return sendJson(res,201,{ok:true,id:Number(r.lastInsertRowid),deviceLimit,previewHiddenContent:Boolean(previewHidden)});
     }
     const cm=p.match(/^\/api\/admin\/clients\/(\d+)$/);
     if(cm&&m==='PUT'){
