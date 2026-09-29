@@ -33,7 +33,7 @@ jobs:
           done
           cp work/decoded/smali/x/I2.smali tools/cochi94/focused93/smali/
           cp work/decoded/smali/com/cochi/client/PlayerActivity.smali tools/cochi94/focused93/smali/
-          cp work/jadx-out/sources/com/cochi/client/*.java tools/cochi94/base93java/
+          cp work/jadx-out/sources/com/cochi/client/*.java tools/cochi94/base93java/\n          mkdir -p tools/cochi94/base93java/motor\n          cp work/jadx-out/sources/com/tuempresa/motor/*.java tools/cochi94/base93java/motor/ 2>/dev/null || true\n          cp work/jadx-out/sources/com/tuempresa/motor/internal/*.java tools/cochi94/base93java/motor/ 2>/dev/null || true
       - name: Commit focused analysis
         run: |
           set -eux
