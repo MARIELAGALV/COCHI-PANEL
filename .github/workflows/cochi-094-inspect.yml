@@ -2,26 +2,44 @@ name: COCHI 094 inspect
 on:
   push:
     branches: [cochi-094-audio-test-build]
+permissions:
+  contents: write
 jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cochi-094-audio-test-build
       - name: Download and decode
         run: |
           set -eux
-          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar -O apktool.jar
-          wget -q https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk -O cochi93.apk
-          java -jar apktool.jar d -f -r cochi93.apk -o decoded
-      - name: Inspect renderers factory and player construction
+          rm -rf work
+          mkdir -p work
+          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar -O work/apktool.jar
+          wget -q https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip -O work/jadx.zip
+          unzip -q work/jadx.zip -d work/jadx
+          chmod +x work/jadx/bin/jadx
+          wget -q https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk -O work/cochi93.apk
+          java -jar work/apktool.jar d -f -r work/cochi93.apk -o work/decoded
+          work/jadx/bin/jadx --show-bad-code -d work/jadx-out work/cochi93.apk || true
+      - name: Preserve focused decompile
         run: |
-          set -e
-          echo "=== x/I2 header + constructors ==="
-          sed -n '1,520p' decoded/smali/x/I2.smali
-          echo "=== x/I2 extension area ==="
-          sed -n '3000,3520p' decoded/smali/x/I2.smali
-          echo "=== PlayerActivity construction A ==="
-          sed -n '3920,4100p' decoded/smali/com/cochi/client/PlayerActivity.smali
-          echo "=== PlayerActivity construction B ==="
-          sed -n '5560,5820p' decoded/smali/com/cochi/client/PlayerActivity.smali
-          echo "=== PlayerActivity construction C ==="
-          sed -n '11680,11820p' decoded/smali/com/cochi/client/PlayerActivity.smali
+          set -eux
+          rm -rf tools/cochi94/focused93
+          mkdir -p tools/cochi94/focused93/java tools/cochi94/focused93/smali
+          for f in C0376Zi C1318s4 I2 C1504vj C1089nj C0619ef; do
+            test -f work/jadx-out/sources/x/$f.java && cp work/jadx-out/sources/x/$f.java tools/cochi94/focused93/java/ || true
+          done
+          cp work/decoded/smali/x/I2.smali tools/cochi94/focused93/smali/
+          cp work/decoded/smali/com/cochi/client/PlayerActivity.smali tools/cochi94/focused93/smali/
+      - name: Commit focused analysis
+        run: |
+          set -eux
+          git config user.name "cochi-build-bot"
+          git config user.email "cochi-build-bot@users.noreply.github.com"
+          git add tools/cochi94/focused93
+          git diff --cached --quiet && exit 0
+          git commit -m "Guardar ruta enfocada del reproductor 0.23.93"
+          git pull --rebase origin cochi-094-audio-test-build
+          git push origin HEAD:cochi-094-audio-test-build
