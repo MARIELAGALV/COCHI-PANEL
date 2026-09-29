@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
-  <link rel="stylesheet" href="/styles.css?v=1.1.7-banner-stage-ratio-fix-1">
+  <link rel="stylesheet" href="/styles.css?v=1.1.8-bulk-ua-1">
 </head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v1.1.7</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v1.1.8</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -365,6 +365,53 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
             <div class="muted tiny">Podés usar GitHub, GitHub Releases, Cloudflare, Railway u otra URL HTTPS. El PANEL guardará una URL independiente para cada lista.</div>
           </div>
 
+          <div id="bulkUaCard" class="content-source-card bulk-ua-card">
+            <div class="content-source-head"><div><h4>Edición masiva de User-Agent</h4><p class="muted small">Buscá canales por palabra o proveedor (por ejemplo <b>censa</b>) en nombre, URL o headers y cambiá el User-Agent de todos los seleccionados. Trabaja sobre la última versión guardada/publicada.</p></div><span class="badge active">TV1 / TV2</span></div>
+            <div class="bulk-ua-grid">
+              <label>Listas
+                <select id="bulkUaScope">
+                  <option value="tv1">TV1</option>
+                  <option value="tv2">TV2</option>
+                  <option value="both" selected>TV1 + TV2</option>
+                </select>
+              </label>
+              <label>Coincidencia
+                <select id="bulkUaMatchMode">
+                  <option value="contains" selected>Contiene</option>
+                  <option value="starts">Empieza con</option>
+                  <option value="ends">Termina con</option>
+                  <option value="equals">Es igual a</option>
+                </select>
+              </label>
+              <label>Texto a buscar<input id="bulkUaNeedle" type="search" placeholder="Ej.: censa" autocomplete="off"></label>
+              <label>Cómo aplicar
+                <select id="bulkUaWriteMode">
+                  <option value="replace" selected>Reemplazar / agregar User-Agent</option>
+                  <option value="missing">Solo agregar si no existe</option>
+                </select>
+              </label>
+            </div>
+            <div class="bulk-ua-fields">
+              <span class="muted small">Buscar en:</span>
+              <label class="switch-row"><input class="bulk-ua-field" type="checkbox" value="name" checked> Nombre</label>
+              <label class="switch-row"><input class="bulk-ua-field" type="checkbox" value="url" checked> URL</label>
+              <label class="switch-row"><input class="bulk-ua-field" type="checkbox" value="headers" checked> Headers</label>
+            </div>
+            <label>Nuevo User-Agent<textarea id="bulkUaValue" rows="3" spellcheck="false" placeholder="Mozilla/5.0 (...) Chrome/... Safari/..."></textarea></label>
+            <div class="content-source-actions bulk-ua-actions">
+              <button id="bulkUaPreviewBtn" class="ghost" type="button">PREVISUALIZAR COINCIDENCIAS</button>
+              <button id="bulkUaApplyBtn" class="primary" type="button" disabled>APLICAR A SELECCIONADOS</button>
+              <button id="bulkUaUndoBtn" class="danger" type="button" disabled>DESHACER ÚLTIMO CAMBIO</button>
+            </div>
+            <div id="bulkUaPreviewStats" class="muted tiny">Todavía no hay una previsualización.</div>
+            <div id="bulkUaSelectionTools" class="bulk-ua-selection-tools hidden">
+              <button id="bulkUaSelectAllBtn" class="ghost mini" type="button">SELECCIONAR TODO</button>
+              <button id="bulkUaSelectNoneBtn" class="ghost mini" type="button">QUITAR SELECCIÓN</button>
+            </div>
+            <div id="bulkUaPreviewList" class="bulk-ua-preview-list"></div>
+            <div id="bulkUaMsg" class="msg"></div>
+          </div>
+
           <div id="epgCard" class="content-source-card">
             <div class="content-source-head"><div><h4>EPG / Guía de Programación</h4><p class="muted small">Cargá una o varias URLs XMLTV. CO-CHI relaciona la guía por <b>EPG ID / tvg-id</b> y, si falta, intenta por nombre del canal. La APK usa la línea de descripción existente para mostrar el programa actual.</p></div><span class="badge active">TV</span></div>
             <label>URLs XMLTV / EPG <textarea id="epgUrls" rows="4" spellcheck="false" placeholder="https://.../guide.xml&#10;https://.../epg.xml"></textarea><span class="muted tiny">Una URL por línea. Dejé precargadas dos guías públicas de Argentina para probar.</span></label>
@@ -420,6 +467,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.7-banner-stage-ratio-fix-1"></script>
+  <script src="/app.js?v=1.1.8-bulk-ua-1"></script>
 </body>
 </html>
