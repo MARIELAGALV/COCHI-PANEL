@@ -1,0 +1,248 @@
+name: Build CO-CHI 0.23.94 audio test
+
+on:
+  push:
+    branches: [cochi-094-audio-test-build]
+    paths:
+      - '.github/workflows/cochi-094-build.yml'
+      - 'tools/cochi94/source/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cochi-094-audio-test-build
+
+      - name: Prepare 0.23.94 source
+        run: |
+          set -euxo pipefail
+          rm -rf work94
+          mkdir -p work94/src
+          unzip -q tools/cochi94/source/minsrc87.zip -d work94/src
+          chmod +x work94/src/gradlew
+
+          # FFmpeg: solo ARM (arm64 + armeabi-v7a), sin x86 y sin renderer de video.
+          cp tools/cochi94/source/lib-decoder-ffmpeg-audio-arm-test.aar              work94/src/client/libs/lib-decoder-ffmpeg-release.aar
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("work94/src")
+          gradle = root / "client/build.gradle"
+          p = gradle.read_text()
+
+          p = p.replace("versionCode 141", "versionCode 148")
+          p = p.replace("versionName '0.23.87'", "versionName '0.23.94'")
+
+          motor_dep = "implementation files('libs/motorprivado-release.aar')"
+          ff_dep = "implementation files('libs/lib-decoder-ffmpeg-release.aar')"
+          assert motor_dep in p
+          if ff_dep not in p:
+              p = p.replace(motor_dep, motor_dep + "\n    // 0.23.94 TEST: FFmpeg solo como respaldo de audio.\n    " + ff_dep)
+          gradle.write_text(p)
+
+          player = root / "client/src/main/java/com/cochi/client/PlayerActivity.java"
+          p = player.read_text()
+
+          # Mantener la 0.23.93: DVR +/- 5 minutos.
+          p = p.replace("private static final long LARGE_SEEK_INCREMENT_MS = 15L * 60L * 1000L;",
+                        "private static final long LARGE_SEEK_INCREMENT_MS = 5L * 60L * 1000L;")
+          p = p.replace("mueve 15 min", "mueve 5 min")
+          p = p.replace("15 minutos", "5 minutos")
+          p = p.replace("−15 min", "−5 min").replace("+15 min", "+5 min")
+
+          # FFmpeg queda DESPUÉS de MediaCodec: ON, no PREFER.
+          load_import = "import androidx.media3.exoplayer.DefaultLoadControl;"
+          renderer_import = "import androidx.media3.exoplayer.DefaultRenderersFactory;"
+          assert load_import in p
+          if renderer_import not in p:
+              p = p.replace(load_import, load_import + "\n" + renderer_import)
+
+          old = """        return new ExoPlayer.Builder(this)
+                  .setMediaSourceFactory(mediaSourceFactory)
+                  .setLoadControl(loadControl)
+                  .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
+                  .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
+                  .build();"""
+          new = """        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
+                  .setEnableDecoderFallback(true)
+                  .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+
+          return new ExoPlayer.Builder(this, renderersFactory)
+                  .setMediaSourceFactory(mediaSourceFactory)
+                  .setLoadControl(loadControl)
+                  .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
+                  .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
+                  .build();"""
+          assert old in p, "No se encontró buildStablePlayer esperado"
+          p = p.replace(old, new)
+          player.write_text(p)
+
+          # Mantener layout TV de la estable 0.23.93: 3 capítulos por fila.
+          series = root / "client/src/main/java/com/cochi/client/SeriesDetailActivity.java"
+          p = series.read_text()
+          assert "new GridLayoutManager(this, 2)" in p
+          p = p.replace("new GridLayoutManager(this, 2)", "new GridLayoutManager(this, 3)")
+          series.write_text(p)
+
+          # R8: DefaultRenderersFactory carga FFmpeg por nombre/reflexión.
+          rules = root / "client/proguard-rules.pro"
+          p = rules.read_text()
+          keep = """
+          # v0.23.94 TEST - Media3 FFmpeg audio extension.
+          # DefaultRenderersFactory la carga por Class.forName; conservar el nombre.
+          -keep class androidx.media3.decoder.ffmpeg.** { *; }
+          """
+          if "androidx.media3.decoder.ffmpeg.**" not in p:
+              p += "\n" + keep
+          rules.write_text(p)
+          PY
+
+      - name: Preserve stable 0.23.93 MotorPrivado /out behavior
+        run: |
+          set -euxo pipefail
+          cd work94/src
+
+          # Sacamos solo el wrapper Java del AAR antiguo; JNI + HttpRedirect quedan intactos.
+          mkdir -p .motorpatch
+          cd .motorpatch
+          unzip -q ../client/libs/motorprivado-release.aar
+          zip -q -d classes.jar 'com/tuempresa/motor/MotorPrivado.class'
+          rm -f ../client/libs/motorprivado-release.aar
+          zip -qr ../client/libs/motorprivado-release.aar .
+          cd ..
+
+          mkdir -p client/src/main/java/com/tuempresa/motor
+          cat > client/src/main/java/com/tuempresa/motor/MotorPrivado.java <<'JAVA'
+          package com.tuempresa.motor;
+
+          import android.content.Context;
+          import com.tuempresa.motor.internal.HttpRedirect;
+          import java.io.IOException;
+
+          public final class MotorPrivado {
+              public static final String SDK_VERSION = "1.0.0";
+
+              static {
+                  System.loadLibrary("motorprivado");
+              }
+
+              private MotorPrivado() {}
+
+              public static void initialize(Context context) {
+                  if (context == null) throw new IllegalArgumentException("context == null");
+                  nativeInit(context.getApplicationContext());
+              }
+
+              public static String resolveGeneratedVideoUrl(
+                      String probe,
+                      String name,
+                      String code,
+                      String template) {
+                  if (isBlank(probe) || isBlank(template)) return null;
+                  try {
+                      HttpRedirect.Result result = HttpRedirect.fetch(probe);
+                      if (result == null) return null;
+
+                      // Comportamiento validado en 0.23.93:
+                      // el redirect puede venir con /out/ y el motor nativo resuelve desde /live/.
+                      String location = result.locationHeader == null
+                              ? ""
+                              : result.locationHeader.replace("out", "live");
+
+                      return nativeResolve(
+                              probe,
+                              name == null ? "" : name,
+                              code == null ? "" : code,
+                              template,
+                              location,
+                              result.successful);
+                  } catch (IOException | IllegalArgumentException e) {
+                      return null;
+                  }
+              }
+
+              public static String sdkBuildVersion() {
+                  return nativeSdkVersion();
+              }
+
+              private static boolean isBlank(String value) {
+                  return value == null || value.trim().isEmpty();
+              }
+
+              private static native void nativeInit(Context context);
+              private static native String nativeResolve(
+                      String probe, String name, String code, String template,
+                      String locationHeader, boolean successful);
+              private static native String nativeSdkVersion();
+          }
+          JAVA
+
+      - name: Verify patch before build
+        run: |
+          set -euxo pipefail
+          cd work94/src
+          grep -n "versionCode 148" client/build.gradle
+          grep -n "versionName '0.23.94'" client/build.gradle
+          grep -n "lib-decoder-ffmpeg-release.aar" client/build.gradle
+          grep -n "EXTENSION_RENDERER_MODE_ON" client/src/main/java/com/cochi/client/PlayerActivity.java
+          ! grep -q "EXTENSION_RENDERER_MODE_PREFER" client/src/main/java/com/cochi/client/PlayerActivity.java
+          grep -n "setEnableDecoderFallback(true)" client/src/main/java/com/cochi/client/PlayerActivity.java
+          grep -n "5L \* 60L \* 1000L" client/src/main/java/com/cochi/client/PlayerActivity.java
+          grep -n "GridLayoutManager(this, 3)" client/src/main/java/com/cochi/client/SeriesDetailActivity.java
+          grep -n 'replace("out", "live")' client/src/main/java/com/tuempresa/motor/MotorPrivado.java
+
+      - name: Build release APK
+        run: |
+          set -euxo pipefail
+          cd work94/src
+          ./gradlew --no-daemon clean :client:assembleRelease
+
+      - name: Verify generated APK
+        run: |
+          set -euxo pipefail
+          APK="work94/src/client/build/outputs/apk/release/CO-CHI.apk"
+          test -s "$APK"
+          mkdir -p dist
+          cp "$APK" "dist/CO-CHI_v0.23.94_AUDIO_FFMPEG_TEST_UNSIGNED.apk"
+
+          # Deben existir solo las arquitecturas ARM elegidas para FFmpeg.
+          unzip -l "$APK" | tee dist/apk-contents.txt
+          grep -q 'lib/arm64-v8a/libffmpegJNI.so' dist/apk-contents.txt
+          grep -q 'lib/armeabi-v7a/libffmpegJNI.so' dist/apk-contents.txt
+          ! grep -q 'lib/x86/libffmpegJNI.so' dist/apk-contents.txt
+          ! grep -q 'lib/x86_64/libffmpegJNI.so' dist/apk-contents.txt
+
+          # El motor privado debe seguir presente.
+          grep -q 'lib/arm64-v8a/libmotorprivado.so' dist/apk-contents.txt
+
+          sha256sum "$APK" | tee dist/SHA256.txt
+
+          if command -v aapt >/dev/null 2>&1; then
+            aapt dump badging "$APK" | head -5 | tee dist/badging.txt
+            grep -q "versionName='0.23.94'" dist/badging.txt
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CO-CHI_v0.23.94_AUDIO_FFMPEG_TEST_UNSIGNED
+          path: |
+            dist/CO-CHI_v0.23.94_AUDIO_FFMPEG_TEST_UNSIGNED.apk
+            dist/SHA256.txt
+          if-no-files-found: error
+
+      - name: Publish isolated TEST release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG="cochi-v0.23.94-audio-test"
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG"             dist/CO-CHI_v0.23.94_AUDIO_FFMPEG_TEST_UNSIGNED.apk             dist/SHA256.txt             --target cochi-094-audio-test-build             --title "CO-CHI 0.23.94 · AUDIO FFMPEG TEST"             --notes "PRUEBA PERSONAL. Base reconstruida para conservar el comportamiento validado de 0.23.93. Único cambio funcional nuevo: FFmpeg como fallback de audio, con MediaCodec primero. EXTENSION_RENDERER_MODE_ON; no PREFER; sin renderer FFmpeg de video. No publicar a clientes hasta validar."
