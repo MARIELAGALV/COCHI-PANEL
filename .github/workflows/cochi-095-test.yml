@@ -1,8 +1,31 @@
-name: COCHI 095 Test
+name: Build CO-CHI 0.23.95 EPG test
 on:
+  push:
+    branches: [cochi-095-epg-test]
+    paths:
+      - 'tools/cochi95/**'
+      - '.github/workflows/cochi-095-test.yml'
   workflow_dispatch:
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - run: echo COCHI-095
+      - uses: actions/checkout@v4
+        with:
+          ref: cochi-095-epg-test
+      - name: Prepare
+        run: |
+          rm -rf work95
+          mkdir -p work95/src
+          unzip -q tools/cochi94/source/minsrc87.zip -d work95/src
+          chmod +x work95/src/gradlew
+          cp tools/cochi94/source/lib-decoder-ffmpeg-audio-arm-test.aar work95/src/client/libs/lib-decoder-ffmpeg-release.aar
+          python3 tools/cochi95/patch95.py work95/src
+      - name: Build
+        run: |
+          cd work95/src
+          ./gradlew --no-daemon clean :client:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CO-CHI_v0.23.95_EPG_TEST
+          path: work95/src/client/build/outputs/apk/release/CO-CHI.apk
