@@ -1,5 +1,9 @@
 name: Inspect CO-CHI mobile home
 on:
+  push:
+    branches: [cochi-095-epg-test]
+    paths:
+      - '.github/workflows/cochi-inspect-mobile-home.yml'
   workflow_dispatch:
 jobs:
   inspect:
