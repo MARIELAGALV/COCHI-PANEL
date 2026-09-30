@@ -1,0 +1,8 @@
+name: COCHI 095 Test
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo COCHI-095
