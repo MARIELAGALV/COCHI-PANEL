@@ -1136,8 +1136,8 @@ function renderContentVisual(){
     moveArrayItem(items,i,to);d[g].samples=items;state.contentOpen.add(g);setContentPlain(d);
   });
   $$('[data-content-add]').forEach(b=>b.onclick=()=>editContentItem(Number(b.dataset.contentAdd),null));
-  $('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
-  $('[data-content-transfer]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentTransfer.split(':').map(Number);openContentTransfer(g,i);});
+  $$('[data-content-edit]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentEdit.split(':').map(Number);editContentItem(g,i);});
+  $$('[data-content-transfer]').forEach(b=>b.onclick=()=>{const [g,i]=b.dataset.contentTransfer.split(':').map(Number);openContentTransfer(g,i);});
   $$('[data-content-visibility]').forEach(b=>b.onclick=async()=>{
     const [g,i]=b.dataset.contentVisibility.split(':').map(Number),d=contentPlain(),item=d[g]?.samples?.[i];if(!item)return;
     const key=$('#contentKey')?.value||'';if(!['tv1','tv2'].includes(key))return;
