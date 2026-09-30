@@ -1874,8 +1874,35 @@ async function refreshEpgNow(){
   }catch(e){msg($('#epgMsg'),e.message);toast(e.message,'bad');}
   finally{if(btn){btn.disabled=false;btn.textContent='ACTUALIZAR / PROBAR';}}
 }
+async function searchEpgChannels(){
+  const input=$('#epgChannelSearch'),box=$('#epgChannelResults'),btn=$('#epgChannelSearchBtn');
+  if(!box)return;
+  const q=String(input?.value||'').trim();
+  try{
+    if(btn){btn.disabled=true;btn.textContent='BUSCANDO...';}
+    box.innerHTML='<div class="muted tiny">Buscando IDs en la guía...</div>';
+    const d=await api('/api/admin/epg/channels?q='+encodeURIComponent(q));
+    const rows=Array.isArray(d.rows)?d.rows:[];
+    if(!rows.length){box.innerHTML='<div class="muted tiny">No encontré canales con ese nombre. Probá una palabra más corta, por ejemplo <b>TyC</b>, <b>ESPN</b> o <b>Telefe</b>.</div>';return;}
+    box.innerHTML='<div class="muted tiny">'+rows.length+' resultado(s)'+(q?' para <b>'+esc(q)+'</b>':'')+'. Tocá COPIAR ID y pegalo al editar el canal.</div>'+
+      '<div class="epg-id-list">'+rows.map(r=>{
+        const display=(Array.isArray(r.names)&&r.names.length?r.names.join(' / '):r.id)||r.id;
+        const now=r.current?.title?'<div class="muted tiny">Ahora: '+esc(r.current.title)+'</div>':'';
+        return '<div class="source-row epg-id-row"><div><div class="source-title">'+esc(display)+'</div><div class="muted tiny">ID XMLTV: <b>'+esc(r.id)+'</b></div>'+now+'</div><button class="ghost mini" type="button" data-copy-epg-id="'+esc(r.id)+'">COPIAR ID</button></div>';
+      }).join('')+'</div>';
+  }catch(e){box.innerHTML='<div class="msg error">'+esc(e.message)+'</div>';}
+  finally{if(btn){btn.disabled=false;btn.textContent='BUSCAR IDs';}}
+}
 $('#epgSaveBtn')?.addEventListener('click',()=>saveEpgSettings().catch(e=>{msg($('#epgMsg'),e.message);toast(e.message,'bad');}));
 $('#epgRefreshBtn')?.addEventListener('click',refreshEpgNow);
+$('#epgChannelSearchBtn')?.addEventListener('click',searchEpgChannels);
+$('#epgChannelSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchEpgChannels();}});
+$('#epgChannelResults')?.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-copy-epg-id]');if(!b)return;
+  const id=String(b.dataset.copyEpgId||'');
+  try{await navigator.clipboard.writeText(id);toast('ID EPG copiado: '+id,'ok');}
+  catch{toast('ID EPG: '+id,'ok');}
+});
 
 async function loadRemoteM3uSources(){
   const card=$('#remoteM3uCard'),list=$('#remoteM3uList');if(!card||!list)return;
