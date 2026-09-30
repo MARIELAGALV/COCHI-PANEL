@@ -1,0 +1,28 @@
+name: Inspect CO-CHI mobile home
+on:
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cochi-095-epg-test
+      - name: Extract selected home files
+        run: |
+          rm -rf /tmp/cochi-src tools/cochi95/mobile-home-inspect
+          mkdir -p /tmp/cochi-src tools/cochi95/mobile-home-inspect
+          unzip -q tools/cochi94/source/minsrc87.zip -d /tmp/cochi-src
+          cp /tmp/cochi-src/client/src/main/java/com/cochi/client/MainActivity.java tools/cochi95/mobile-home-inspect/MainActivity.java
+          cp /tmp/cochi-src/client/src/main/res/layout/activity_main.xml tools/cochi95/mobile-home-inspect/activity_main.xml
+          cp /tmp/cochi-src/client/src/main/res/layout/activity_main_tv.xml tools/cochi95/mobile-home-inspect/activity_main_tv.xml
+          find /tmp/cochi-src/client/src/main/res -type f | grep -Ei 'banner|home|main' | sort > tools/cochi95/mobile-home-inspect/resource-files.txt || true
+      - name: Commit inspection files
+        run: |
+          git config user.name "cochi-build-bot"
+          git config user.email "cochi-build-bot@users.noreply.github.com"
+          git add tools/cochi95/mobile-home-inspect
+          git commit -m "Inspect mobile home layout for 0.23.95" || exit 0
+          git push origin HEAD:cochi-095-epg-test
