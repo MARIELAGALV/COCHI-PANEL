@@ -2552,9 +2552,18 @@ async function applyTvFailover(payload){
 
 
 const EPG_DEFAULT_URLS=[
+  // Argentina - fuentes públicas XMLTV. Se combinan para aumentar la cobertura
+  // porque cada proveedor puede tener canales/IDs distintos.
   'https://www.open-epg.com/files/argentina.xml',
-  'https://free-epg.de/api/epg/ar.xml.gz'
+  'https://free-epg.de/api/epg/ar.xml.gz',
+  'https://iptv-epg.org/files/epg-ar.xml.gz',
+  'https://raw.githubusercontent.com/globetvapp/epg/main/Argentina/argentina1.xml.gz',
+  'https://raw.githubusercontent.com/globetvapp/epg/main/Argentina/argentina2.xml.gz',
+  'https://raw.githubusercontent.com/globetvapp/epg/main/Argentina/argentina3.xml.gz',
+  'https://raw.githubusercontent.com/globetvapp/epg/main/Argentina/argentina4.xml.gz',
+  'https://raw.githubusercontent.com/globetvapp/epg/main/Argentina/argentina5.xml.gz'
 ];
+const EPG_SOURCE_PACK_VERSION='2026-09-ar8';
 const epgRuntime={updatedAt:0,lastUpdated:'',lastError:'',sourcesOk:0,channels:0,byId:new Map(),byName:new Map(),refreshing:null};
 function epgConfig(){
   let urls=[];
@@ -2563,10 +2572,21 @@ function epgConfig(){
   const cleanedUrls=urls.filter(x=>!/^https:\/\/dearbulut\.github\.io\/iptv\/epg\/ar\.xml\.gz$/i.test(x));
   const removedDeadSource=cleanedUrls.length!==urls.length;
   urls=cleanedUrls;
+
+  // Migración de una sola vez: agrega el paquete nuevo sin borrar fuentes
+  // personalizadas que el administrador ya hubiera cargado. Después queda libre
+  // para quitar/agregar URLs desde el panel sin que vuelvan a aparecer solas.
+  const sourcePackApplied=getSetting('epg_source_pack_version','')===EPG_SOURCE_PACK_VERSION;
   if(!urls.length||legacyOnly){
     urls=[...EPG_DEFAULT_URLS];
+  }else if(!sourcePackApplied){
+    urls=[...urls,...EPG_DEFAULT_URLS];
   }
-  if(legacyOnly||removedDeadSource)setSetting('epg_urls_json',JSON.stringify(urls));
+  urls=[...new Set(urls.map(x=>String(x||'').trim()).filter(Boolean))];
+  if(legacyOnly||removedDeadSource||!sourcePackApplied){
+    setSetting('epg_urls_json',JSON.stringify(urls));
+    setSetting('epg_source_pack_version',EPG_SOURCE_PACK_VERSION);
+  }
   return {
     enabled:boolSetting('epg_enabled',true),
     urls,
