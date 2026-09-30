@@ -22,6 +22,7 @@ const PANEL_DEVICE_LIMIT = 2;
 const CLIENT_DEVICE_LIMIT = 2; // valor por defecto para clientes nuevos
 const CLIENT_DEVICE_LIMIT_MIN = 1;
 const CLIENT_DEVICE_LIMIT_MAX = 99;
+const CLIENT_EXTRA_DEVICE_INCREMENT = 1; // cada ampliación suma 1 dispositivo por 1 crédito
 const DEVICE_CLEANUP_PENDING_DAYS = Math.max(1, Number(process.env.COCHI_PENDING_CLEANUP_DAYS || 7));
 const CLIENT_CREDIT_COST = 1;
 const CLIENT_DAYS = 30;
@@ -3961,7 +3962,7 @@ async function route(req,res){
     }
     if(p==='/api/admin/device-policy'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede ver esta configuración'});
-      return sendJson(res,200,{blockSize:globalClientDeviceBlockSize(),min:CLIENT_DEVICE_LIMIT_MIN,max:CLIENT_DEVICE_LIMIT_MAX,rule:'1 crédito = 1 bloque global'});
+      return sendJson(res,200,{blockSize:globalClientDeviceBlockSize(),min:CLIENT_DEVICE_LIMIT_MIN,max:CLIENT_DEVICE_LIMIT_MAX,extraDeviceIncrement:CLIENT_EXTRA_DEVICE_INCREMENT,rule:'Capacidad base global; cada ampliación suma 1 dispositivo por 1 crédito'});
     }
     if(p==='/api/admin/device-policy'&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede cambiar esta configuración'});
@@ -4032,14 +4033,14 @@ async function route(req,res){
     }
     const cdev=p.match(/^\/api\/admin\/clients\/(\d+)\/devices$/);
     if(cdev&&m==='GET'){
-      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),clientExpiresAt:c.expires_at||null,sharedExpiry:true,serverTime:nowIso(),deviceLimit:clientDeviceLimit(c),deviceBlockSize:globalClientDeviceBlockSize(),extraDeviceBlocks:clientExtraDeviceBlocks(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
+      const c=clientRow(Number(cdev[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});if(!canManageClientDevice(actor,c))return sendJson(res,403,{error:'Sin permiso para gestionar dispositivos de este cliente'});refreshClientDevices(c.id);const devices=db.prepare('SELECT id,device_uid,device_name,activation_code,status,last_seen_at,created_at FROM client_devices WHERE client_id=? ORDER BY id DESC').all(c.id).map(d=>({...d,demo:{...demoInfo(d.id),used:demoInfo(d.id).used||demoEverUsedByUid(d.device_uid)}}));const changes=clientDeviceChangesThisMonth(c.id);return sendJson(res,200,{devices,clientStatus:clientStatusSummary(c),clientExpiresAt:c.expires_at||null,sharedExpiry:true,serverTime:nowIso(),deviceLimit:clientDeviceLimit(c),deviceBlockSize:CLIENT_EXTRA_DEVICE_INCREMENT,baseDeviceLimit:globalClientDeviceBlockSize(),extraDeviceBlocks:clientExtraDeviceBlocks(c),changesThisMonth:changes,changesRemaining:Math.max(0,2-changes),renewCreditCost:clientRenewCreditCost(c)});
     }
-    // v0.9.69: ampliar un cliente consume 1 crédito y suma exactamente el bloque global vigente.
+    // v1.1.9 hotfix: ampliar un cliente consume 1 crédito y suma exactamente 1 dispositivo. La capacidad base global no cambia.
     const extraDevices=p.match(/^\/api\/admin\/clients\/(\d+)\/extra-devices$/);
     if(extraDevices&&m==='POST'){
       const c=clientRow(Number(extraDevices[1]));if(!c)return sendJson(res,404,{error:'Cliente no encontrado'});
       if(!canEditClient(actor,c))return sendJson(res,403,{error:'Solo podés ampliar clientes directos'});
-      const owner=accountRaw(c.owner_account_id),blockSize=globalClientDeviceBlockSize(),oldLimit=clientDeviceLimit(c),newLimit=oldLimit+blockSize;
+      const owner=accountRaw(c.owner_account_id),blockSize=CLIENT_EXTRA_DEVICE_INCREMENT,oldLimit=clientDeviceLimit(c),newLimit=oldLimit+blockSize;
       if(newLimit>CLIENT_DEVICE_LIMIT_MAX)return sendJson(res,409,{error:`La ampliación de +${blockSize} superaría el máximo de ${CLIENT_DEVICE_LIMIT_MAX} dispositivos`});
       if(owner.role_level!==1&&owner.credits<1)return sendJson(res,409,{error:'La ficha propietaria necesita 1 crédito para ampliar dispositivos'});
       const t=nowIso();db.exec('BEGIN');
