@@ -618,7 +618,7 @@ async function openClientCodes(c){
         <div class="compact-rule"><b>Reemplazos</b><span>${changes}/2 usados este mes · ${changesRemaining} disponible${changesRemaining===1?'':'s'}.</span></div>
         <div class="compact-rule"><b>Vencimiento único</b><span>${c.expires_at?esc(fmt(c.expires_at)):'Sin servicio activo'}. Los adicionales vencen el mismo día.</span></div>
       </div>
-      <div class="rule-card profile-expand-card"><div><b>Ampliar capacidad</b><span>Bloque vigente: +${blockSize} dispositivos · ${extraBlocks} ampliación${extraBlocks===1?'':'es'} contratada${extraBlocks===1?'':'s'}. Cada ampliación comparte el vencimiento del cliente y suma 1 crédito al costo de renovación.</span></div><button type="button" class="primary" id="addDeviceBlockBtn">+ ${blockSize} DISPOSITIVOS · 1 CRÉDITO</button></div>
+      <div class="rule-card profile-expand-card"><div><b>Ampliar capacidad</b><span>Cada nueva ampliación suma +${blockSize} dispositivo${blockSize===1?'':'s'} · ${extraBlocks} ampliación${extraBlocks===1?'':'es'} contratada${extraBlocks===1?'':'s'}. Comparte el vencimiento del cliente y suma 1 crédito al costo de renovación.</span></div><button type="button" class="primary" id="addDeviceBlockBtn">+ ${blockSize} DISPOSITIVO${blockSize===1?'':'S'} · 1 CRÉDITO</button></div>
       <div class="client-devices-list">
         ${linked.length?linked.map((x,i)=>`<div class="rule-card device-demo-card">
           <div class="device-main-info"><div class="device-title-row"><b>${esc(x.device_name||'Dispositivo '+(i+1))}</b><span class="badge ${x.status==='active'?'active':x.status==='blocked'?'blocked':'pending'}">${esc((x.status||'pending').toUpperCase())}</span></div><code class="device-code">${esc(x.activation_code)}</code><span class="device-uid">${esc(x.device_uid)}</span>${x.last_seen_at?`<span class="device-last">Última actividad: ${esc(fmt(x.last_seen_at))}</span>`:''}</div>
@@ -640,7 +640,7 @@ async function openClientCodes(c){
     });
     $('#addDeviceBlockBtn')?.addEventListener('click',async()=>{
       const costText=state.me?.role_level===1?'ADMINISTRACIÓN no descuenta saldo.':'Se descontará 1 crédito de la ficha propietaria.';
-      if(!confirm(`¿Agregar +${blockSize} dispositivos a ${c.name}?\n\n${costText}\nLos nuevos dispositivos tendrán el mismo vencimiento del cliente.`))return;
+      if(!confirm(`¿Agregar +${blockSize} dispositivo${blockSize===1?'':'s'} a ${c.name}?\n\n${costText}\nEl nuevo dispositivo tendrá el mismo vencimiento del cliente.`))return;
       try{const r=await api(`/api/admin/clients/${c.id}/extra-devices`,{method:'POST'});alert(`Capacidad ampliada: ${r.oldLimit} → ${r.newLimit} dispositivos. Bloque agregado: +${r.blockSize}. Crédito consumido: ${r.creditsSpent}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     });
     $$('.device-delete-btn').forEach(btn=>btn.addEventListener('click',async()=>{
