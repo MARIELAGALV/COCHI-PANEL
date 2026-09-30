@@ -2620,9 +2620,10 @@ function epgConfig(){
   // personalizadas que el administrador ya hubiera cargado. Después queda libre
   // para quitar/agregar URLs desde el panel sin que vuelvan a aparecer solas.
   const sourcePackApplied=getSetting('epg_source_pack_version','')===EPG_SOURCE_PACK_VERSION;
-  if(!urls.length||legacyOnly){
+  const sourcesCleared=boolSetting('epg_sources_cleared',false);
+  if((!urls.length&&!sourcesCleared)||legacyOnly){
     urls=[...EPG_DEFAULT_URLS];
-  }else if(!sourcePackApplied){
+  }else if(!sourcePackApplied&&!sourcesCleared){
     urls=[...urls,...EPG_DEFAULT_URLS];
   }
   urls=[...new Set(urls.map(x=>String(x||'').trim()).filter(Boolean))];
@@ -4516,9 +4517,9 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
       const b=await readJson(req),enabled=b.enabled!==false,refreshMinutes=Math.max(5,Math.min(180,Number(b.refreshMinutes||10)||10));
       const urls=(Array.isArray(b.urls)?b.urls:String(b.urls||'').split(/[\r\n,;]+/)).map(x=>String(x||'').trim()).filter(Boolean);
-      if(!urls.length)return sendJson(res,400,{error:'Ingresá al menos una URL XMLTV / EPG'});
+      if(enabled&&!urls.length)return sendJson(res,400,{error:'Ingresá al menos una URL XMLTV / EPG para activar la guía'});
       for(const url of urls){if(!/^https?:\/\//i.test(url))return sendJson(res,400,{error:'URL EPG inválida: '+url});try{assertPublicHttpUrl(url)}catch(e){return sendJson(res,400,{error:e.message})}}
-      setSetting('epg_enabled',enabled?'1':'0');setSetting('epg_urls_json',JSON.stringify(urls));setSetting('epg_refresh_minutes',String(refreshMinutes));
+      setSetting('epg_enabled',enabled?'1':'0');setSetting('epg_urls_json',JSON.stringify(urls));setSetting('epg_sources_cleared',urls.length?'0':'1');setSetting('epg_refresh_minutes',String(refreshMinutes));
       epgRuntime.updatedAt=0;epgRuntime.lastUpdated='';epgRuntime.lastError='';epgRuntime.sourcesOk=0;epgRuntime.channels=0;epgRuntime.byId=new Map();epgRuntime.byName=new Map();
       audit(actor.id,'epg_settings_changed','settings',null,(enabled?'on':'off')+'; '+urls.length+' fuente(s); '+refreshMinutes+' min');
       if(enabled)refreshEpgRuntime({force:true}).catch(e=>console.warn('[EPG] guardado',e.message));
