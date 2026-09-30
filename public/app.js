@@ -1893,8 +1893,26 @@ async function searchEpgChannels(){
   }catch(e){box.innerHTML='<div class="msg error">'+esc(e.message)+'</div>';}
   finally{if(btn){btn.disabled=false;btn.textContent='BUSCAR IDs';}}
 }
+async function disableAndClearEpg(){
+  const btn=$('#epgDisableClearBtn');
+  if(!confirm('¿APAGAR Y LIMPIAR EL EPG?\n\nSe eliminarán las URLs EPG guardadas y el servidor dejará de descargar la guía. TV1/TV2 y la reproducción no se modifican.'))return;
+  try{
+    if(btn){btn.disabled=true;btn.textContent='APAGANDO...';}
+    const refreshMinutes=Number($('#epgRefreshMinutes')?.value||10);
+    const d=await api('/api/admin/epg',{method:'PUT',body:{enabled:false,urls:[],refreshMinutes}});
+    $('#epgUrls').value='';
+    $('#epgEnabled').checked=false;
+    renderEpgStatus(d);
+    $('#epgSamples').innerHTML='';
+    $('#epgChannelResults').innerHTML='';
+    msg($('#epgMsg'),'EPG APAGADO Y FUENTES ELIMINADAS. No se realizarán nuevas descargas EPG.',true);
+    toast('EPG APAGADO Y LIMPIADO','ok');
+  }catch(e){msg($('#epgMsg'),e.message);toast(e.message,'bad');}
+  finally{if(btn){btn.disabled=false;btn.textContent='APAGAR Y LIMPIAR EPG';}}
+}
 $('#epgSaveBtn')?.addEventListener('click',()=>saveEpgSettings().catch(e=>{msg($('#epgMsg'),e.message);toast(e.message,'bad');}));
 $('#epgRefreshBtn')?.addEventListener('click',refreshEpgNow);
+$('#epgDisableClearBtn')?.addEventListener('click',disableAndClearEpg);
 $('#epgChannelSearchBtn')?.addEventListener('click',searchEpgChannels);
 $('#epgChannelSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchEpgChannels();}});
 $('#epgChannelResults')?.addEventListener('click',async e=>{
