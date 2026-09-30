@@ -383,7 +383,7 @@ CREATE TABLE IF NOT EXISTS client_service_ledger (
   credits_spent INTEGER NOT NULL,
   previous_expiry TEXT,
   new_expiry TEXT NOT NULL,
-  action TEXT NOT NULL CHECK(action IN ('activate','renew','reactivate')),
+  action TEXT NOT NULL CHECK(action IN ('activate','renew','reactivate','extra_devices')),
   created_at TEXT NOT NULL,
   FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY(charged_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -447,7 +447,47 @@ ensureColumn('clients','adult_fail_count','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','device_limit','INTEGER NOT NULL DEFAULT 2');
 ensureColumn('clients','extra_device_blocks','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('clients','extra_device_allowance','INTEGER NOT NULL DEFAULT 0');
+
 ensureColumn('clients','preview_hidden_content','INTEGER NOT NULL DEFAULT 0');
+
+// v1.1.9 hotfix: la ampliación de dispositivos registra action='extra_devices'.
+// Bases creadas antes de este hotfix tienen un CHECK antiguo que solo admite
+// activate/renew/reactivate, lo que provocaba "Error interno" al ampliar.
+{
+  const ledgerSql=String(db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='client_service_ledger'").get()?.sql||'');
+  if(ledgerSql && !ledgerSql.includes("'extra_devices'")){
+    db.exec('BEGIN');
+    try{
+      db.exec(`
+        CREATE TABLE client_service_ledger_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id INTEGER NOT NULL,
+          charged_account_id INTEGER NOT NULL,
+          created_by_account_id INTEGER NOT NULL,
+          credits_spent INTEGER NOT NULL,
+          previous_expiry TEXT,
+          new_expiry TEXT NOT NULL,
+          action TEXT NOT NULL CHECK(action IN ('activate','renew','reactivate','extra_devices')),
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE CASCADE,
+          FOREIGN KEY(charged_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+          FOREIGN KEY(created_by_account_id) REFERENCES accounts(id) ON DELETE RESTRICT
+        ) STRICT;
+        INSERT INTO client_service_ledger_v2
+          (id,client_id,charged_account_id,created_by_account_id,credits_spent,previous_expiry,new_expiry,action,created_at)
+        SELECT
+          id,client_id,charged_account_id,created_by_account_id,credits_spent,previous_expiry,new_expiry,action,created_at
+        FROM client_service_ledger;
+        DROP TABLE client_service_ledger;
+        ALTER TABLE client_service_ledger_v2 RENAME TO client_service_ledger;
+      `);
+      db.exec('COMMIT');
+    }catch(e){
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+}
 ensureColumn('rescue_resolver_channels','retry_count','INTEGER NOT NULL DEFAULT 5');
 ensureColumn('rescue_resolver_channels','retry_delay_seconds','INTEGER NOT NULL DEFAULT 1');
 ensureColumn('rescue_resolver_channels','timeout_seconds','INTEGER NOT NULL DEFAULT 10');
