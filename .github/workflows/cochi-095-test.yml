@@ -21,6 +21,18 @@ jobs:
           chmod +x work95/src/gradlew
           cp tools/cochi94/source/lib-decoder-ffmpeg-audio-arm-test.aar work95/src/client/libs/lib-decoder-ffmpeg-release.aar
           python3 tools/cochi95/patch95.py work95/src
+      - name: Preserve motor wrapper
+        run: |
+          cd work95/src
+          mkdir -p .motorpatch
+          cd .motorpatch
+          unzip -q ../client/libs/motorprivado-release.aar
+          zip -q -d classes.jar 'com/tuempresa/motor/MotorPrivado.class'
+          rm -f ../client/libs/motorprivado-release.aar
+          zip -qr ../client/libs/motorprivado-release.aar .
+          cd ..
+          mkdir -p client/src/main/java/com/tuempresa/motor
+          base64 -d ../../tools/cochi95/MotorPrivado.java.b64 > client/src/main/java/com/tuempresa/motor/MotorPrivado.java
       - name: Build
         run: |
           cd work95/src
