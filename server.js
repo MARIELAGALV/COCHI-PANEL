@@ -2765,6 +2765,23 @@ function epgPublicStatus(){
   const cfg=epgConfig(),matches=epgCatalogMatchStats();
   return {enabled:cfg.enabled,urls:cfg.urls,refreshMinutes:cfg.refreshMinutes,lastUpdated:epgRuntime.lastUpdated,lastError:epgRuntime.lastError,sourcesOk:epgRuntime.sourcesOk,channels:epgRuntime.channels,matches};
 }
+function epgGuideRows(query=''){
+  const q=epgNorm(query);
+  const rows=[];
+  for(const row of epgRuntime.byId.values()){
+    const names=Array.isArray(row?.names)?row.names.filter(Boolean):[];
+    const hay=[String(row?.id||''),...names].map(epgNorm).join(' ');
+    if(q&&!hay.includes(q))continue;
+    rows.push({
+      id:String(row?.id||''),
+      names,
+      current:row?.current?{title:String(row.current.title||''),start:new Date(row.current.start).toISOString(),stop:new Date(row.current.stop).toISOString()}:null,
+      next:row?.next?{title:String(row.next.title||''),start:new Date(row.next.start).toISOString(),stop:new Date(row.next.stop).toISOString()}:null
+    });
+  }
+  rows.sort((a,b)=>String(a.names?.[0]||a.id).localeCompare(String(b.names?.[0]||b.id),'es',{sensitivity:'base'}));
+  return rows.slice(0,200);
+}
 function epgMaybeRefresh(){
   const cfg=epgConfig();if(!cfg.enabled)return;
   if(!epgRuntime.updatedAt||Date.now()-epgRuntime.updatedAt>=cfg.refreshMinutes*60*1000)refreshEpgRuntime().catch(e=>console.warn('[EPG]',e.message));
@@ -4445,6 +4462,12 @@ async function route(req,res){
     if(p==='/api/admin/epg'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
       return sendJson(res,200,epgPublicStatus());
+    }
+    if(p==='/api/admin/epg/channels'&&m==='GET'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN consulta los IDs EPG'});
+      if(!epgRuntime.byId.size){try{await refreshEpgRuntime({force:false});}catch{}}
+      const q=String(u.searchParams.get('q')||'').trim();
+      return sendJson(res,200,{query:q,total:epgRuntime.channels,rows:epgGuideRows(q)});
     }
     if(p==='/api/admin/epg'&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el EPG'});
