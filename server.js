@@ -835,6 +835,8 @@ function normalizeHomeBanner(raw){
   const targetSource=['tv1','tv2','movies','series'].includes(String(x.targetSource||'').toLowerCase())?String(x.targetSource).toLowerCase():'';
   return {
     enabled:x.enabled===true,
+    showOnTv:x.showOnTv!==false,
+    showOnMobileHome:x.showOnMobileHome!==false,
     type,
     mediaUrl:String(x.mediaUrl||'').trim().slice(0,2000),
     fallbackImage:String(x.fallbackImage||'').trim().slice(0,2000),

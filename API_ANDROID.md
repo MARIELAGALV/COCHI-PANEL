@@ -29,3 +29,20 @@ El servidor valida el PIN sin exponer su hash. Después del número máximo de i
 
 ## Nota de integración
 Estas rutas dejan listo el backend. El APK CO-CHI debe consumirlas para que demos y PIN remoto tengan efecto en el cliente Android.
+
+
+## Banner de inicio
+`GET /api/client-device/config` incluye el objeto `homeBanner`. El mismo carrusel puede utilizarse en TV y en la pantalla de inicio del celular.
+
+Campos de visibilidad:
+```json
+{
+  "homeBanner": {
+    "enabled": true,
+    "showOnTv": true,
+    "showOnMobileHome": true
+  }
+}
+```
+
+En Android móvil, cuando `enabled` y `showOnMobileHome` sean verdaderos, el banner debe mostrarse debajo de `CUENTA ACTIVA`. Las imágenes adicionales de `extraMediaUrls` respetan `rotationSeconds`. Si `showOnMobileHome` es falso, el inicio móvil no debe renderizar el banner. Los clientes antiguos que no conocen estos campos continúan funcionando porque ambos valores se normalizan a `true` por defecto.
