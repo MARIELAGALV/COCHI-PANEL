@@ -431,6 +431,16 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
             </div>
             <div id="epgStatus" class="muted tiny">EPG sin comprobar.</div>
             <div id="epgSamples" class="mt10"></div>
+            <div class="mt10">
+              <label>Buscar ID de canal en la guía
+                <div class="content-source-actions">
+                  <input id="epgChannelSearch" type="search" placeholder="Ej.: TyC Sports, ESPN, Telefe..." autocomplete="off">
+                  <button id="epgChannelSearchBtn" class="ghost" type="button">BUSCAR IDs</button>
+                </div>
+              </label>
+              <div class="muted tiny">Buscá por el nombre que aparece en la guía. Copiá el <b>ID XMLTV</b> y pegalo en <b>EPG ID / tvg-id</b> al editar el canal.</div>
+              <div id="epgChannelResults" class="mt10"></div>
+            </div>
             <div id="epgMsg" class="msg"></div>
           </div>
 
@@ -467,6 +477,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.9-preview-transfer-2"></script>
+  <script src="/app.js?v=1.1.9-preview-transfer-3"></script>
 </body>
 </html>
