@@ -869,10 +869,41 @@ function homeBannerRenderMeta(slot){
 function homeBannerAdjustedSlots(){
   const out={};for(let slot=1;slot<=10;slot++){const meta=homeBannerRenderMeta(slot);if(meta.sourceUrl&&Number(meta.bytes||0)>0)out[String(slot)]={sourceUrl:String(meta.sourceUrl),updatedAt:String(meta.updatedAt||''),transform:meta.transform||null};}return out;
 }
+// v1.1.11 — versión e invalidación central del caché de banners.
+// Cada guardado genera URLs nuevas para que Android/TV no reutilicen imágenes anteriores.
+function homeBannerCacheVersion(){return String(getSetting('home_banner_cache_version',VERSION)||VERSION)}
+function touchHomeBannerCache(){const v=nowIso();setSetting('home_banner_cache_version',v);return v}
+function bannerUrlWithVersion(raw,version){
+  const url=String(raw||'').trim();if(!/^https?:\/\//i.test(url))return url;
+  const hashAt=url.indexOf('#'),hash=hashAt>=0?url.slice(hashAt):'',base=hashAt>=0?url.slice(0,hashAt):url;
+  return `${base}${base.includes('?')?'&':'?'}cochi_banner_v=${encodeURIComponent(String(version||VERSION))}${hash}`;
+}
+function homeBannerActiveSlotUrls(banner){
+  const b=normalizeHomeBanner(banner),out={};
+  if(b.type==='image'&&b.mediaUrl)out['1']=b.mediaUrl;
+  for(let i=0;i<(b.extraMediaUrls||[]).length;i++){const url=String(b.extraMediaUrls[i]||'').trim();if(url)out[String(i+2)]=url;}
+  return out;
+}
+function cleanupHomeBannerRenderSlots(banner){
+  const active=homeBannerActiveSlotUrls(banner),cleared=[];
+  for(let slot=1;slot<=10;slot++){
+    const key=String(slot),meta=homeBannerRenderMeta(slot),data=getSetting(`home_banner_render_${slot}_data`,'');
+    const wanted=String(active[key]||''),stored=String(meta.sourceUrl||'');
+    if((stored||data)&&(!wanted||stored!==wanted)){
+      setSetting(`home_banner_render_${slot}_data`,'');setSetting(`home_banner_render_${slot}_meta`,'{}');cleared.push(slot);
+    }
+  }
+  return cleared;
+}
 function homeBannerForClient(req){
-  const b=homeBannerSetting(),base=publicBaseUrl(req),adjusted=homeBannerAdjustedSlots();
-  if(b.type==='image'&&adjusted['1']?.sourceUrl===b.mediaUrl)b.mediaUrl=`${base}/api/public/home-banner-image/1?v=${encodeURIComponent(adjusted['1'].updatedAt||VERSION)}`;
-  b.extraMediaUrls=(b.extraMediaUrls||[]).map((url,i)=>{const slot=String(i+2),a=adjusted[slot];return a?.sourceUrl===url?`${base}/api/public/home-banner-image/${slot}?v=${encodeURIComponent(a.updatedAt||VERSION)}`:url;});
+  const b=homeBannerSetting(),base=publicBaseUrl(req),adjusted=homeBannerAdjustedSlots(),version=homeBannerCacheVersion();
+  if(b.type==='image'){
+    if(adjusted['1']?.sourceUrl===b.mediaUrl)b.mediaUrl=`${base}/api/public/home-banner-image/1?v=${encodeURIComponent((adjusted['1'].updatedAt||VERSION)+'-'+version)}`;
+    else b.mediaUrl=bannerUrlWithVersion(b.mediaUrl,version);
+  }
+  b.extraMediaUrls=(b.extraMediaUrls||[]).map((url,i)=>{const slot=String(i+2),a=adjusted[slot];return a?.sourceUrl===url?`${base}/api/public/home-banner-image/${slot}?v=${encodeURIComponent((a.updatedAt||VERSION)+'-'+version)}`:bannerUrlWithVersion(url,version);});
+  b.fallbackImage=bannerUrlWithVersion(b.fallbackImage,version);
+  b.cacheVersion=version;
   return b;
 }
 
@@ -3594,7 +3625,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()},{'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache'});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -3658,7 +3689,7 @@ async function route(req,res){
     }
     if(p==='/api/admin/home-banner'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
-      return sendJson(res,200,{banner:homeBannerSetting(),adjustedSlots:homeBannerAdjustedSlots()});
+      return sendJson(res,200,{banner:homeBannerSetting(),adjustedSlots:homeBannerAdjustedSlots(),cacheVersion:homeBannerCacheVersion()});
     }
     if(p==='/api/admin/home-banner'&&m==='PUT'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el banner principal'});
@@ -3667,8 +3698,15 @@ async function route(req,res){
       if(banner.type==='video'&&banner.mediaUrl&&!/^https?:\/\//i.test(banner.mediaUrl))return sendJson(res,400,{error:'La URL del video debe ser HTTP/HTTPS'});
       if(banner.type==='image'&&banner.mediaUrl&&!/^https?:\/\//i.test(banner.mediaUrl))return sendJson(res,400,{error:'La URL de la imagen debe ser HTTP/HTTPS'});
       setSetting('home_banner_json',JSON.stringify(banner));
-      audit(actor.id,'home_banner_changed','settings',null,`${banner.enabled?'on':'off'}:${banner.type}:${banner.title}`);
-      return sendJson(res,200,{ok:true,banner});
+      const clearedSlots=cleanupHomeBannerRenderSlots(banner),cacheVersion=touchHomeBannerCache();
+      audit(actor.id,'home_banner_changed','settings',null,`${banner.enabled?'on':'off'}:${banner.type}:${banner.title}:cache:${cacheVersion}:cleared:${clearedSlots.join(',')}`);
+      return sendJson(res,200,{ok:true,banner,cacheVersion,clearedSlots});
+    }
+    if(p==='/api/admin/home-banner/cache/clear'&&m==='POST'){
+      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona el caché de banners'});
+      const banner=homeBannerSetting(),clearedSlots=cleanupHomeBannerRenderSlots(banner),cacheVersion=touchHomeBannerCache();
+      audit(actor.id,'home_banner_cache_cleared','settings',null,`cache:${cacheVersion}:stale:${clearedSlots.join(',')}`);
+      return sendJson(res,200,{ok:true,cacheVersion,clearedSlots,preservedActive:true});
     }
 
     if(p==='/api/admin/app-theme'&&m==='GET'){
