@@ -1,0 +1,53 @@
+name: Build CO-CHI AceStream Test
+
+on:
+  push:
+    branches:
+      - cochi-acestream-test-build
+    paths:
+      - 'acestream-test/**'
+      - '.github/workflows/acestream-test-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build test APK
+        working-directory: acestream-test
+        run: gradle --no-daemon assembleDebug
+
+      - name: Prepare source ZIP
+        run: |
+          cd acestream-test
+          zip -r ../CO-CHI_ACESTREAM_TEST_ANDROID_STUDIO.zip . -x 'app/build/*' '.gradle/*' 'build/*'
+
+      - name: Collect outputs
+        run: |
+          mkdir -p dist
+          cp acestream-test/app/build/outputs/apk/debug/app-debug.apk dist/CO-CHI_ACESTREAM_TEST.apk
+          cp CO-CHI_ACESTREAM_TEST_ANDROID_STUDIO.zip dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CO-CHI-ACESTREAM-TEST
+          path: dist/*
+          retention-days: 7
