@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -16,6 +15,14 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private static final String TEST_ID = "f16d68fa5ff64f3894a45062ca28e4e66f142c6a";
+    private static final String ACTION_START_CONTENT = "org.acestream.action.start_content";
+    private static final String[] ACE_PACKAGES = {
+            "org.acestream.media",
+            "org.acestream.media.atv",
+            "org.acestream.core",
+            "org.acestream.core.atv"
+    };
+
     private EditText input;
     private TextView status;
 
@@ -30,7 +37,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(4, 11, 24));
 
         TextView title = new TextView(this);
-        title.setText("CO-CHI\nACE STREAM TEST");
+        title.setText("CO-CHI\nACE STREAM TEST v2");
         title.setTextColor(Color.rgb(0, 225, 255));
         title.setTextSize(28);
         title.setGravity(Gravity.CENTER);
@@ -38,7 +45,7 @@ public class MainActivity extends Activity {
         root.addView(title, lp(-1, -2, 0, 0, 0, 18));
 
         TextView info = new TextView(this);
-        info.setText("Prueba separada de CO-CHI. No cambia el reproductor. Solo comprueba si el dispositivo puede abrir enlaces acestream:// con el motor Ace Stream instalado.");
+        info.setText("Prueba corregida con el método actual de Ace Stream. No cambia el reproductor de CO-CHI.");
         info.setTextColor(Color.WHITE);
         info.setTextSize(15);
         info.setGravity(Gravity.CENTER);
@@ -87,34 +94,57 @@ public class MainActivity extends Activity {
             status.setText("Pegá un Content ID o una URL acestream://.");
             return;
         }
-        if (!value.startsWith("acestream://")) {
-            value = "acestream://" + value;
-        }
 
-        Uri uri;
-        try {
-            uri = Uri.parse(value);
-        } catch (Exception e) {
-            status.setText("URL AceStream inválida.");
+        String contentId = value;
+        if (contentId.startsWith("acestream://")) {
+            contentId = contentId.substring("acestream://".length());
+        } else if (contentId.startsWith("acestream:?content_id=")) {
+            contentId = contentId.substring("acestream:?content_id=".length());
+        }
+        contentId = contentId.trim();
+        if (contentId.isEmpty()) {
+            status.setText("Content ID vacío.");
             return;
         }
 
-        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-        if (intent.resolveActivity(getPackageManager()) == null) {
-            status.setText("No encontré ninguna app instalada que maneje acestream://. Instalá o activá Ace Stream Engine/Media y volvé a probar.");
-            Toast.makeText(this, "Ace Stream no está disponible en este dispositivo", Toast.LENGTH_LONG).show();
-            return;
-        }
+        // Método actual recomendado por Ace Stream 3.1.43.0+
+        Intent modern = new Intent(ACTION_START_CONTENT);
+        modern.setData(Uri.parse("acestream:?content_id=" + Uri.encode(contentId)));
 
         try {
-            status.setText("Ace Stream detectado. Abriendo el Content ID…");
-            startActivity(intent);
-        } catch (ActivityNotFoundException e) {
-            status.setText("El sistema no pudo abrir Ace Stream aunque detectó el enlace.");
-        } catch (Exception e) {
-            status.setText("Error al abrir Ace Stream: " + e.getClass().getSimpleName());
+            if (modern.resolveActivity(getPackageManager()) != null) {
+                status.setText("Ace Stream detectado. Abriendo con integración actual…");
+                startActivity(modern);
+                return;
+            }
+        } catch (Exception ignored) {}
+
+        // Compatibilidad con versiones antiguas o implementaciones que exponen VIEW.
+        Intent legacy = new Intent(Intent.ACTION_VIEW, Uri.parse("acestream://" + contentId));
+        try {
+            if (legacy.resolveActivity(getPackageManager()) != null) {
+                status.setText("Ace Stream detectado. Abriendo con compatibilidad legacy…");
+                startActivity(legacy);
+                return;
+            }
+        } catch (Exception ignored) {}
+
+        // Distingue entre "instalado pero sin resolver el intent" y "no instalado".
+        boolean installed = false;
+        for (String pkg : ACE_PACKAGES) {
+            try {
+                getPackageManager().getPackageInfo(pkg, 0);
+                installed = true;
+                break;
+            } catch (Exception ignored) {}
+        }
+
+        if (installed) {
+            status.setText("Ace Stream parece estar instalado, pero esta versión no expone el método de apertura esperado.");
+            Toast.makeText(this, "Ace Stream está instalado pero no respondió al intent", Toast.LENGTH_LONG).show();
+        } else {
+            status.setText("No encontré Ace Stream instalado. Instalá Ace Stream Media o Ace Stream Engine y volvé a probar.");
+            Toast.makeText(this, "Ace Stream no está instalado en este dispositivo", Toast.LENGTH_LONG).show();
         }
     }
 
