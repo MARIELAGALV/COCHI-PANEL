@@ -995,7 +995,7 @@ function openHomeBannerImageEditor(slot){
   };
 }
 async function loadHomeBanner(){
-  const d=await api('/api/admin/home-banner');const b=d.banner||{};state.homeBanner=b;state.homeBannerAdjustedSlots=d.adjustedSlots||{};
+  const d=await api('/api/admin/home-banner');const b=d.banner||{};state.homeBanner=b;state.homeBannerAdjustedSlots=d.adjustedSlots||{};state.homeBannerCacheVersion=d.cacheVersion||'';
   $('#homeBannerEnabled').checked=!!b.enabled;$('#homeBannerShowOnTv').checked=b.showOnTv!==false;$('#homeBannerShowOnMobileHome').checked=b.showOnMobileHome!==false;$('#homeBannerType').value=b.type||'image';$('#homeBannerMediaUrl').value=b.mediaUrl||'';$('#homeBannerFallback').value=b.fallbackImage||'';$('#homeBannerEyebrow').value=b.eyebrow||'DESTACADO';$('#homeBannerTitle').value=b.title||'';$('#homeBannerDescription').value=b.description||'';$('#homeBannerMeta').value=b.meta||'';$('#homeBannerButtonText').value=b.buttonText||'Ver ahora';$('#homeBannerExploreText').value=b.exploreButtonText||'Explorar';$('#homeBannerShowPrimary').checked=b.showPrimaryButton!==false;$('#homeBannerShowExplore').checked=b.showExploreButton!==false;$('#homeBannerShowEyebrow').checked=b.showEyebrow!==false;$('#homeBannerShowTitle').checked=b.showTitle!==false;$('#homeBannerShowDescription').checked=b.showDescription!==false;$('#homeBannerShowMeta').checked=b.showMeta!==false;$('#homeBannerShowScrim').checked=b.showScrim!==false;$('#homeBannerTargetSource').value=b.targetSource||'';$('#homeBannerTargetId').value=b.targetId||'';
   const extras=Array.isArray(b.extraMediaUrls)?b.extraMediaUrls:[];const box=$('#homeBannerExtraUrls');if(box)box.innerHTML=Array.from({length:9},(_,i)=>`<div class="home-banner-extra-row" data-banner-slot="${i+2}"><label>IMAGEN ${i+2}<input class="home-banner-extra" type="url" value="${esc(extras[i]||'')}" placeholder="https://.../imagen-${i+2}.jpg"></label><button class="ghost banner-adjust-btn" type="button" data-adjust-banner-slot="${i+2}">AJUSTAR</button><span class="badge home-banner-adjusted-badge off">ORIGINAL</span></div>`).join('');
   if($('#homeBannerRotationSeconds'))$('#homeBannerRotationSeconds').value=Number(b.rotationSeconds||8);msg($('#homeBannerMsg'),'');homeBannerPreviewSlot=1;bindHomeBannerPreviewEvents();updateHomeBannerPreview();
@@ -1004,7 +1004,15 @@ async function loadHomeBanner(){
 $('#saveHomeBannerBtn')?.addEventListener('click',async()=>{
   const extraMediaUrls=$$('.home-banner-extra').map(x=>x.value.trim()).filter(Boolean).slice(0,9);
   const banner={enabled:$('#homeBannerEnabled').checked,showOnTv:$('#homeBannerShowOnTv').checked,showOnMobileHome:$('#homeBannerShowOnMobileHome').checked,type:$('#homeBannerType').value,mediaUrl:$('#homeBannerMediaUrl').value.trim(),fallbackImage:$('#homeBannerFallback').value.trim(),eyebrow:$('#homeBannerEyebrow').value.trim(),title:$('#homeBannerTitle').value.trim(),description:$('#homeBannerDescription').value.trim(),meta:$('#homeBannerMeta').value.trim(),buttonText:$('#homeBannerButtonText').value.trim(),exploreButtonText:$('#homeBannerExploreText').value.trim(),showPrimaryButton:$('#homeBannerShowPrimary').checked,showExploreButton:$('#homeBannerShowExplore').checked,showEyebrow:$('#homeBannerShowEyebrow').checked,showTitle:$('#homeBannerShowTitle').checked,showDescription:$('#homeBannerShowDescription').checked,showMeta:$('#homeBannerShowMeta').checked,showScrim:$('#homeBannerShowScrim').checked,targetSource:$('#homeBannerTargetSource').value,targetId:$('#homeBannerTargetId').value.trim(),extraMediaUrls,rotationSeconds:Number($('#homeBannerRotationSeconds')?.value||8)};
-  try{await api('/api/admin/home-banner',{method:'PUT',body:{banner}});msg($('#homeBannerMsg'),'BANNER GUARDADO. Las imágenes ajustadas compatibles se publican automáticamente.',true);toast('Banner principal actualizado','ok');await loadHomeBanner()}catch(e){msg($('#homeBannerMsg'),e.message);toast(e.message,'bad')}
+  try{const r=await api('/api/admin/home-banner',{method:'PUT',body:{banner}});const n=Array.isArray(r.clearedSlots)?r.clearedSlots.length:0;msg($('#homeBannerMsg'),`BANNER GUARDADO Y CACHÉ ACTUALIZADO.${n?` Se limpiaron ${n} imagen(es) anterior(es).`:''}`,true);toast('Banner principal actualizado sin caché viejo','ok');await loadHomeBanner()}catch(e){msg($('#homeBannerMsg'),e.message);toast(e.message,'bad')}
+});
+$('#clearHomeBannerCacheBtn')?.addEventListener('click',async()=>{
+  const btn=$('#clearHomeBannerCacheBtn');if(btn)btn.disabled=true;
+  try{
+    const r=await api('/api/admin/home-banner/cache/clear',{method:'POST'}),n=Array.isArray(r.clearedSlots)?r.clearedSlots.length:0;
+    msg($('#homeBannerMsg'),`CACHÉ DE BANNERS RENOVADO.${n?` Se descartaron ${n} ajuste(s) viejo(s).`:' La imagen activa se conservó.'}`,true);
+    toast('Caché de banners renovado','ok');await loadHomeBanner();
+  }catch(e){msg($('#homeBannerMsg'),e.message);toast(e.message,'bad')}finally{if(btn)btn.disabled=false}
 });
 
 
