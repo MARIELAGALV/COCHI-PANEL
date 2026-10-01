@@ -10,6 +10,7 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="acestream" />
         </intent>
+        <package android:name="org.acestream.node" />
         <package android:name="org.acestream.media" />
         <package android:name="org.acestream.media.atv" />
         <package android:name="org.acestream.core" />
