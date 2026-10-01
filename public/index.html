@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
-  <link rel="stylesheet" href="/styles.css?v=1.1.9-device-expand-1">
+  <link rel="stylesheet" href="/styles.css?v=1.1.11-banner-cache-1">
 </head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v1.1.9</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p>PANEL v1.1.11</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -163,7 +163,7 @@
         </div>
 
         <div class="neon-card panel-card sources-card mt18">
-          <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Cargá y configurá el banner. La edición visual real se abre desde AJUSTAR IMAGEN.</p></div><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div>
+          <div class="card-head"><div><h3>Banner principal de CO-CHI TV</h3><p class="muted">Cargá y configurá el banner. Al guardar se renueva automáticamente el caché para que no reaparezcan imágenes eliminadas.</p></div><div class="top-actions"><button id="clearHomeBannerCacheBtn" class="ghost" type="button">LIMPIAR CACHÉ DE BANNERS</button><button id="saveHomeBannerBtn" class="primary">GUARDAR BANNER</button></div></div>
           <div class="source-row">
             <div class="source-head"><div class="source-title">Destacado administrable</div><label class="switch-row"><input id="homeBannerEnabled" type="checkbox"> Activado</label></div>
             <div class="banner-toggle-grid" aria-label="Pantallas donde se muestra el banner">
@@ -483,6 +483,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.9-device-expand-1"></script>
+  <script src="/app.js?v=1.1.11-banner-cache-1"></script>
 </body>
 </html>
