@@ -16,7 +16,7 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final String TEST_ID = "f16d68fa5ff64f3894a45062ca28e4e66f142c6a";
     private static final String ACTION_START_CONTENT = "org.acestream.action.start_content";
-    private static final String[] ACE_PACKAGES = {
+    private static final String[] ACE_PACKAGES = {\n            "org.acestream.node",
             "org.acestream.media",
             "org.acestream.media.atv",
             "org.acestream.core",
@@ -37,7 +37,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(4, 11, 24));
 
         TextView title = new TextView(this);
-        title.setText("CO-CHI\nACE STREAM TEST v2");
+        title.setText("CO-CHI\nACE STREAM TEST v3");
         title.setTextColor(Color.rgb(0, 225, 255));
         title.setTextSize(28);
         title.setGravity(Gravity.CENTER);
@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         root.addView(title, lp(-1, -2, 0, 0, 0, 18));
 
         TextView info = new TextView(this);
-        info.setText("Prueba corregida con el método actual de Ace Stream. No cambia el reproductor de CO-CHI.");
+        info.setText("Prueba actualizada para la app oficial 2026 (org.acestream.node) y paquetes anteriores. No cambia el reproductor de CO-CHI.");
         info.setTextColor(Color.WHITE);
         info.setTextSize(15);
         info.setGravity(Gravity.CENTER);
