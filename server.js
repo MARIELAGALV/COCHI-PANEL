@@ -3597,10 +3597,30 @@ async function route(req,res){
   // API cliente Android: registro pendiente, sesión y fuentes.
   if(p==='/api/client-device/register'&&m==='POST'){
     const b=await readJson(req),uid=String(b.deviceUid||'').trim();if(uid.length<8)return sendJson(res,400,{error:'deviceUid inválido'});
-    const ex=db.prepare('SELECT activation_code,status FROM client_devices WHERE device_uid=?').get(uid);if(ex){db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE device_uid=?').run(nowIso(),nowIso(),uid);return sendJson(res,200,{existing:true,activationCode:ex.activation_code,status:ex.status,requiresExistingSecret:true});}
+    const deviceName=String(b.deviceName||'Android').trim().slice(0,120),platform=String(b.platform||'android').trim().slice(0,30);
+    const ex=db.prepare('SELECT id,activation_code,status,client_id FROM client_devices WHERE device_uid=?').get(uid);
+    if(ex){
+      const t=nowIso();
+      // Hotfix: si una TV perdió su credencial local pero quedó como PENDIENTE sin cliente,
+      // regeneramos únicamente esa credencial. No se toca ningún dispositivo ya vinculado.
+      // Se responde como registro nuevo para que APKs anteriores guarden el nuevo deviceSecret.
+      if(ex.status==='pending'&&ex.client_id===null){
+        const secret=randomToken();
+        db.exec('BEGIN');
+        try{
+          db.prepare('DELETE FROM client_sessions WHERE device_id=?').run(ex.id);
+          db.prepare('UPDATE client_devices SET device_name=?,platform=?,secret_hash=?,last_seen_at=?,updated_at=? WHERE id=?')
+            .run(deviceName,platform,sha(secret),t,t,ex.id);
+          db.exec('COMMIT');
+        }catch(e){db.exec('ROLLBACK');throw e;}
+        return sendJson(res,201,{existing:false,recovered:true,activationCode:ex.activation_code,deviceSecret:secret,status:'pending',requiresExistingSecret:false});
+      }
+      db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(t,t,ex.id);
+      return sendJson(res,200,{existing:true,activationCode:ex.activation_code,status:ex.status,requiresExistingSecret:true});
+    }
     const code=generateCode('client_devices'),secret=randomToken(),t=nowIso();
     db.prepare('INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,\'pending\',?,?)')
-      .run(uid,String(b.deviceName||'Android').trim().slice(0,120),String(b.platform||'android').trim().slice(0,30),code,sha(secret),t,t);
+      .run(uid,deviceName,platform,code,sha(secret),t,t);
     return sendJson(res,201,{existing:false,activationCode:code,deviceSecret:secret,status:'pending'});
   }
   if(p==='/api/client-device/status'&&m==='POST'){
