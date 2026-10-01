@@ -1687,12 +1687,19 @@ function effectiveAdult(c){
 }
 
 function clientDeviceByCred(uid,secret){
-  const d=db.prepare(`SELECT cd.*,c.name client_name,c.active client_active,c.expires_at client_expires_at,c.owner_account_id
+  const secretHash=sha(secret||'');
+  let d=db.prepare(`SELECT cd.*,c.name client_name,c.active client_active,c.expires_at client_expires_at,c.owner_account_id
     FROM client_devices cd LEFT JOIN clients c ON c.id=cd.client_id WHERE cd.device_uid=?`).get(uid);
-  if(!d)return null;
-  const a=Buffer.from(d.secret_hash,'hex'),b=Buffer.from(sha(secret||''),'hex');
-  if(a.length!==b.length || !crypto.timingSafeEqual(a,b))return null;
-  return d;
+  if(d){
+    const a=Buffer.from(d.secret_hash,'hex'),b=Buffer.from(secretHash,'hex');
+    if(a.length===b.length && crypto.timingSafeEqual(a,b))return d;
+  }
+  // Compatibilidad para TVs cuyo deviceUid no es realmente único. En una colisión,
+  // /register crea un UID interno alternativo; la credencial secreta sigue identificando
+  // de forma segura el registro correcto aunque la APK continúe enviando el UID original.
+  d=db.prepare(`SELECT cd.*,c.name client_name,c.active client_active,c.expires_at client_expires_at,c.owner_account_id
+    FROM client_devices cd LEFT JOIN clients c ON c.id=cd.client_id WHERE cd.secret_hash=?`).get(secretHash);
+  return d||null;
 }
 function clientDeviceFromToken(t){
   t=String(t||'').trim(); if(!t)return null;
@@ -3601,9 +3608,8 @@ async function route(req,res){
     const ex=db.prepare('SELECT id,activation_code,status,client_id FROM client_devices WHERE device_uid=?').get(uid);
     if(ex){
       const t=nowIso();
-      // Hotfix: si una TV perdió su credencial local pero quedó como PENDIENTE sin cliente,
-      // regeneramos únicamente esa credencial. No se toca ningún dispositivo ya vinculado.
-      // Se responde como registro nuevo para que APKs anteriores guarden el nuevo deviceSecret.
+      // Si la TV perdió su credencial y el registro anterior todavía estaba libre,
+      // regeneramos la credencial sobre ese mismo registro.
       if(ex.status==='pending'&&ex.client_id===null){
         const secret=randomToken();
         db.exec('BEGIN');
@@ -3615,8 +3621,15 @@ async function route(req,res){
         }catch(e){db.exec('ROLLBACK');throw e;}
         return sendJson(res,201,{existing:false,recovered:true,activationCode:ex.activation_code,deviceSecret:secret,status:'pending',requiresExistingSecret:false});
       }
-      db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(t,t,ex.id);
-      return sendJson(res,200,{existing:true,activationCode:ex.activation_code,status:ex.status,requiresExistingSecret:true});
+
+      // Algunas Android/Google TV están entregando un deviceUid repetido aun siendo TVs distintas.
+      // Nunca sobrescribimos el dispositivo ya vinculado: creamos un registro interno alternativo
+      // con código/secret nuevos. La APK puede seguir enviando su UID original porque
+      // clientDeviceByCred también valida el registro por la credencial secreta recién emitida.
+      const code=generateCode('client_devices'),secret=randomToken(),compatUid=`${uid}#${crypto.randomUUID()}`;
+      const rr=db.prepare("INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)")
+        .run(compatUid,deviceName,platform,code,sha(secret),t,t);
+      return sendJson(res,201,{existing:false,recovered:true,uidCollision:true,id:Number(rr.lastInsertRowid),activationCode:code,deviceSecret:secret,status:'pending',requiresExistingSecret:false});
     }
     const code=generateCode('client_devices'),secret=randomToken(),t=nowIso();
     db.prepare('INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,\'pending\',?,?)')
