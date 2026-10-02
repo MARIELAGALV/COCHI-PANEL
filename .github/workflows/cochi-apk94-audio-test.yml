@@ -1,0 +1,76 @@
+name: COCHI APK94 audio analysis
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cochi-apk94-audio-test.yml'
+      - 'tools/cochi94/**'
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cochi-apk94-audio-test
+
+      - name: Download CO-CHI 0.23.93 and tools
+        run: |
+          set -euxo pipefail
+          mkdir -p work
+          curl -L --fail -o work/CO-CHI-0.23.93.apk "https://github.com/MARIELAGALV/CO-CHIUPDATES/releases/download/v0.23.93/CO-CHI.apk"
+          curl -L --fail -o work/jadx.zip "https://github.com/skylot/jadx/releases/download/v1.5.2/jadx-1.5.2.zip"
+          unzip -q work/jadx.zip -d work/jadx
+          chmod +x work/jadx/bin/jadx
+          curl -L --fail -o work/apktool.jar "https://repo1.maven.org/maven2/org/apktool/apktool-cli/2.9.3/apktool-cli-2.9.3-all.jar"
+
+      - name: Decompile and inspect playback
+        run: |
+          set -euxo pipefail
+          rm -rf work/jadx-out work/apktool-out
+          work/jadx/bin/jadx --show-bad-code -d work/jadx-out work/CO-CHI-0.23.93.apk || true
+          java -jar work/apktool.jar d -f -r -o work/apktool-out work/CO-CHI-0.23.93.apk || true
+          mkdir -p tools/cochi94
+          {
+            echo "CO-CHI 0.23.93 AUDIO ANALYSIS"
+            echo "Generated: $(date -u +%FT%TZ)"
+            echo
+            echo "=== JADX files containing player/renderers terms ==="
+            grep -RIlE 'DefaultRenderersFactory|setExtensionRendererMode|setRenderersFactory|ExoPlayer\.Builder|MediaCodecAudioRenderer|RenderersFactory|FfmpegAudioRenderer' work/jadx-out/sources 2>/dev/null | head -200 || true
+            echo
+            echo "=== JADX contextual matches ==="
+            grep -RInE -C 12 'DefaultRenderersFactory|setExtensionRendererMode|setRenderersFactory|ExoPlayer\.Builder|MediaCodecAudioRenderer|RenderersFactory|FfmpegAudioRenderer' work/jadx-out/sources 2>/dev/null | head -3000 || true
+            echo
+            echo "=== SMALI contextual matches ==="
+            grep -RInE -C 10 'DefaultRenderersFactory|setExtensionRendererMode|setRenderersFactory|MediaCodecAudioRenderer|Landroidx/media3/exoplayer/ExoPlayer' work/apktool-out/smali* 2>/dev/null | head -3000 || true
+            echo
+            echo "=== Factory candidates creating MediaCodecAudioRenderer (JADX) ==="
+            grep -RInE -C 80 'new C0943kt\b|C0943kt\(' work/jadx-out/sources/x 2>/dev/null | head -5000 || true
+            echo
+            echo "=== Factory candidates creating MediaCodecAudioRenderer (SMALI) ==="
+            grep -RInE -C 80 'new-instance .*Lx/kt;|Lx/kt;-><init>' work/apktool-out/smali/x 2>/dev/null | head -5000 || true
+            echo
+            echo "=== PlayerActivity player construction ==="
+            grep -nE -C 50 'C1504vj|C0943kt|ExoPlayer|PlayerView|prepare\(|setMediaItem|setMediaSource' work/jadx-out/sources/com/cochi/client/PlayerActivity.java 2>/dev/null | head -6000 || true
+            echo
+            echo "=== Version matches ==="
+            grep -RInE -C 3 '0\.23\.93|CO-CHI-Android/0\.23\.93|CO-CHI/0\.23\.93' work/jadx-out/sources work/apktool-out 2>/dev/null | head -500 || true
+          } > tools/cochi94/analysis.txt
+          rm -rf tools/cochi94/decompiled93
+          mkdir -p tools/cochi94/decompiled93
+          cp -a work/jadx-out/sources/com/cochi/client/. tools/cochi94/decompiled93/
+
+      - name: Commit analysis
+        run: |
+          set -euxo pipefail
+          git config user.name "cochi-build-bot"
+          git config user.email "cochi-build-bot@users.noreply.github.com"
+          git add tools/cochi94/analysis.txt tools/cochi94/decompiled93
+          git diff --cached --quiet && exit 0
+          git commit -m "Analyze CO-CHI 0.23.93 audio renderer path"
+          git pull --rebase origin cochi-apk94-audio-test
+          git push origin HEAD:cochi-apk94-audio-test
