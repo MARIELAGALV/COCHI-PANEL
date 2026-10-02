@@ -4002,7 +4002,18 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede buscar streams dentro de iframes'});
       if(!rateLimit(req,res,'dynamic_iframe_resolver',12,10*60*1000))return;
       const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
-      try{const result=await resolveDynamicStreamChain(url,referer,2);audit(actor.id,'stream_resolver_iframe_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
+      try{
+        let result;
+        try{result=await resolveDynamicPublicStreamPage(url,referer);}
+        catch(e){
+          if(!/ERR_BLOCKED_BY_CLIENT/i.test(String(e?.message||e)))throw e;
+          result=await resolvePublicStreamPage(url,referer);
+          result.dynamicFallback=true;
+          result.dynamicError=String(e?.message||e);
+        }
+        audit(actor.id,'stream_resolver_iframe_dynamic','web',null,url.slice(0,500));
+        return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});
+      }
       catch(e){return sendJson(res,400,{error:'No se pudo buscar el stream dentro del iframe: '+e.message});}
     }
     if(p==='/api/admin/rescue-resolver/channels'&&m==='GET'){
