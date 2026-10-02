@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.13';
+const VERSION = '1.1.14';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -2186,7 +2186,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
   for(const c of rawPlayable){const rank=resolverCandidateScore(c);Object.assign(c,rank)}
   rawPlayable.sort((a,b)=>(b.score||0)-(a.score||0));
   const clean=rawPlayable.filter(x=>!x.adSuspected),suspectedAds=rawPlayable.filter(x=>x.adSuspected),playable=clean.length?clean:rawPlayable;
-  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.13: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
+  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.14: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -2251,8 +2251,15 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     page.on('popup',p=>p.close().catch(()=>{}));
     if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}
     page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});
-    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.13');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
-    page.on('request',req=>{const url=req.url();if(!publicBrowserUrl(url)){req.abort().catch(()=>{});return}const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers(),{resourceType:req.resourceType()});req.continue().catch(()=>{});});
+    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.14');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    page.on('request',req=>{
+      const url=req.url(),isHttp=/^https?:/i.test(url);
+      // No bloquear blob:, data:, about: ni otros recursos internos del reproductor:
+      // abortarlos hacía que Chromium devolviera net::ERR_BLOCKED_BY_CLIENT en algunos iframes.
+      if(isHttp&&!publicBrowserUrl(url)){req.abort().catch(()=>{});return}
+      if(isHttp){const kind=streamKind(url);if(kind)add(url,kind,req.frame()?.url()||finalPage,req.headers(),{resourceType:req.resourceType()})}
+      req.continue().catch(()=>{});
+    });
     page.on('response',resp=>{try{
       const url=resp.url(),headers=resp.headers(),kind=streamKind(url,headers['content-type']);
       if(kind)add(url,kind,resp.request().frame()?.url()||finalPage,resp.request().headers(),{resourceType:resp.request().resourceType()});
@@ -2281,7 +2288,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     const clean=verified.filter(x=>!x.adSuspected),suspectedAds=verified.filter(x=>x.adSuspected),playable=clean.length?clean:verified;
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});
     const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.13: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.14: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -2292,7 +2299,20 @@ async function resolveDynamicStreamChain(rawUrl,initialReferer='',maxAutoHops=2)
   for(let hop=0;hop<=maxHops;hop++){
     if(seen.has(currentUrl))break;
     seen.add(currentUrl);
-    const rr=await resolveDynamicPublicStreamPage(currentUrl,currentReferer);
+    let rr;
+    try{
+      rr=await resolveDynamicPublicStreamPage(currentUrl,currentReferer);
+    }catch(e){
+      const error=String(e?.message||e);
+      chain.push({hop,url:currentUrl,referer:currentReferer,error});
+      // Si falla un iframe seguido automáticamente, no tiramos abajo todo el análisis
+      // anterior: devolvemos el último resultado válido y dejamos el error visible.
+      if(last){
+        last.autoFollowError=error;
+        break;
+      }
+      throw e;
+    }
     last=rr;
     chain.push({
       hop,
@@ -2334,7 +2354,7 @@ async function resolveDynamicStreamChain(rawUrl,initialReferer='',maxAutoHops=2)
     last.autoFollowed=chain.length>1;
     last.autoFollowChain=chain;
     last.autoFollowHops=Math.max(0,chain.length-1);
-    last.note=(last.note||'')+(chain.length>1?' Se siguió automáticamente el iframe candidato con mayor prioridad.':'');
+    last.note=(last.note||'')+(chain.length>1?' Se intentó seguir automáticamente el iframe candidato con mayor prioridad.':'')+(last.autoFollowError?' El iframe automático falló, pero se conservó el resultado anterior.':'');
     return last;
   }
   throw new Error('No se pudo iniciar el análisis dinámico');
