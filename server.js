@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.14';
+const VERSION = '1.1.15';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -2186,7 +2186,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
   for(const c of rawPlayable){const rank=resolverCandidateScore(c);Object.assign(c,rank)}
   rawPlayable.sort((a,b)=>(b.score||0)-(a.score||0));
   const clean=rawPlayable.filter(x=>!x.adSuspected),suspectedAds=rawPlayable.filter(x=>x.adSuspected),playable=clean.length?clean:rawPlayable;
-  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.14: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
+  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.15: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -2204,9 +2204,12 @@ function selectedBrowserHeaders(reqHeaders={},sourcePage=''){
 }
 async function resolverInteractWithPlayers(page){
   let clicks=0;
-  for(const frame of page.frames()){
+  const mainFrame=page.mainFrame();
+  const frames=page.frames().slice().sort((a,b)=>(iframePriority(b.url())||0)-(iframePriority(a.url())||0));
+  for(const frame of frames){
     try{
-      clicks+=await frame.evaluate(()=>{
+      const allowCenterClick=frame!==mainFrame&&(iframePriority(frame.url())||0)>=0;
+      clicks+=await frame.evaluate((allowCenterClick)=>{
         const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>8&&r.height>8&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0};
         let n=0;const seen=new Set(),safeClick=el=>{if(!el||seen.has(el)||!visible(el))return;seen.add(el);try{el.click();n++}catch{}};
         const selectors=['.vjs-big-play-button','.jw-icon-playback','.plyr__control--overlaid','button[aria-label*="play" i]','button[title*="play" i]','[data-plyr="play"]','video'];
@@ -2221,15 +2224,28 @@ async function resolverInteractWithPlayers(page){
             if(href&&/^https?:/i.test(href)){
               try{
                 const u=new URL(href,location.href);
-                if(u.origin!==location.origin&&!/player|embed|stream|live|watch|video/i.test(u.href))continue;
+                if(u.origin!==location.origin&&!/player|embed|stream|live|watch|video|ch\d+/i.test(u.href))continue;
               }catch{}
             }
           }
           safeClick(el);
         }
+        if(allowCenterClick&&innerWidth>160&&innerHeight>100){
+          const probes=[
+            [innerWidth*0.5,innerHeight*0.5],
+            [innerWidth*0.5,innerHeight*0.62]
+          ];
+          for(const [x,y] of probes){
+            const el=document.elementFromPoint(x,y);
+            if(el&&el!==document.body&&el!==document.documentElement){
+              const txt=String(el.innerText||el.textContent||'').trim();
+              if(!/login|sign in|registro|registrar|subscribe/i.test(txt))safeClick(el);
+            }
+          }
+        }
         const v=document.querySelector('video');if(v&&visible(v)){try{v.scrollIntoView({block:'center',behavior:'instant'})}catch{}}
         return n;
-      });
+      },allowCenterClick);
     }catch{}
   }
   return clicks;
@@ -2248,10 +2264,17 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
   try{
     const page=await browser.newPage();
     page.on('dialog',d=>d.dismiss().catch(()=>{}));
-    page.on('popup',p=>p.close().catch(()=>{}));
+    page.on('popup',p=>setTimeout(()=>p.close().catch(()=>{}),350));
+    browser.on('targetcreated',async target=>{
+      try{
+        if(target.type()!=='page')return;
+        const extraPage=await target.page();
+        if(extraPage&&extraPage!==page)setTimeout(()=>extraPage.close().catch(()=>{}),350);
+      }catch{}
+    });
     if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}
     page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});
-    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.14');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.15');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{
       const url=req.url(),isHttp=/^https?:/i.test(url);
       // No bloquear blob:, data:, about: ni otros recursos internos del reproductor:
@@ -2272,9 +2295,11 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     }catch{}});
     const nav=await page.goto(rawUrl,{waitUntil:'domcontentloaded',timeout:20000});finalPage=page.url()||nav?.url()||rawUrl;
     await new Promise(r=>setTimeout(r,2500));
-    for(let pass=0;pass<4;pass++){
+    // El flujo real de algunos reproductores requiere VER -> PLAY -> popup -> PLAY
+    // y recién varios segundos después aparece el manifest principal.
+    for(let pass=0;pass<7;pass++){
       interactionClicks+=await resolverInteractWithPlayers(page);
-      await new Promise(r=>setTimeout(r,3500));
+      await new Promise(r=>setTimeout(r,4000));
     }
     try{const resources=await page.evaluate(()=>performance.getEntriesByType('resource').map(x=>x.name).slice(-1200));for(const u of resources){const kind=streamKind(u);if(kind)add(u,kind,finalPage,{referer:finalPage},{resourceType:'performance'})}}catch{}
     for(const frame of page.frames()){const fu=frame.url();if(publicBrowserUrl(fu)){const kind=streamKind(fu);if(kind)add(fu,kind,finalPage,{referer:finalPage},{resourceType:'frame'})}}
@@ -2288,7 +2313,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     const clean=verified.filter(x=>!x.adSuspected),suspectedAds=verified.filter(x=>x.adSuspected),playable=clean.length?clean:verified;
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});
     const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.14: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.15: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -3964,7 +3989,7 @@ async function route(req,res){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver dinámico'});
       if(!rateLimit(req,res,'dynamic_stream_resolver',8,10*60*1000))return;
       const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Ingresá una URL web'});
-      try{const result=await resolveDynamicStreamChain(url,'',2);audit(actor.id,'stream_resolver_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
+      try{const result=await resolveDynamicPublicStreamPage(url);result.autoFollowed=false;result.autoFollowChain=[{hop:0,url,pageUrl:result.pageUrl||url,playableCount:Array.isArray(result.playable)?result.playable.length:0,iframeCount:Array.isArray(result.iframesChecked)?result.iframesChecked.length:0,interactionClicks:Number(result.interactionClicks||0)}];audit(actor.id,'stream_resolver_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo ejecutar el análisis dinámico: '+e.message});}
     }
     if(p==='/api/admin/stream-resolver/iframe'&&m==='POST'){
