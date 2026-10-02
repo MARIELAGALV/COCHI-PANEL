@@ -2213,9 +2213,19 @@ async function resolverInteractWithPlayers(page){
         for(const sel of selectors)for(const el of document.querySelectorAll(sel))safeClick(el);
         for(const v of document.querySelectorAll('video')){try{v.muted=true;const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch{}}
         const action=/^(?:play|reproducir|ver|ver ahora|watch|continue|continuar|skip|skip ad|saltar|omitir|cerrar|close|×|x)$/i;
-        for(const el of document.querySelectorAll('button,[role="button"]')){
+        for(const el of document.querySelectorAll('button,[role="button"],a')){
           const txt=String(el.innerText||el.textContent||el.getAttribute('aria-label')||el.getAttribute('title')||'').replace(/\s+/g,' ').trim();
-          if(action.test(txt)&&!/subscribe|login|sign in|registro|registrar/i.test(txt))safeClick(el);
+          if(!action.test(txt)||/subscribe|login|sign in|registro|registrar/i.test(txt))continue;
+          if(el.tagName==='A'){
+            const href=String(el.getAttribute('href')||'').trim();
+            if(href&&/^https?:/i.test(href)){
+              try{
+                const u=new URL(href,location.href);
+                if(u.origin!==location.origin&&!/player|embed|stream|live|watch|video/i.test(u.href))continue;
+              }catch{}
+            }
+          }
+          safeClick(el);
         }
         const v=document.querySelector('video');if(v&&visible(v)){try{v.scrollIntoView({block:'center',behavior:'instant'})}catch{}}
         return n;
