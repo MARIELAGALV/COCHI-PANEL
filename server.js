@@ -869,7 +869,7 @@ function homeBannerRenderMeta(slot){
 function homeBannerAdjustedSlots(){
   const out={};for(let slot=1;slot<=10;slot++){const meta=homeBannerRenderMeta(slot);if(meta.sourceUrl&&Number(meta.bytes||0)>0)out[String(slot)]={sourceUrl:String(meta.sourceUrl),updatedAt:String(meta.updatedAt||''),transform:meta.transform||null};}return out;
 }
-// v1.1.11 — versión e invalidación central del caché de banners.
+// Versión e invalidación central del caché de banners.
 // Cada guardado genera URLs nuevas para que Android/TV no reutilicen imágenes anteriores.
 function homeBannerCacheVersion(){return String(getSetting('home_banner_cache_version',VERSION)||VERSION)}
 function touchHomeBannerCache(){const v=nowIso();setSetting('home_banner_cache_version',v);return v}
