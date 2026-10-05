@@ -64,6 +64,10 @@ function normalizeYoutubeTarget(raw){
   const v=u.searchParams.get('v');
   if(v&&/^[A-Za-z0-9_-]{11}$/.test(v))return {key:`video:${v}`,pageUrl:`https://www.youtube.com/watch?v=${v}`,label:v};
   const parts=u.pathname.split('/').filter(Boolean);
+  if(parts[0]==='embed'&&/^[A-Za-z0-9_-]{11}$/.test(parts[1]||'')){
+    const id=parts[1];
+    return {key:`video:${id}`,pageUrl:`https://www.youtube.com/watch?v=${id}`,label:id};
+  }
   if(parts[0]?.startsWith('@')){
     const handle=sanitizeHandle(parts[0]);
     return {key:`handle:${handle.toLowerCase()}`,pageUrl:`https://www.youtube.com/${handle}/live`,label:handle};
