@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.16';
+const VERSION = '1.1.17';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1776,7 +1776,17 @@ function enrichResolverWithYoutube(result,req){
     ...(Array.isArray(result.iframesChecked)?result.iframesChecked.map(x=>x?.url):[]),
     ...(Array.isArray(result.candidates)?result.candidates.map(x=>x?.url):[])
   ].filter(Boolean);
-  const yt=[...new Set(sourceCandidates.map(resolverYoutubeUrl).filter(Boolean))];
+  let yt=[...new Set(sourceCandidates.map(resolverYoutubeUrl).filter(Boolean))];
+  // El Siete carga muchos MP4 editoriales desde su MAM, mientras el vivo oficial está en YouTube.
+  // Si el DOM/red todavía no expuso el iframe, agregamos el canal oficial como fallback estable.
+  if(!yt.length){
+    try{
+      const rootHost=new URL(String(result.rootPageUrl||result.pageUrl||'')).hostname.toLowerCase();
+      if(rootHost==='elsietetv.com.ar'||rootHost.endsWith('.elsietetv.com.ar')){
+        yt=['https://www.youtube.com/@elsietemendoza/live'];
+      }
+    }catch{}
+  }
   if(!yt.length)return result;
   const base=publicBaseUrl(req);
   const stable=yt.map((target,i)=>({
@@ -1853,6 +1863,13 @@ function resolverAdSignature(rawUrl='',sourcePage=''){
   const s=(String(rawUrl||'')+' '+String(sourcePage||'')).toLowerCase();
   return /(?:doubleclick|googlesyndication|googleads|adservice|adserver|imasdk|\/ads?(?:[\/_?=&.-]|$)|pre[-_]?roll|mid[-_]?roll|post[-_]?roll|vast(?:[\/_?=&.-]|$)|vpaid|commercial|advert|promo(?:[\/_?=&.-]|$)|banner|popunder|tracking|analytics|pixel)/i.test(s);
 }
+function resolverEditorialClipSignature(rawUrl='',sourcePage=''){
+  const s=(String(rawUrl||'')+' '+String(sourcePage||'')).toLowerCase();
+  // MAM/CMS editoriales suelen servir clips de noticias fechados como MP4, no la señal lineal.
+  if(/mam-b2\.grupoamericainterior\.com\.ar\/file\/mam-grupoamerica\/videos\/\d{4}-\d{2}-\d{2}\//i.test(s))return true;
+  if(/\/file\/mam-[^/]+\/videos\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{20,}\.mp4/i.test(s))return true;
+  return false;
+}
 function resolverCandidateScore(c){
   let score=0;const reasons=[];const type=String(c?.type||c?.probe?.type||'').toUpperCase(),u=String(c?.url||''),src=String(c?.sourcePage||'');
   if(type==='HLS'||type==='DASH')score+=55;else if(type==='MP4')score+=15;
@@ -1865,8 +1882,9 @@ function resolverCandidateScore(c){
   if(Number(p.durationSeconds)>600){score+=35;reasons.push('LARGO');}
   if(Number(p.durationSeconds)>0&&Number(p.durationSeconds)<180){score-=85;reasons.push('CLIP_CORTO');}
   if(type==='MP4'&&Number(p.totalBytes)>0&&Number(p.totalBytes)<18*1024*1024){score-=25;reasons.push('MP4_PEQUENO');}
+  if(resolverEditorialClipSignature(u,src)){score-=180;reasons.push('CLIP_CMS_NOTICIAS');}
   if(resolverAdSignature(u,src)){score-=140;reasons.push('FIRMA_PUBLICIDAD');}
-  const adSuspected=reasons.includes('FIRMA_PUBLICIDAD')||reasons.includes('CLIP_CORTO')||(type==='MP4'&&reasons.includes('MP4_PEQUENO')&&score<25);
+  const adSuspected=reasons.includes('FIRMA_PUBLICIDAD')||reasons.includes('CLIP_CMS_NOTICIAS')||reasons.includes('CLIP_CORTO')||(type==='MP4'&&reasons.includes('MP4_PEQUENO')&&score<25);
   return {score,adSuspected,reasons,confidence:score>=110?'ALTA':score>=60?'MEDIA':'BAJA'};
 }
 async function probePlayableUrl(rawUrl,headers={}){
@@ -2250,7 +2268,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
   for(const c of rawPlayable){const rank=resolverCandidateScore(c);Object.assign(c,rank)}
   rawPlayable.sort((a,b)=>(b.score||0)-(a.score||0));
   const clean=rawPlayable.filter(x=>!x.adSuspected),suspectedAds=rawPlayable.filter(x=>x.adSuspected),playable=clean.length?clean:rawPlayable;
-  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.16: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
+  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.17: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -2338,7 +2356,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     });
     if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}
     page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});
-    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.16');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.17');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{
       const url=req.url(),isHttp=/^https?:/i.test(url);
       // No bloquear blob:, data:, about: ni otros recursos internos del reproductor:
@@ -2377,7 +2395,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     const clean=verified.filter(x=>!x.adSuspected),suspectedAds=verified.filter(x=>x.adSuspected),playable=clean.length?clean:verified;
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});
     const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.16: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.17: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
