@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.15';
+const VERSION = '1.1.16';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1746,10 +1746,58 @@ function originFor(raw){try{return new URL(String(raw||'')).origin}catch{return 
 function candidateHeaders(sourcePage){return {Referer:String(sourcePage||''),Origin:originFor(sourcePage),'User-Agent':'Android/CO-CHI (Media3)'};}
 function iframePriority(rawUrl=''){
   const u=String(rawUrl||'').toLowerCase();let score=0;
+  if(/(?:youtube\.com\/embed\/|youtube\.com\/watch\?v=|youtu\.be\/)/i.test(u))score+=90;
   if(/(?:player|embed|stream|live|watch|channel|ch\d+|video|hls|dash)/i.test(u))score+=30;
   if(/\.(?:html?|php)(?:[?#]|$)/i.test(u))score+=8;
   if(/(?:ads?|doubleclick|googlesyndication|popunder|banner|analytics|tracker|pixel|click)/i.test(u))score-=35;
   return score;
+}
+function resolverYoutubeUrl(raw=''){
+  let u;try{u=new URL(String(raw||''))}catch{return ''}
+  const h=u.hostname.toLowerCase();
+  if(!(h==='youtu.be'||h==='youtube.com'||h.endsWith('.youtube.com')))return '';
+  if(h==='youtu.be'){
+    const id=u.pathname.split('/').filter(Boolean)[0]||'';
+    return /^[A-Za-z0-9_-]{11}$/.test(id)?`https://www.youtube.com/watch?v=${id}`:'';
+  }
+  const v=u.searchParams.get('v');
+  if(v&&/^[A-Za-z0-9_-]{11}$/.test(v))return `https://www.youtube.com/watch?v=${v}`;
+  const parts=u.pathname.split('/').filter(Boolean);
+  if(parts[0]==='embed'&&/^[A-Za-z0-9_-]{11}$/.test(parts[1]||''))return `https://www.youtube.com/watch?v=${parts[1]}`;
+  if(parts[0]?.startsWith('@'))return `https://www.youtube.com/${parts[0]}/live`;
+  if(['channel','c','user'].includes(parts[0])&&parts[1])return `https://www.youtube.com/${parts[0]}/${encodeURIComponent(parts[1])}/live`;
+  return '';
+}
+function enrichResolverWithYoutube(result,req){
+  if(!result||typeof result!=='object')return result;
+  const sourceCandidates=[
+    result.pageUrl,result.rootPageUrl,
+    ...(Array.isArray(result.pagesChecked)?result.pagesChecked:[]),
+    ...(Array.isArray(result.iframesChecked)?result.iframesChecked.map(x=>x?.url):[]),
+    ...(Array.isArray(result.candidates)?result.candidates.map(x=>x?.url):[])
+  ].filter(Boolean);
+  const yt=[...new Set(sourceCandidates.map(resolverYoutubeUrl).filter(Boolean))];
+  if(!yt.length)return result;
+  const base=publicBaseUrl(req);
+  const stable=yt.map((target,i)=>({
+    url:`${base}/api/youtube/live.m3u8?url=${encodeURIComponent(target)}`,
+    type:'HLS',
+    sourcePage:target,
+    headers:{},
+    youtube:true,
+    stable:true,
+    score:260-i,
+    confidence:'ALTA',
+    reasons:['YOUTUBE_LIVE_ESTABLE']
+  }));
+  const playable=Array.isArray(result.playable)?result.playable:[];
+  const candidates=Array.isArray(result.candidates)?result.candidates:[];
+  result.playable=[...stable,...playable.filter(x=>!stable.some(y=>y.url===x?.url))];
+  result.candidates=[...stable,...candidates.filter(x=>!stable.some(y=>y.url===x?.url))];
+  result.recommended=result.playable[0]||result.recommended||null;
+  result.youtubeLive=yt;
+  result.note=(result.note||'')+' Se detectó YouTube Live: el panel agregó una URL HLS estable que se resuelve nuevamente en cada reproducción.';
+  return result;
 }
 function extractWebCandidates(html,base){
   const found=new Map();
@@ -1778,6 +1826,22 @@ function extractWebCandidates(html,base){
   for(const m of html.matchAll(/['"](\/[^'"]*(?:config|player|stream|live|manifest|playlist)[^'"]*)['"]/gi))add(m[1],'CONFIG');
   // También busca URLs absolutas/protocol-relative aunque estén dentro de JSON o JavaScript minificado.
   for(const m of decodeEmbedded(html).matchAll(/(?:https?:)?\/\/[^\s'"<>\\]+/gi))add(m[0],'LINK');
+
+  // CDN Telecom/edge-access: si aparece una variante fija dentro de un grupo ngrp,
+  // agrega también el master playlist estable para probar antes que la variante 720p/1080p.
+  for(const item of [...found.values()]){
+    try{
+      const u=new URL(item.url);
+      if(!/\.edge-access\.net$/i.test(u.hostname))continue;
+      if(!/\/ngrp:[^/]+_all\/[^/?#]+\.m3u8$/i.test(u.pathname))continue;
+      const master=new URL(u.href);
+      master.pathname=master.pathname.replace(/\/[^/]+\.m3u8$/i,'/playlist.m3u8');
+      if(!master.searchParams.has('sense'))master.searchParams.set('sense','true');
+      const url=master.href;
+      if(!found.has(url))found.set(url,{url,type:'HLS',sourcePage:base,headers:candidateHeaders(base),edgeAccessMaster:true});
+    }catch{}
+  }
+
   return [...found.values()].sort((a,b)=>(b.type==='IFRAME'?b.priority||0:0)-(a.type==='IFRAME'?a.priority||0:0)).slice(0,300);
 }
 function resolverIsoDurationSeconds(raw=''){
@@ -2186,7 +2250,7 @@ async function resolvePublicStreamPage(rawUrl,initialReferer=''){
   for(const c of rawPlayable){const rank=resolverCandidateScore(c);Object.assign(c,rank)}
   rawPlayable.sort((a,b)=>(b.score||0)-(a.score||0));
   const clean=rawPlayable.filter(x=>!x.adSuspected),suspectedAds=rawPlayable.filter(x=>x.adSuspected),playable=clean.length?clean:rawPlayable;
-  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.15: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
+  return {pageUrl:first.url,pagesChecked:pages,iframesChecked:iframes,candidates,playable,suspectedAds,recommended:playable[0]||null,maxDepthSeen,recommendedHeaders:candidateHeaders(first.url),note:'Detector v1.1.16: prioriza HLS/DASH y penaliza URLs con firmas típicas de publicidad. Para páginas que muestran anuncios antes del stream principal usá ANÁLISIS DINÁMICO.'};
 }
 
 function streamKind(rawUrl,contentType=''){
@@ -2274,7 +2338,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     });
     if(initialReferer){const extra={Referer:initialReferer};const o=originFor(initialReferer);if(o)extra.Origin=o;await page.setExtraHTTPHeaders(extra)}
     page.on('framenavigated',frame=>{try{const u=frame.url();if(publicBrowserUrl(u)){const parent=frame.parentFrame()?.url()||rawUrl;observedFrames.set(u,{url:u,parent,priority:iframePriority(u)})}}catch{}});
-    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.15');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
+    await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36 CO-CHI-Resolver/1.1.16');await page.setViewport({width:1280,height:720});await page.setRequestInterception(true);
     page.on('request',req=>{
       const url=req.url(),isHttp=/^https?:/i.test(url);
       // No bloquear blob:, data:, about: ni otros recursos internos del reproductor:
@@ -2313,7 +2377,7 @@ async function resolveDynamicPublicStreamPage(rawUrl,initialReferer=''){
     const clean=verified.filter(x=>!x.adSuspected),suspectedAds=verified.filter(x=>x.adSuspected),playable=clean.length?clean:verified;
     const frameUrls=[...new Set(page.frames().map(f=>f.url()).filter(publicBrowserUrl))];for(const u of frameUrls)if(!observedFrames.has(u))observedFrames.set(u,{url:u,parent:rawUrl,priority:iframePriority(u)});
     const iframeTrace=[...observedFrames.values()].sort((a,b)=>(b.priority||0)-(a.priority||0));
-    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.15: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
+    return {pageUrl:finalPage,pagesChecked:frameUrls,iframesChecked:iframeTrace,candidates,playable,suspectedAds,recommended:playable[0]||null,recommendedHeaders:candidateHeaders(finalPage),dynamic:true,interactionClicks,note:'Resolver dinámico v1.1.16: intenta activar reproductores y botones Play/Continuar/Skip visibles, observa la red durante varios ciclos, verifica las fuentes y separa clips/publicidad probable del stream principal. No inicia sesión ni evita DRM, CAPTCHA o controles de acceso.'};
   }finally{await browser.close().catch(()=>{})}
 }
 
@@ -3982,20 +4046,20 @@ async function route(req,res){
     if(p==='/api/admin/stream-resolver'&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver experimental'});
       const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Ingresá una URL web'});
-      try{const result=await resolvePublicStreamPage(url);audit(actor.id,'stream_resolver_test','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
+      try{const result=enrichResolverWithYoutube(await resolvePublicStreamPage(url),req);audit(actor.id,'stream_resolver_test','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo analizar la página: '+e.message});}
     }
     if(p==='/api/admin/stream-resolver/dynamic'&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede usar el resolver dinámico'});
       if(!rateLimit(req,res,'dynamic_stream_resolver',8,10*60*1000))return;
       const b=await readJson(req),url=String(b.url||'').trim();if(!url)return sendJson(res,400,{error:'Ingresá una URL web'});
-      try{const result=await resolveDynamicPublicStreamPage(url);result.autoFollowed=false;result.autoFollowChain=[{hop:0,url,pageUrl:result.pageUrl||url,playableCount:Array.isArray(result.playable)?result.playable.length:0,iframeCount:Array.isArray(result.iframesChecked)?result.iframesChecked.length:0,interactionClicks:Number(result.interactionClicks||0)}];audit(actor.id,'stream_resolver_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
+      try{const result=enrichResolverWithYoutube(await resolveDynamicPublicStreamPage(url),req);result.autoFollowed=false;result.autoFollowChain=[{hop:0,url,pageUrl:result.pageUrl||url,playableCount:Array.isArray(result.playable)?result.playable.length:0,iframeCount:Array.isArray(result.iframesChecked)?result.iframesChecked.length:0,interactionClicks:Number(result.interactionClicks||0)}];audit(actor.id,'stream_resolver_dynamic','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo ejecutar el análisis dinámico: '+e.message});}
     }
     if(p==='/api/admin/stream-resolver/iframe'&&m==='POST'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede probar iframes'});
       const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
-      try{const result=await resolvePublicStreamPage(url,referer);audit(actor.id,'stream_resolver_iframe','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
+      try{const result=enrichResolverWithYoutube(await resolvePublicStreamPage(url,referer),req);audit(actor.id,'stream_resolver_iframe','web',null,url.slice(0,500));return sendJson(res,200,{ok:true,selectedIframe:url,parentReferer:referer,...result});}
       catch(e){return sendJson(res,400,{error:'No se pudo probar el iframe: '+e.message});}
     }
     if(p==='/api/admin/stream-resolver/iframe/dynamic'&&m==='POST'){
@@ -4004,10 +4068,10 @@ async function route(req,res){
       const b=await readJson(req),url=String(b.url||'').trim(),referer=String(b.referer||'').trim();if(!url)return sendJson(res,400,{error:'Falta URL del iframe'});
       try{
         let result;
-        try{result=await resolveDynamicPublicStreamPage(url,referer);}
+        try{result=enrichResolverWithYoutube(await resolveDynamicPublicStreamPage(url,referer),req);}
         catch(e){
           if(!/ERR_BLOCKED_BY_CLIENT/i.test(String(e?.message||e)))throw e;
-          result=await resolvePublicStreamPage(url,referer);
+          result=enrichResolverWithYoutube(await resolvePublicStreamPage(url,referer),req);
           result.dynamicFallback=true;
           result.dynamicError=String(e?.message||e);
         }
