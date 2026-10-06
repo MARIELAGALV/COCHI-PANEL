@@ -2,6 +2,9 @@
 
 ## Activación y acceso
 `POST /api/client-device/register` registra el dispositivo y entrega código de activación.
+
+El nombre del modelo es solo una etiqueta: varios televisores pueden llamarse igual. Si otro equipo presenta el mismo `deviceUid` sin una credencial válida, se crea un registro y código independientes, incluso si el anterior está pendiente. El alta no reemplaza secretos ni vincula automáticamente al cliente anterior. Para reintentar el registro del mismo equipo, se puede enviar también su `deviceSecret`; si es válido, se conservan el código y la credencial existentes. Las APK actuales pueden seguir enviando el UID original porque `/status` y `/session` reconocen la credencial de cada registro.
+
 `POST /api/client-device/status` devuelve `allowed`, `accessMode` (`paid` o `demo`) y `accessExpiresAt`.
 `POST /api/client-device/session` crea una sesión cuyo vencimiento nunca supera el vencimiento del demo/servicio reportado.
 `GET /api/client-device/config` devuelve fuentes, acceso y estado de control parental.

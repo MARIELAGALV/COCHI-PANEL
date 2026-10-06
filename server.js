@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.17';
+const VERSION = '1.1.18';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -3899,26 +3899,21 @@ async function route(req,res){
   if(p==='/api/client-device/register'&&m==='POST'){
     const b=await readJson(req),uid=String(b.deviceUid||'').trim();if(uid.length<8)return sendJson(res,400,{error:'deviceUid inválido'});
     const deviceName=String(b.deviceName||'Android').trim().slice(0,120),platform=String(b.platform||'android').trim().slice(0,30);
+    const existingSecret=String(b.deviceSecret||'').trim();
+    const verified=existingSecret?clientDeviceByCred(uid,existingSecret):null;
+    if(verified){
+      const t=nowIso();
+      db.prepare('UPDATE client_devices SET device_name=?,platform=?,last_seen_at=?,updated_at=? WHERE id=?')
+        .run(deviceName,platform,t,t,verified.id);
+      return sendJson(res,200,{existing:true,id:verified.id,activationCode:verified.activation_code,deviceSecret:existingSecret,status:verified.status,requiresExistingSecret:false});
+    }
     const ex=db.prepare('SELECT id,activation_code,status,client_id FROM client_devices WHERE device_uid=?').get(uid);
     if(ex){
       const t=nowIso();
-      // Si la TV perdió su credencial y el registro anterior todavía estaba libre,
-      // regeneramos la credencial sobre ese mismo registro.
-      if(ex.status==='pending'&&ex.client_id===null){
-        const secret=randomToken();
-        db.exec('BEGIN');
-        try{
-          db.prepare('DELETE FROM client_sessions WHERE device_id=?').run(ex.id);
-          db.prepare('UPDATE client_devices SET device_name=?,platform=?,secret_hash=?,last_seen_at=?,updated_at=? WHERE id=?')
-            .run(deviceName,platform,sha(secret),t,t,ex.id);
-          db.exec('COMMIT');
-        }catch(e){db.exec('ROLLBACK');throw e;}
-        return sendJson(res,201,{existing:false,recovered:true,activationCode:ex.activation_code,deviceSecret:secret,status:'pending',requiresExistingSecret:false});
-      }
-
       // Algunas Android/Google TV están entregando un deviceUid repetido aun siendo TVs distintas.
-      // Nunca sobrescribimos el dispositivo ya vinculado: creamos un registro interno alternativo
-      // con código/secret nuevos. La APK puede seguir enviando su UID original porque
+      // Sin una credencial válida no sabemos si es la misma TV: tampoco sobrescribimos
+      // un registro pendiente. Cada alta recibe un registro interno y código propios.
+      // La APK puede seguir enviando su UID original porque
       // clientDeviceByCred también valida el registro por la credencial secreta recién emitida.
       const code=generateCode('client_devices'),secret=randomToken(),compatUid=`${uid}#${crypto.randomUUID()}`;
       const rr=db.prepare("INSERT INTO client_devices(device_uid,device_name,platform,activation_code,secret_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)")
