@@ -87,7 +87,17 @@ function openModal(html){$('#modal').innerHTML=html;$('#modalBackdrop').classLis
 function closeModal(){$('#modalBackdrop').classList.add('hidden');$('#modal').classList.remove('content-editor-modal','banner-crop-modal');$('#modal').innerHTML='';}
 $('#modalBackdrop').addEventListener('click',e=>{if(e.target!==$('#modalBackdrop'))return;/* El editor de contenido no se cierra tocando fuera: evita cierres accidentales al hacer scroll/tocar en móvil o TV. */if($('#modal').classList.contains('content-editor-modal')){toast('Editor protegido: usá X, Cancelar o Guardar para salir.','ok');return;}closeModal();});
 
+async function syncPanelVersion(){
+  const label=$('#panelVersionLabel');if(!label)return;
+  try{
+    const info=await api('/api/public/info',{cache:'no-store'});
+    const version=String(info.version||'').trim();
+    if(version)label.textContent=`PANEL v${version}`;
+  }catch{}
+}
+
 async function bootstrap(){
+  syncPanelVersion();
   const st=await api('/api/setup/status').catch(()=>({needsSetup:false}));
   if(st.needsSetup){show('setupView');return;}
   try{const me=await api('/api/panel/me');state.me=me.account;clearLegacySecret();setPanelSignedOut(false);enterApp();return;}catch{}
@@ -2301,7 +2311,7 @@ $('#modal').addEventListener('click',async e=>{
 });
 
 if('serviceWorker' in navigator && location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js?v=1.1.9-preview-transfer-1').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{}));
 }
 bootstrap();
 
