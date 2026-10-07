@@ -6,6 +6,16 @@
 .transfer-client-details{margin:14px 0;overflow-wrap:anywhere}
 .transfer-client-details .error{color:#ff8d91}
 
+/* The card accent and expiry date follow the customer's remaining service time. */
+#view-clients #clientsBody tr[data-client-expiry-color]{--client-expiry-color:#9fb0ba;--client-expiry-glow:rgba(159,176,186,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="green"]{--client-expiry-color:#48e6ad;--client-expiry-glow:rgba(72,230,173,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="yellow"]{--client-expiry-color:#ffd471;--client-expiry-glow:rgba(255,212,113,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="red"]{--client-expiry-color:#ff8fa0;--client-expiry-glow:rgba(255,143,160,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color] td:nth-child(3){color:var(--client-expiry-color)}
+@media(max-width:660px){
+  #view-clients #clientsBody tr[data-client-expiry-color]::before{background:var(--client-expiry-color);box-shadow:0 0 12px var(--client-expiry-glow)}
+}
+
 @media (max-width:660px){
   body[data-view="clients"] .main{
     padding-left:12px;
@@ -90,8 +100,8 @@
     right:0;
     top:0;
     height:4px;
-    background:linear-gradient(90deg,#45e5ad,#58edbd);
-    box-shadow:0 0 12px rgba(69,229,173,.3);
+    background:var(--client-expiry-color,#9fb0ba);
+    box-shadow:0 0 12px var(--client-expiry-glow,rgba(159,176,186,.3));
   }
   #view-clients #clientsBody td{
     display:block;
@@ -131,7 +141,7 @@
     margin-top:22px;
     overflow:hidden;
     white-space:nowrap;
-    color:#48e6ad;
+    color:var(--client-expiry-color,#9fb0ba);
     font-size:18px;
     font-weight:900;
     line-height:1.12;
@@ -610,6 +620,15 @@ body[data-view="devices"] #view-devices .actions button{
 #view-appearance .theme-color-grid{
   width:100%;
 }
+
+.expiry-theme-rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.expiry-theme-rule{display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid var(--expiry-accent);border-top:4px solid var(--expiry-accent);border-radius:12px;background:rgba(4,18,30,.72)}
+.expiry-theme-rule b{color:var(--expiry-accent);font-size:14px}
+.expiry-theme-rule span{font-size:13px;color:#c3d7e2}
+.expiry-theme-rule[data-expiry-color="green"]{--expiry-accent:#48e6ad}
+.expiry-theme-rule[data-expiry-color="yellow"]{--expiry-accent:#ffd471}
+.expiry-theme-rule[data-expiry-color="red"]{--expiry-accent:#ff8fa0}
+@media(max-width:660px){.expiry-theme-rules{grid-template-columns:1fr}}
 
 
 /* v1.1.7 · Editor visual real del banner */

@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, appTheme:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{}, bulkUaPreview:null, bulkUaUndo:null, serverClockOffsetMs:0 };
+const state = { me:null, accounts:[], clients:[], devices:[], promos:[], sources:[], demoSettings:null, adultSettings:null, playbackSecurity:null, tvGateways:null, homeBanner:null, roleSettings:{enabledRoleLevels:[1,2,3,4],creatableRoleLevels:[1,2,3,4]}, content:{}, bulkUaPreview:null, bulkUaUndo:null, serverClockOffsetMs:0 };
 const roleNames = {1:'ADMINISTRACIÓN',2:'DISTRIBUIDOR',3:'REVENDEDOR',4:'VENDEDOR',5:'CLIENTE'};
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
@@ -17,6 +17,14 @@ function panelNowMs(){return Date.now()+Number(state.serverClockOffsetMs||0);}
 function days(v){if(!v)return null;return (new Date(v).getTime()-panelNowMs())/86400000;}
 function clientDaysRemainingNow(c){if(!c?.expires_at)return null;const ms=Date.parse(c.expires_at);return Number.isFinite(ms)?(ms-panelNowMs())/86400000:null;}
 function clientRenewAvailableNow(c){const rem=clientDaysRemainingNow(c);return !c?.expires_at||Number.isFinite(rem)&&rem<=10;}
+function clientExpiryColor(expiry){
+  if(!expiry)return 'neutral';
+  const remaining=Date.parse(expiry)-panelNowMs();
+  if(!Number.isFinite(remaining))return 'neutral';
+  if(remaining<2*86400000)return 'red';
+  return remaining<=10*86400000?'yellow':'green';
+}
+function clientExpiryBadgeClass(color){return {green:'active',yellow:'pending',red:'blocked',neutral:'off'}[color]||'off';}
 function clientRemainingText(expiry){
   if(!expiry)return 'SIN ACTIVAR';
   const ms=Date.parse(expiry);if(!Number.isFinite(ms))return 'FECHA INVÁLIDA';
@@ -29,16 +37,21 @@ function clientRemainingText(expiry){
 function clientRemainingBadge(expiry){
   if(!expiry)return '<span class="badge off">SIN ACTIVAR</span>';
   const ms=Date.parse(expiry);if(!Number.isFinite(ms))return '<span class="badge off">FECHA INVÁLIDA</span>';
-  const expired=ms<=panelNowMs();
-  return `<span class="badge ${expired?'blocked':'active'}" data-client-expiry-live="${esc(expiry)}">${esc(clientRemainingText(expiry))}</span>`;
+  const color=clientExpiryColor(expiry),expired=ms<=panelNowMs();
+  return `<span class="badge ${clientExpiryBadgeClass(color)}" data-client-expiry-live="${esc(expiry)}" data-client-expired="${expired}">${esc(clientRemainingText(expiry))}</span>`;
 }
 function updateClientExpiryCountdowns(){
   let crossed=false;
   $$('[data-client-expiry-live]').forEach(el=>{
     const expiry=el.getAttribute('data-client-expiry-live')||'';const expired=Date.parse(expiry)<=panelNowMs();
-    const wasExpired=el.classList.contains('blocked');el.textContent=clientRemainingText(expiry);el.classList.toggle('active',!expired);el.classList.toggle('blocked',expired);
+    const wasExpired=el.dataset.clientExpired==='true';
+    const color=clientExpiryColor(expiry),badgeClass=clientExpiryBadgeClass(color);
+    el.textContent=clientRemainingText(expiry);el.dataset.clientExpired=String(expired);
+    ['active','pending','blocked','off'].forEach(cls=>el.classList.toggle(cls,cls===badgeClass));
     if(expired&&!wasExpired)crossed=true;
   });
+  // Update the existing cards in place, including the Android panel WebView.
+  $$('#clientsBody tr[data-client]').forEach(row=>{row.dataset.clientExpiryColor=clientExpiryColor(row.dataset.clientExpiry);});
   if(crossed&&state.clients.length)renderClients();
 }
 function uid(){let x=localStorage.getItem('cochi_panel_device_uid');if(!x){x='web-'+crypto.randomUUID();localStorage.setItem('cochi_panel_device_uid',x);}return x;}
@@ -189,7 +202,7 @@ async function refreshCurrent(){
     if(v==='demos'&&state.me.role_level===1)await loadDemos();
     if(v==='adults'&&state.me.role_level===1)await loadAdultSettings();
     if(v==='security'&&state.me.role_level===1){await loadPlaybackSecurity();await loadTvGateways();}
-    if(v==='appearance'&&state.me.role_level===1)await Promise.all([loadAppTheme(),loadHomeBanner()]);
+    if(v==='appearance'&&state.me.role_level===1)await loadHomeBanner();
     if(v==='sources'&&state.me.role_level===1)await loadSources();
     if(v==='resolver'&&state.me.role_level===1){}
     if(v==='content'&&state.me.role_level===1)await loadContent();
@@ -497,7 +510,7 @@ function renderClients(){
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-    return `<tr data-client="${c.id}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+    return `<tr data-client="${c.id}" data-client-expiry="${esc(c.expires_at||'')}" data-client-expiry-color="${clientExpiryColor(c.expires_at)}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
@@ -1088,24 +1101,6 @@ $('#clearHomeBannerCacheBtn')?.addEventListener('click',async()=>{
   }catch(e){msg($('#homeBannerMsg'),e.message);toast(e.message,'bad')}finally{if(btn)btn.disabled=false}
 });
 
-
-const THEME_PRESETS={
-  blue:{primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'},
-  red:{primary:'#FF3948',selection:'#E8192E',background:'#12090D',button:'#2A1118',border:'#6A2631',text:'#FFFFFF',secondary:'#D2B8BD'},
-  green:{primary:'#38E87A',selection:'#14B85B',background:'#07140D',button:'#10281A',border:'#245F3B',text:'#FFFFFF',secondary:'#B5CEBE'},
-  violet:{primary:'#B14CFF',selection:'#8534D8',background:'#100918',button:'#21122F',border:'#59307A',text:'#FFFFFF',secondary:'#C6B7D0'},
-  orange:{primary:'#FF9D24',selection:'#F27016',background:'#160E06',button:'#2F1D0D',border:'#74451D',text:'#FFFFFF',secondary:'#D5C1AA'},
-  dark:{primary:'#E8F0F7',selection:'#64798C',background:'#06090D',button:'#151A20',border:'#38434E',text:'#FFFFFF',secondary:'#A7B0B8'}
-};
-function themeRead(){return {preset:$('#themePreset').value,primary:$('#themePrimaryHex').value.toUpperCase(),selection:$('#themeSelectionHex').value.toUpperCase(),background:$('#themeBackgroundHex').value.toUpperCase(),button:$('#themeButtonHex').value.toUpperCase(),border:$('#themeBorderHex').value.toUpperCase(),text:$('#themeTextHex').value.toUpperCase(),secondary:$('#themeSecondaryHex').value.toUpperCase()}}
-function themePut(x){const t=x||THEME_PRESETS.blue;$('#themePreset').value=t.preset||'custom';for(const k of ['Primary','Selection','Background','Button','Border','Text','Secondary']){const key=k.toLowerCase();const val=t[key]||THEME_PRESETS.blue[key];$('#theme'+k).value=val;$('#theme'+k+'Hex').value=val;}themePreview()}
-function themePreview(){const t=themeRead(),p=$('#themePreview');if(!p)return;p.style.setProperty('--tp',t.primary);p.style.setProperty('--ts',t.selection);p.style.setProperty('--tb',t.background);p.style.setProperty('--tbtn',t.button);p.style.setProperty('--tborder',t.border);p.style.setProperty('--tt',t.text);p.style.setProperty('--tm',t.secondary)}
-async function loadAppTheme(){const d=await api('/api/admin/app-theme');state.appTheme=d;themePut(d.draft||d.published||d.defaults);$('#themePublishedBadge').textContent='TEMA PUBLICADO';msg($('#themeMsg'),'')}
-$('#themePreset')?.addEventListener('change',()=>{const v=$('#themePreset').value;if(v!=='custom'&&THEME_PRESETS[v])themePut({preset:v,...THEME_PRESETS[v]});else themePreview()});
-for(const k of ['Primary','Selection','Background','Button','Border','Text','Secondary']){const c='#theme'+k,h='#theme'+k+'Hex';$(c)?.addEventListener('input',()=>{$(h).value=$(c).value.toUpperCase();$('#themePreset').value='custom';themePreview()});$(h)?.addEventListener('input',()=>{if(/^#[0-9A-Fa-f]{6}$/.test($(h).value)){$(c).value=$(h).value;$('#themePreset').value='custom';themePreview()}})}
-$('#saveThemeDraftBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/admin/app-theme/draft',{method:'PUT',body:{theme:themeRead()}});state.appTheme.draft=r.theme;msg($('#themeMsg'),'BORRADOR GUARDADO. Los clientes todavía conservan el tema publicado.',true);toast('Borrador de diseño guardado','ok')}catch(e){msg($('#themeMsg'),e.message);toast(e.message,'bad')}});
-$('#publishThemeBtn')?.addEventListener('click',async()=>{if(!confirm('¿Publicar estos colores para CO-CHI? Los dispositivos los tomarán al actualizar su configuración.'))return;try{const r=await api('/api/admin/app-theme/publish',{method:'POST',body:{theme:themeRead()}});state.appTheme.published=r.theme;msg($('#themeMsg'),'TEMA PUBLICADO CORRECTAMENTE.',true);toast('Diseño publicado en CO-CHI','ok')}catch(e){msg($('#themeMsg'),e.message);toast(e.message,'bad')}});
-$('#resetThemeBtn')?.addEventListener('click',async()=>{try{const r=await api('/api/admin/app-theme/reset',{method:'POST'});themePut(r.theme);msg($('#themeMsg'),'Azul CO-CHI restaurado en el borrador. Publicá para aplicarlo a clientes.',true)}catch(e){msg($('#themeMsg'),e.message)}});
 
 async function loadSources(){
   const d=await api('/api/admin/sources');state.sources=d.sources;

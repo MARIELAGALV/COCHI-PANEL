@@ -5,8 +5,8 @@ const { backendFixture } = require('./backend-fixture.cjs');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const later = (minutes = 60 * 24 * 20) => new Date(Date.now() + minutes * 60000).toISOString();
 
-async function transferFixture(t) {
-  const f = await backendFixture(t);
+async function transferFixture(t, options) {
+  const f = await backendFixture(t, options);
   let sequence = 0;
   function account(role = 1, parent = null, name = `Panel ${role}`) {
     const n = ++sequence, now = new Date().toISOString();

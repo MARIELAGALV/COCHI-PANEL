@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
-  <link rel="stylesheet" href="/styles.css?v=1.1.19-device-transfer-1">
+  <link rel="stylesheet" href="/styles.css?v=1.1.20-expiry-colors-1">
 </head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
@@ -46,7 +46,7 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p id="panelVersionLabel">PANEL v1.1.19</p></div></div>
+      <div class="brand side-brand"><div class="brand-mark">CO</div><div><h1>CO-CHI</h1><p id="panelVersionLabel">PANEL v1.1.20</p></div></div>
       <nav>
         <button class="nav-btn active" data-view="dashboard">▦ <span>Inicio</span></button>
         <button class="nav-btn" data-view="accounts">◇ <span>Fichas PANEL</span></button>
@@ -221,23 +221,13 @@
         </div>
 
         <div class="neon-card panel-card control-card">
-          <div class="card-head"><div><h3>Diseño y apariencia</h3><p class="muted">Solo ADMINISTRACIÓN. Ajustá los colores y publicalos cuando estén listos.</p></div><span id="themePublishedBadge" class="badge active">TEMA PUBLICADO</span></div>
-          <div class="theme-layout">
-            <div class="theme-controls">
-              <label>Tema predefinido<select id="themePreset"><option value="blue">Azul CO-CHI</option><option value="red">Rojo</option><option value="green">Verde</option><option value="violet">Violeta</option><option value="orange">Naranja</option><option value="dark">Oscuro</option><option value="custom">Personalizado</option></select></label>
-              <div class="theme-color-grid">
-                <label><span class="theme-color-title">Color principal</span><input id="themePrimary" type="color" value="#00CFFF"><input id="themePrimaryHex" maxlength="7" value="#00CFFF"></label>
-                <label><span class="theme-color-title">Color de selección</span><input id="themeSelection" type="color" value="#1E90FF"><input id="themeSelectionHex" maxlength="7" value="#1E90FF"></label>
-                <label><span class="theme-color-title">Color de fondo</span><input id="themeBackground" type="color" value="#0A0F1B"><input id="themeBackgroundHex" maxlength="7" value="#0A0F1B"></label>
-                <label><span class="theme-color-title">Color de botones</span><input id="themeButton" type="color" value="#162338"><input id="themeButtonHex" maxlength="7" value="#162338"></label>
-                <label><span class="theme-color-title">Color de bordes</span><input id="themeBorder" type="color" value="#1E3D6B"><input id="themeBorderHex" maxlength="7" value="#1E3D6B"></label>
-                <label><span class="theme-color-title">Color de texto</span><input id="themeText" type="color" value="#FFFFFF"><input id="themeTextHex" maxlength="7" value="#FFFFFF"></label>
-                <label><span class="theme-color-title">Texto secundario</span><input id="themeSecondary" type="color" value="#B0B0B0"><input id="themeSecondaryHex" maxlength="7" value="#B0B0B0"></label>
-              </div>
-              <div class="panel-control-actions mt10"><button id="saveThemeDraftBtn" class="ghost" type="button">GUARDAR BORRADOR</button><button id="publishThemeBtn" class="primary" type="button">PUBLICAR EN CO-CHI</button><button id="resetThemeBtn" class="ghost" type="button">RESTAURAR AZUL CO-CHI</button></div><div id="themeMsg" class="msg"></div>
-            </div>
-            
+          <div class="card-head"><div><h3>Colores automáticos de CO-CHI</h3><p class="muted">Cada cliente recibe su color según el tiempo que queda de servicio. Al renovar, el color se actualiza automáticamente.</p></div><span class="badge active">AUTOMÁTICO</span></div>
+          <div class="expiry-theme-rules">
+            <div class="expiry-theme-rule" data-expiry-color="green"><b>VERDE</b><span>Más de 10 días restantes</span></div>
+            <div class="expiry-theme-rule" data-expiry-color="yellow"><b>AMARILLO</b><span>De 2 a 10 días restantes</span></div>
+            <div class="expiry-theme-rule" data-expiry-color="red"><b>ROJO</b><span>Menos de 2 días o vencido</span></div>
           </div>
+          <p class="muted small mt10">La app recibe el color al abrirla o volver al inicio. Las cuentas sin fecha de servicio conservan el azul CO-CHI. El banner se administra de forma independiente.</p>
         </div>
       </section>
 
@@ -483,6 +473,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.19-device-transfer-1"></script>
+  <script src="/app.js?v=1.1.20-expiry-colors-1"></script>
 </body>
 </html>

@@ -9,6 +9,23 @@ El nombre del modelo es solo una etiqueta: varios televisores pueden llamarse ig
 `POST /api/client-device/session` crea una sesión cuyo vencimiento nunca supera el vencimiento del demo/servicio reportado.
 `GET /api/client-device/config` devuelve fuentes, acceso y estado de control parental.
 
+## Colores automáticos por vencimiento
+
+`GET /api/client-device/config` entrega `appTheme` individual para la cuenta autenticada. Desde el panel v1.1.20, los colores se calculan al consultar la configuración a partir de `clientExpiresAt`, usando la hora del servidor:
+
+| Tiempo de servicio restante | Color |
+| --- | --- |
+| Más de 10 días | Verde |
+| De 2 a 10 días, incluidos ambos límites | Amarillo |
+| Menos de 2 días | Rojo |
+| Sin fecha comercial o fecha inválida | Azul CO-CHI predeterminado |
+
+Se comparan horas exactas, sin redondear días. No se usan la duración del token ni la del demo para pintar una cuenta de pago. Al renovar o trasladar un dispositivo, su siguiente configuración usa el vencimiento actual del cliente al que pertenece.
+
+`appTheme` conserva los campos compatibles con la APK: `preset`, `primary`, `selection`, `background`, `button`, `border`, `text` y `secondary`. Los siete colores son cadenas `#RRGGBB`. La APK publicada en CO-CHIUPDATES ya guarda estos campos y vuelve a pedirlos al abrir o regresar al inicio; el inicio de TV vuelve a aplicar la paleta recibida. Una app sin conexión conserva la última paleta recibida. La pantalla de cuenta vencida mantiene el comportamiento de la APK actual: no se habilita una cuenta vencida para entregar un tema.
+
+La edición manual de colores se retiró. `GET /api/admin/app-theme` es de solo lectura y devuelve `automatic: true`, `mode: "client-expiry"`, las tres reglas y el tema predeterminado. Las antiguas rutas de borrador, publicación y restauración responden `409` con `reason: "automatic_expiry_theme"`, para impedir que un panel abierto con código antiguo sobrescriba la automatización. El banner sigue administrándose con sus rutas habituales.
+
 ## Demo
 El backend registra un único demo de 60 minutos por `device_id`. Para impedir un nuevo demo después de reinstalar, el cliente Android debe enviar un `deviceUid` estable del mismo dispositivo.
 
