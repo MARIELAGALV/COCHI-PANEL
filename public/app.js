@@ -17,7 +17,8 @@ function panelNowMs(){return Date.now()+Number(state.serverClockOffsetMs||0);}
 function days(v){if(!v)return null;return (new Date(v).getTime()-panelNowMs())/86400000;}
 function clientDaysRemainingNow(c){if(!c?.expires_at)return null;const ms=Date.parse(c.expires_at);return Number.isFinite(ms)?(ms-panelNowMs())/86400000:null;}
 function clientRenewAvailableNow(c){const rem=clientDaysRemainingNow(c);return !c?.expires_at||Number.isFinite(rem)&&rem<=10;}
-function clientExpiryColor(expiry){
+function clientExpiryColor(expiry,statusCode=''){
+  if(statusCode==='expired'||statusCode==='demo_expired')return 'red';
   if(!expiry)return 'neutral';
   const remaining=Date.parse(expiry)-panelNowMs();
   if(!Number.isFinite(remaining))return 'neutral';
@@ -51,7 +52,7 @@ function updateClientExpiryCountdowns(){
     if(expired&&!wasExpired)crossed=true;
   });
   // Update the existing cards in place, including the Android panel WebView.
-  $$('#clientsBody tr[data-client]').forEach(row=>{row.dataset.clientExpiryColor=clientExpiryColor(row.dataset.clientExpiry);});
+  $$('#clientsBody tr[data-client]').forEach(row=>{row.dataset.clientExpiryColor=clientExpiryColor(row.dataset.clientExpiry,row.dataset.clientExpiryStatus);});
   if(crossed&&state.clients.length)renderClients();
 }
 function uid(){let x=localStorage.getItem('cochi_panel_device_uid');if(!x){x='web-'+crypto.randomUUID();localStorage.setItem('cochi_panel_device_uid',x);}return x;}
@@ -510,7 +511,7 @@ function renderClients(){
     const stat=clientStatusBadge(c);
     const linked=c.linked_device_count??c.device_count;
     const demoLine=c.demo_active_count?`<div class="muted small success-text">Demo activo en ${c.demo_active_count} dispositivo${c.demo_active_count>1?'s':''}</div>`:'';
-    return `<tr data-client="${c.id}" data-client-expiry="${esc(c.expires_at||'')}" data-client-expiry-color="${clientExpiryColor(c.expires_at)}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
+    return `<tr data-client="${c.id}" data-client-expiry="${esc(c.expires_at||'')}" data-client-expiry-status="${esc(c.display_status_code||'')}" data-client-expiry-color="${clientExpiryColor(c.expires_at,c.display_status_code)}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
 async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
