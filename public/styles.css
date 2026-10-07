@@ -10,7 +10,8 @@
 #view-clients #clientsBody tr[data-client-expiry-color]{--client-expiry-color:#9fb0ba;--client-expiry-glow:rgba(159,176,186,.3)}
 #view-clients #clientsBody tr[data-client-expiry-color="green"]{--client-expiry-color:#48e6ad;--client-expiry-glow:rgba(72,230,173,.3)}
 #view-clients #clientsBody tr[data-client-expiry-color="yellow"]{--client-expiry-color:#ffd471;--client-expiry-glow:rgba(255,212,113,.3)}
-#view-clients #clientsBody tr[data-client-expiry-color="red"]{--client-expiry-color:#ff8fa0;--client-expiry-glow:rgba(255,143,160,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="red"]{--client-expiry-color:#ff3030;--client-expiry-glow:rgba(255,48,48,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="red"] .badge.blocked{color:var(--client-expiry-color);border-color:rgba(255,48,48,.45);background:rgba(140,24,24,.18)}
 #view-clients #clientsBody tr[data-client-expiry-color] td:nth-child(3){color:var(--client-expiry-color)}
 @media(max-width:660px){
   #view-clients #clientsBody tr[data-client-expiry-color]::before{background:var(--client-expiry-color);box-shadow:0 0 12px var(--client-expiry-glow)}
@@ -627,7 +628,7 @@ body[data-view="devices"] #view-devices .actions button{
 .expiry-theme-rule span{font-size:13px;color:#c3d7e2}
 .expiry-theme-rule[data-expiry-color="green"]{--expiry-accent:#48e6ad}
 .expiry-theme-rule[data-expiry-color="yellow"]{--expiry-accent:#ffd471}
-.expiry-theme-rule[data-expiry-color="red"]{--expiry-accent:#ff8fa0}
+.expiry-theme-rule[data-expiry-color="red"]{--expiry-accent:#ff3030}
 @media(max-width:660px){.expiry-theme-rules{grid-template-columns:1fr}}
 
 

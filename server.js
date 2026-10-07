@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.21';
+const VERSION = '1.1.22';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -910,7 +910,7 @@ function homeBannerForClient(req){
 const EXPIRY_APP_THEMES={
   green:{preset:'green',primary:'#48E6AD',selection:'#14B85B',background:'#07140D',button:'#10281A',border:'#245F3B',text:'#FFFFFF',secondary:'#B5CEBE'},
   yellow:{preset:'custom',primary:'#FFD471',selection:'#E5B63D',background:'#151207',button:'#2C2410',border:'#6E5A24',text:'#FFFFFF',secondary:'#D2C5A0'},
-  red:{preset:'red',primary:'#FF8FA0',selection:'#E8192E',background:'#12090D',button:'#2A1118',border:'#6A2631',text:'#FFFFFF',secondary:'#D2B8BD'},
+  red:{preset:'red',primary:'#FF3030',selection:'#E81919',background:'#120909',button:'#2A1111',border:'#6A2626',text:'#FFFFFF',secondary:'#D2B8B8'},
   neutral:{preset:'blue',primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'}
 };
 function clientExpiryColor(expiry){
