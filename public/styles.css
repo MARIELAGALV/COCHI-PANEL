@@ -1,6 +1,11 @@
 /* CO-CHI PANEL v1.1.9 — vista de prueba oculta + mover/publicar canales + estilos heredados. */
 @import url("/styles-core-v1.1.7.css?v=1.1.9");
 
+/* Device transfers are available only to the principal administration. */
+.device-demo-card .demo-action{gap:8px;flex-wrap:wrap;white-space:normal}
+.transfer-client-details{margin:14px 0;overflow-wrap:anywhere}
+.transfer-client-details .error{color:#ff8d91}
+
 @media (max-width:660px){
   body[data-view="clients"] .main{
     padding-left:12px;

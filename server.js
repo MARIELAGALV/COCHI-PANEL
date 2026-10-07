@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.18';
+const VERSION = '1.1.19';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -1652,6 +1652,26 @@ function deviceAccessState(d,c){
   const di=demoInfo(d.id);
   if(di.active&&c.active){const owner=accountAccessState(accountRaw(c.owner_account_id));if(owner.ok)return {ok:true,reason:'ok',mode:'demo',expiresAt:di.expiresAt,demo:di};}
   return {ok:false,reason:di.used?'demo_expired':paid.reason,mode:di.used?'demo':null,expiresAt:di.expiresAt||null,demo:di};
+}
+// A transfer changes the customer link, never the device credential or session.
+// Only a new, empty customer can inherit paid time; existing customers keep their service.
+function clientDeviceTransferPlan(d,source,target){
+  const capacity=clientDeviceCapacity(target);
+  const reject=error=>({allowed:false,error,...capacity,inheritExpiry:false,serviceExpiresAt:null,accessMode:null});
+  if(!target.active)return reject('El cliente destino está bloqueado.');
+  if(!accountAccessState(accountRaw(target.owner_account_id)).ok)return reject('La ficha propietaria del cliente destino está bloqueada.');
+  if(d.status!=='blocked'&&capacity.linkedDevices>=capacity.deviceLimit)return reject(`El cliente destino ya alcanzó su límite de ${capacity.deviceLimit} dispositivos.`);
+  const before=deviceAccessState(d,source),paid=clientAccessState(target);
+  // Also cover blocked devices: moving one must not discard its paid time when reactivated.
+  const sourcePaid=clientAccessState(source);
+  const empty=!db.prepare('SELECT 1 FROM client_devices WHERE client_id=? LIMIT 1').get(target.id);
+  const hasServiceHistory=Boolean(db.prepare('SELECT 1 FROM client_service_ledger WHERE client_id=? LIMIT 1').get(target.id));
+  const inheritExpiry=sourcePaid.ok&&!target.expires_at&&empty&&!hasServiceHistory;
+  const effectiveTarget=inheritExpiry?{...target,expires_at:source.expires_at}:target;
+  const after=deviceAccessState({...d,client_id:target.id},effectiveTarget);
+  if(before.ok&&before.mode==='paid'&&!paid.ok&&!inheritExpiry)return reject('El cliente destino no tiene servicio vigente. Activá su servicio antes de mover este dispositivo.');
+  if(before.ok&&!after.ok)return reject('El traslado dejaría al dispositivo sin servicio. Revisá el cliente destino.');
+  return {allowed:true,...capacity,inheritExpiry,serviceExpiresAt:after.expiresAt||effectiveTarget.expires_at||null,accessMode:after.mode||null};
 }
 function refreshDeviceState(d){
   if(!d||d.status==='blocked'||!d.client_id)return d;
@@ -4426,6 +4446,53 @@ async function route(req,res){
       }catch(e){db.exec('ROLLBACK');throw e;}
       audit(actor.id,'client_devices_expanded','client',c.id,`+${blockSize}; límite ${oldLimit}→${newLimit}; costo ${owner.role_level===1?0:1}`);
       return sendJson(res,200,{ok:true,creditsSpent:owner.role_level===1?0:1,blockSize,oldLimit,newLimit,expiresAt:c.expires_at||null,sharedExpiry:true,extraBlocks:clientExtraDeviceBlocks(c)+1});
+    }
+
+    const transferDevice=p.match(/^\/api\/admin\/client-devices\/(\d+)\/transfer$/);
+    if(transferDevice&&(m==='GET'||m==='POST')){
+      if(!isRootAdminAccount(actor))return sendJson(res,403,{error:'Solo ADMINISTRACIÓN GENERAL (principal) puede mover dispositivos entre clientes.'});
+      const deviceId=Number(transferDevice[1]);
+      if(!Number.isSafeInteger(deviceId)||deviceId<1)return sendJson(res,400,{error:'Dispositivo inválido.'});
+      if(m==='GET'){
+        const d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(deviceId);
+        if(!d)return sendJson(res,404,{error:'Dispositivo no encontrado.'});
+        const source=d.client_id?clientRow(d.client_id):null;
+        if(!source)return sendJson(res,409,{error:'Este dispositivo todavía no está vinculado a un cliente.'});
+        const targets=db.prepare('SELECT c.*,a.name owner_name FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.id<>? ORDER BY c.name COLLATE NOCASE,c.id').all(source.id)
+          .map(c=>({id:c.id,name:c.name,ownerName:c.owner_name,expiresAt:c.expires_at||null,...clientDeviceTransferPlan(d,source,c)}));
+        return sendJson(res,200,{device:{id:d.id,name:d.device_name||d.device_uid,activationCode:d.activation_code,status:d.status},sourceClient:{id:source.id,name:source.name,ownerName:source.owner_name},targets,serverTime:nowIso()});
+      }
+      const b=await readJson(req);
+      if(!b||typeof b!=='object'||Array.isArray(b)||!Number.isSafeInteger(b.clientId)||b.clientId<1||!Number.isSafeInteger(b.sourceClientId)||b.sourceClientId<1)return sendJson(res,400,{error:'Indicá el cliente actual y el cliente destino.'});
+      // Recheck link, service and capacity inside the write transaction, after reading the body.
+      db.exec('BEGIN IMMEDIATE');
+      let result;
+      try{
+        const d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(deviceId);
+        const source=d?.client_id?clientRow(d.client_id):null,target=clientRow(b.clientId);
+        let failure;
+        if(!d)failure={status:404,error:'Dispositivo no encontrado.'};
+        else if(!source)failure={status:409,error:'Este dispositivo todavía no está vinculado a un cliente.'};
+        else if(source.id!==b.sourceClientId)failure={status:409,error:'El dispositivo cambió de cliente. Actualizá la pantalla antes de moverlo.'};
+        else if(!target)failure={status:404,error:'Cliente destino no encontrado.'};
+        else if(source.id===target.id)failure={status:409,error:'El dispositivo ya pertenece a ese cliente.'};
+        const plan=failure?null:clientDeviceTransferPlan(d,source,target);
+        if(!failure&&!plan.allowed)failure={status:409,error:plan.error};
+        if(!failure&&b.serviceExpiresAt!==undefined&&b.serviceExpiresAt!==plan.serviceExpiresAt)failure={status:409,error:'El vencimiento cambió. Volvé a abrir el traslado para revisar los datos.'};
+        if(failure){
+          db.exec('ROLLBACK');
+          return sendJson(res,failure.status,{error:failure.error});
+        }
+        const t=nowIso();
+        if(plan.inheritExpiry)db.prepare('UPDATE clients SET expires_at=?,updated_at=? WHERE id=?').run(source.expires_at,t,target.id);
+        db.prepare('UPDATE client_devices SET client_id=?,updated_at=? WHERE id=?').run(target.id,t,d.id);
+        // Keep the same demo duration and used-demo marker, but report it under its new customer.
+        db.prepare('UPDATE device_demos SET client_id=? WHERE device_id=?').run(target.id,d.id);
+        audit(actor.id,'client_device_transferred','client_device',d.id,JSON.stringify({sourceClientId:source.id,targetClientId:target.id,sourceOwnerAccountId:source.owner_account_id,targetOwnerAccountId:target.owner_account_id,inheritExpiry:plan.inheritExpiry,serviceExpiresAt:plan.serviceExpiresAt,sessionsPreserved:true}));
+        result={ok:true,deviceId:d.id,activationCode:d.activation_code,sourceClientId:source.id,clientId:target.id,clientName:target.name,status:d.status,serviceExpiresAt:plan.serviceExpiresAt,inheritedExpiry:plan.inheritExpiry,sessionsPreserved:true,creditsSpent:0,demoReset:false};
+        db.exec('COMMIT');
+      }catch(e){db.exec('ROLLBACK');throw e;}
+      return sendJson(res,200,result);
     }
 
     const deleteDevice=p.match(/^\/api\/admin\/client-devices\/(\d+)$/);

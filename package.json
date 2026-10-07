@@ -1,12 +1,14 @@
 {
   "name": "co-chi-panel",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "private": true,
   "description": "CO-CHI PANEL + backend central listo para HTTPS y PWA móvil",
   "main": "server.js",
   "scripts": {
     "start": "node -r ./cookie-support.js -r ./youtube-id-support.js -r ./youtube-live-support.js server.js",
-    "test:activation": "node --test tests/device-registration.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "test:activation": "node --test tests/device-registration.test.cjs",
+    "test:transfer": "node --test tests/device-transfer.test.cjs"
   },
   "engines": {
     "node": ">=22.5.0"
