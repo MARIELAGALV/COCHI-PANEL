@@ -2,59 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const vm = require('node:vm');
-const { once } = require('node:events');
-
-// Execute the real backend against an isolated SQLite database and local HTTP.
-// Browser resolution and background jobs are outside these activation tests.
-async function fixture(t) {
-  const root = path.resolve(__dirname, '..');
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cochi-device-test-'));
-  const timer = () => ({ unref() {} });
-  const context = vm.createContext({
-    require(name) {
-      if (name === 'puppeteer-core') {
-        return { launch() { throw new Error('Browser use is outside activation tests'); } };
-      }
-      return require(name);
-    },
-    __dirname: root,
-    process: { env: { COCHI_DATA_DIR: data, HOST: '127.0.0.1', PORT: '0' }, on() {} },
-    console: { log() {}, warn() {}, error(...args) { console.error(...args); } },
-    Buffer, URL, URLSearchParams, AbortController, AbortSignal, TextEncoder, TextDecoder,
-    fetch, setTimeout: timer, setInterval: timer, clearTimeout() {}, clearInterval() {},
-  });
-  const source = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
-  vm.runInContext(source + '\n globalThis.backendFixture = {server, db};', context,
-    { filename: path.join(root, 'server.js') });
-  const { server, db } = context.backendFixture;
-  await once(server, 'listening');
-  t.after(async () => {
-    server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve));
-    db.close();
-    fs.rmSync(data, { recursive: true, force: true });
-  });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  async function post(route, body) {
-    const response = await fetch(base + '/api/client-device/' + route, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-    });
-    return { status: response.status, body: await response.json() };
-  }
-  return {
-    db,
-    register: (uid, extra = {}) => post('register', {
-      deviceUid: uid, deviceName: 'TCL BeyondTV', platform: 'android-tv', ...extra,
-    }),
-    status: (uid, registration) => post('status', {
-      deviceUid: uid, deviceSecret: registration.body.deviceSecret,
-    }),
-  };
-}
+const { backendFixture: fixture } = require('./helpers/backend-fixture.cjs');
 
 test('two TVs with the same model name and different UIDs remain separate', async t => {
   const f = await fixture(t);

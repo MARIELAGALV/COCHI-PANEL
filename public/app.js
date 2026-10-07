@@ -633,6 +633,7 @@ async function openClientCodes(c){
         ${linked.length?linked.map((x,i)=>`<div class="rule-card device-demo-card">
           <div class="device-main-info"><div class="device-title-row"><b>${esc(x.device_name||'Dispositivo '+(i+1))}</b><span class="badge ${x.status==='active'?'active':x.status==='blocked'?'blocked':'pending'}">${esc((x.status||'pending').toUpperCase())}</span></div><code class="device-code">${esc(x.activation_code)}</code><span class="device-uid">${esc(x.device_uid)}</span>${x.last_seen_at?`<span class="device-last">Última actividad: ${esc(fmt(x.last_seen_at))}</span>`:''}</div>
           <div class="demo-action">
+            ${state.me?.is_root_admin?`<button type="button" class="ghost device-move-btn" data-device="${x.id}">MOVER A OTRO CLIENTE</button>`:''}
             <button type="button" class="danger-btn device-delete-btn" data-device="${x.id}">DESVINCULAR / REEMPLAZAR</button>
           </div>
         </div>`).join(''):'<p class="empty">Todavía no hay códigos vinculados.</p>'}
@@ -653,11 +654,59 @@ async function openClientCodes(c){
       if(!confirm(`¿Agregar +${blockSize} dispositivo${blockSize===1?'':'s'} a ${c.name}?\n\n${costText}\nEl nuevo dispositivo tendrá el mismo vencimiento del cliente.`))return;
       try{const r=await api(`/api/admin/clients/${c.id}/extra-devices`,{method:'POST'});alert(`Capacidad ampliada: ${r.oldLimit} → ${r.newLimit} dispositivos. Bloque agregado: +${r.blockSize}. Crédito consumido: ${r.creditsSpent}.`);await refreshMe();await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     });
+    $$('.device-move-btn').forEach(btn=>btn.addEventListener('click',()=>openDeviceTransfer(Number(btn.dataset.device),c.id)));
     $$('.device-delete-btn').forEach(btn=>btn.addEventListener('click',async()=>{
       if(!confirm(`¿Desvincular este dispositivo para reemplazarlo? Este cambio cuenta dentro del límite mensual (máximo 2). No devuelve créditos ni reinicia demos. Después podrás vincular el nuevo equipo.`))return;
       try{const r=await api(`/api/admin/client-devices/${Number(btn.dataset.device)}`,{method:'DELETE'});alert(`Dispositivo desvinculado. Cambios este mes: ${r.changesThisMonth}/2.`);await loadClients(false);openClientCodes(state.clients.find(x=>x.id===c.id)||c);}catch(err){alert(err.message);}
     }));
   }catch(err){alert(err.message);}
+}
+
+async function openDeviceTransfer(deviceId,returnClientId=null){
+  if(!state.me?.is_root_admin)return;
+  let data;
+  try{data=await api(`/api/admin/client-devices/${deviceId}/transfer`);}catch(err){alert(err.message);return;}
+  syncServerClock(data.serverTime);
+  openModal(`<h3>Mover dispositivo a otro cliente</h3>
+    <div class="rule-card"><div><b>${esc(data.device.name)}</b><span>Código: ${esc(data.device.activationCode)}</span><span>Cliente actual: ${esc(data.sourceClient.name)} · ${esc(data.sourceClient.ownerName)}</span></div></div>
+    <p class="muted">Conserva su código de activación, sesión y demo. No consume créditos ni cuenta como reemplazo. Se aplica la configuración del cliente destino.</p>
+    <form id="deviceTransferForm">
+      <label>Buscar cliente<input id="transferClientSearch" type="search" placeholder="Nombre del cliente o propietario" autocomplete="off"></label>
+      <label>Cliente destino<select id="transferClientId" required></select></label>
+      <div id="transferClientDetails" class="rule-card transfer-client-details" aria-live="polite"></div>
+      <div class="modal-actions"><button type="button" class="ghost" id="cancelDeviceTransferBtn">Cancelar</button><button type="submit" class="primary" id="confirmDeviceTransferBtn" disabled>CONFIRMAR TRASLADO</button></div>
+      <div id="deviceTransferMsg" class="msg" role="status"></div>
+    </form>`);
+  const select=$('#transferClientId'),button=$('#confirmDeviceTransferBtn'),details=$('#transferClientDetails');
+  function updateDetails(){
+    const target=data.targets.find(c=>c.id===Number(select.value));
+    button.disabled=!target?.allowed;
+    details.innerHTML=target?`<div><b>${esc(target.name)} · ${esc(target.ownerName)}</b><span>Capacidad: ${target.linkedDevices}/${target.deviceLimit} dispositivos</span><span>${target.inheritExpiry?'Cuenta nueva: conserva el vencimiento actual':target.accessMode==='demo'?'Conserva el vencimiento de su demo':'Vencimiento del servicio en destino'}: ${target.serviceExpiresAt?esc(fmt(target.serviceExpiresAt)):'Sin servicio vigente'}</span>${target.error?`<span class="error">${esc(target.error)}</span>`:target.inheritExpiry?'<span>El equipo sigue activo con el mismo vencimiento.</span>':target.accessMode==='paid'?'<span>El equipo usará el servicio vigente del cliente destino.</span>':''}${data.device.status==='blocked'?'<span>El dispositivo conservará su bloqueo.</span>':''}</div>`:'<div><span>Elegí el cliente que recibirá este dispositivo.</span></div>';
+  }
+  function renderTargets(){
+    const current=select.value,q=$('#transferClientSearch').value.trim().toLocaleLowerCase();
+    const targets=data.targets.filter(c=>!q||`${c.name} ${c.ownerName}`.toLocaleLowerCase().includes(q));
+    select.innerHTML=`<option value="">${targets.length?'Seleccioná un cliente':'No hay clientes que coincidan'}</option>`+targets.map(c=>`<option value="${c.id}">${esc(c.name)} · ${esc(c.ownerName)} (${c.linkedDevices}/${c.deviceLimit})${c.allowed?'':' · No disponible'}</option>`).join('');
+    if(targets.some(c=>String(c.id)===current))select.value=current;
+    updateDetails();
+  }
+  renderTargets();
+  select.addEventListener('change',updateDetails);
+  $('#transferClientSearch').addEventListener('input',renderTargets);
+  $('#cancelDeviceTransferBtn').addEventListener('click',()=>{if(returnClientId){const c=state.clients.find(x=>x.id===returnClientId);if(c){openClientCodes(c);return;}}closeModal();});
+  $('#deviceTransferForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const target=data.targets.find(c=>c.id===Number(select.value));
+    if(!target?.allowed||button.disabled)return;
+    button.disabled=true;msg($('#deviceTransferMsg'),'');
+    try{
+      await api(`/api/admin/client-devices/${deviceId}/transfer`,{method:'POST',body:{clientId:target.id,sourceClientId:data.sourceClient.id,serviceExpiresAt:target.serviceExpiresAt}});
+    }catch(err){msg($('#deviceTransferMsg'),err.message);button.disabled=false;return;}
+    closeModal();toast(`Dispositivo movido a ${target.name}. Conserva su código y sesión.`,'ok');
+    const refreshed=await Promise.allSettled([loadClients(),loadDevices()]);
+    if(refreshed.some(r=>r.status==='rejected')){toast('El traslado se completó. Usá Actualizar para volver a cargar la lista.','ok');return;}
+    if(returnClientId){const c=state.clients.find(x=>x.id===returnClientId);if(c)openClientCodes(c);}
+  });
 }
 
 async function loadDeviceCleanup(){
@@ -671,12 +720,26 @@ async function loadDeviceCleanup(){
 }
 async function loadDevices(){
   const d=await api('/api/admin/client-devices');state.devices=d.devices;
-  $('#devicesBody').innerHTML=state.devices.length?state.devices.map(x=>{const eff=x.effective_status||x.status.toUpperCase();const cls=eff==='ACTIVO'||eff==='DEMO ACTIVO'?'active':eff==='BLOQUEADO'||eff==='DEMO VENCIDO'?'blocked':'pending';const demo=x.demo?.active?`<div class="muted small success-text" ${liveDemoAttrs(x.demo.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(x.demo.remainingSeconds)}</div>`:x.demo?.used?'<div class="muted small">Demo usado</div>':'';return `<tr data-device="${x.id}"><td><code>${esc(x.activation_code)}</code></td><td><b>${esc(x.device_name||x.device_uid)}</b><div class="muted small">${esc(x.device_uid)}</div></td><td>${esc(x.client_name||'Pendiente')}</td><td>${esc(x.owner_name||'—')}</td><td><span class="badge ${cls}">${esc(eff)}</span>${demo}</td><td>${esc(fmt(x.last_seen_at))}</td><td><div class="actions">${x.status==='active'?'<button class="danger-btn" data-action="device-block">Bloquear</button>':''}${x.status==='blocked'?'<button class="ghost" data-action="device-reactivate">Reactivar</button>':''}</div></td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">Sin dispositivos asociados.</td></tr>`;
+  $('#devicesBody').innerHTML=state.devices.length?state.devices.map(x=>{
+    const eff=x.effective_status||x.status.toUpperCase();
+    const cls=eff==='ACTIVO'||eff==='DEMO ACTIVO'?'active':eff==='BLOQUEADO'||eff==='DEMO VENCIDO'?'blocked':'pending';
+    const demo=x.demo?.active?`<div class="muted small success-text" ${liveDemoAttrs(x.demo.remainingSeconds,x.id)}>DEMO ACTIVO · ${fmtDuration(x.demo.remainingSeconds)}</div>`:x.demo?.used?'<div class="muted small">Demo usado</div>':'';
+    return `<tr data-device="${x.id}"><td><code>${esc(x.activation_code)}</code></td><td><b>${esc(x.device_name||x.device_uid)}</b><div class="muted small">${esc(x.device_uid)}</div></td><td>${esc(x.client_name||'Pendiente')}</td><td>${esc(x.owner_name||'—')}</td><td><span class="badge ${cls}">${esc(eff)}</span>${demo}</td><td>${esc(fmt(x.last_seen_at))}</td><td><div class="actions">${state.me?.is_root_admin&&x.client_id?'<button class="ghost" data-action="device-move">Mover a otro cliente</button>':''}${x.status==='active'?'<button class="danger-btn" data-action="device-block">Bloquear</button>':''}${x.status==='blocked'?'<button class="ghost" data-action="device-reactivate">Reactivar</button>':''}</div></td></tr>`;
+  }).join(''):`<tr><td colspan="7" class="empty">Sin dispositivos asociados.</td></tr>`;
   if(state.me?.is_root_admin)await loadDeviceCleanup();
 }
 $('#manualClientDeviceBtn').addEventListener('click',async()=>{try{const r=await api('/api/admin/client-devices/manual',{method:'POST',body:{deviceName:'Dispositivo de prueba'}});openModal(`<h3>Dispositivo de prueba creado</h3><div class="code-big">${esc(r.activationCode)}</div><p class="muted">Usá “Activar por código” para asociarlo a un cliente.</p><div class="modal-actions"><button class="primary" data-close>Listo</button></div>`);}catch(e){alert(e.message);}});
 $('#assignByCodeBtn').addEventListener('click',()=>{if(!state.clients.length){alert('Primero creá un cliente.');return;}openModal(`<h3>Activar dispositivo por código</h3><form id="assignForm"><label>Código CO-CHI<input id="assignCode" placeholder="ABCD-1234" required></label><label>Cliente<select id="assignClient">${state.clients.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.device_count}/${c.device_limit||2})</option>`).join('')}</select></label><div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">ACTIVAR</button></div><div id="assignMsg" class="msg"></div></form>`);$('#assignForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/admin/client-devices/assign-by-code',{method:'POST',body:{activationCode:$('#assignCode').value,clientId:Number($('#assignClient').value)}});closeModal();await loadDevices();await loadClients(false);}catch(err){msg($('#assignMsg'),err.message);}});});
-$('#devicesBody').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const id=Number(b.closest('tr').dataset.device);try{if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; se libera un lugar dentro del límite de dispositivos definido por ADMINISTRACIÓN.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});await loadDevices();}catch(err){alert(err.message);}});
+$('#devicesBody').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const id=Number(b.closest('tr').dataset.device);
+  if(b.dataset.action==='device-move'){await openDeviceTransfer(id);return;}
+  try{
+    if(b.dataset.action==='device-block'){if(!confirm('¿Bloquear? No se devuelve ningún crédito; se libera un lugar dentro del límite de dispositivos definido por ADMINISTRACIÓN.'))return;await api(`/api/admin/client-devices/${id}/block`,{method:'POST'});}
+    if(b.dataset.action==='device-reactivate')await api(`/api/admin/client-devices/${id}/reactivate`,{method:'POST'});
+    await loadDevices();
+  }catch(err){alert(err.message);}
+});
 
 async function runDeviceCleanup(kind){
   if(!state.me?.is_root_admin)return;
