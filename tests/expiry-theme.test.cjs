@@ -10,7 +10,7 @@ test('authenticated customers receive independent themes at the exact 10-day and
   const now = Date.now(), f = await transferFixture(t, { now });
   const rules = (await f.admin('GET', '/api/admin/app-theme')).body;
   assert.equal(rules.automatic, true);
-  const cases = [[10 * day + 1, 'green'], [10 * day, 'yellow'], [2 * day, 'yellow'], [2 * day - 1, 'red']];
+  const cases = [[10 * day + 1, 'blue'], [10 * day, 'yellow'], [2 * day, 'yellow'], [2 * day - 1, 'red']];
   for (const [remaining, color] of cases) {
     const c = f.client(f.root.id, iso(now + remaining)), d = await f.device(c);
     const session = await f.session(d);
@@ -40,7 +40,7 @@ test('a real renewal updates the theme on the existing session and leaves other 
   const renewed = await f.admin('POST', `/api/admin/clients/${c.id}/renew`, {});
   assert.equal(renewed.status, 200);
   const after = (await f.config(login.body.token)).body;
-  assert.equal(after.appTheme.preset, 'green');
+  assert.equal(after.appTheme.preset, 'blue');
   assert.equal(after.clientExpiresAt, renewed.body.newExpiry);
   assert.equal(after.sessionExpiresAt, before.sessionExpiresAt);
   assert.deepEqual(after.sources, before.sources);
@@ -57,7 +57,7 @@ test('a transferred device follows the destination expiry without replacing its 
   const config = await f.config(login.body.token);
   assert.equal(config.status, 200);
   assert.equal(config.body.client.name, target.name);
-  assert.equal(config.body.appTheme.preset, 'green');
+  assert.equal(config.body.appTheme.preset, 'blue');
   assert.equal(config.body.sessionExpiresAt, login.body.sessionExpiresAt);
 });
 
@@ -79,7 +79,7 @@ test('legacy published colors cannot override automation and banner editing rema
   });
   assert.equal(banner.status, 200);
   const config = (await f.config(login.body.token)).body;
-  assert.equal(config.appTheme.preset, 'green');
+  assert.equal(config.appTheme.preset, 'blue');
   assert.equal(config.homeBanner.title, 'Banner independiente');
 });
 

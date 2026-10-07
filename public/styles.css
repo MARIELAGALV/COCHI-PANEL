@@ -8,7 +8,8 @@
 
 /* The card accent and expiry date follow the customer's remaining service time. */
 #view-clients #clientsBody tr[data-client-expiry-color]{--client-expiry-color:#9fb0ba;--client-expiry-glow:rgba(159,176,186,.3)}
-#view-clients #clientsBody tr[data-client-expiry-color="green"]{--client-expiry-color:#48e6ad;--client-expiry-glow:rgba(72,230,173,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="blue"]{--client-expiry-color:#00cfff;--client-expiry-glow:rgba(0,207,255,.3)}
+#view-clients #clientsBody tr[data-client-expiry-color="blue"] .badge.active{color:var(--client-expiry-color);border-color:rgba(0,207,255,.3);background:rgba(0,92,125,.16)}
 #view-clients #clientsBody tr[data-client-expiry-color="yellow"]{--client-expiry-color:#ffd471;--client-expiry-glow:rgba(255,212,113,.3)}
 #view-clients #clientsBody tr[data-client-expiry-color="red"]{--client-expiry-color:#ff3030;--client-expiry-glow:rgba(255,48,48,.3)}
 #view-clients #clientsBody tr[data-client-expiry-color="red"] .badge.blocked{color:var(--client-expiry-color);border-color:rgba(255,48,48,.45);background:rgba(140,24,24,.18)}
@@ -626,7 +627,7 @@ body[data-view="devices"] #view-devices .actions button{
 .expiry-theme-rule{display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid var(--expiry-accent);border-top:4px solid var(--expiry-accent);border-radius:12px;background:rgba(4,18,30,.72)}
 .expiry-theme-rule b{color:var(--expiry-accent);font-size:14px}
 .expiry-theme-rule span{font-size:13px;color:#c3d7e2}
-.expiry-theme-rule[data-expiry-color="green"]{--expiry-accent:#48e6ad}
+.expiry-theme-rule[data-expiry-color="blue"]{--expiry-accent:#00cfff}
 .expiry-theme-rule[data-expiry-color="yellow"]{--expiry-accent:#ffd471}
 .expiry-theme-rule[data-expiry-color="red"]{--expiry-accent:#ff3030}
 @media(max-width:660px){.expiry-theme-rules{grid-template-columns:1fr}}

@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.22';
+const VERSION = '1.1.23';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -908,7 +908,7 @@ function homeBannerForClient(req){
 }
 
 const EXPIRY_APP_THEMES={
-  green:{preset:'green',primary:'#48E6AD',selection:'#14B85B',background:'#07140D',button:'#10281A',border:'#245F3B',text:'#FFFFFF',secondary:'#B5CEBE'},
+  blue:{preset:'blue',primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'},
   yellow:{preset:'custom',primary:'#FFD471',selection:'#E5B63D',background:'#151207',button:'#2C2410',border:'#6E5A24',text:'#FFFFFF',secondary:'#D2C5A0'},
   red:{preset:'red',primary:'#FF3030',selection:'#E81919',background:'#120909',button:'#2A1111',border:'#6A2626',text:'#FFFFFF',secondary:'#D2B8B8'},
   neutral:{preset:'blue',primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'}
@@ -918,7 +918,7 @@ function clientExpiryColor(expiry){
   const remaining=Date.parse(expiry)-Date.now();
   if(!Number.isFinite(remaining))return 'neutral';
   if(remaining<2*86400000)return 'red';
-  return remaining<=10*86400000?'yellow':'green';
+  return remaining<=10*86400000?'yellow':'blue';
 }
 function appThemeForClient(client){
   // The commercial expiry is shared by the customer's devices. Token and demo
@@ -927,7 +927,7 @@ function appThemeForClient(client){
 }
 function automaticAppThemeInfo(){
   return {automatic:true,mode:'client-expiry',rules:[
-    {color:'green',label:'Más de 10 días',theme:{...EXPIRY_APP_THEMES.green}},
+    {color:'blue',label:'Más de 10 días',theme:{...EXPIRY_APP_THEMES.blue}},
     {color:'yellow',label:'De 2 a 10 días',theme:{...EXPIRY_APP_THEMES.yellow}},
     {color:'red',label:'Menos de 2 días o vencido',theme:{...EXPIRY_APP_THEMES.red}}
   ],defaults:{...EXPIRY_APP_THEMES.neutral}};

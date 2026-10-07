@@ -23,9 +23,9 @@ function clientExpiryColor(expiry,statusCode=''){
   const remaining=Date.parse(expiry)-panelNowMs();
   if(!Number.isFinite(remaining))return 'neutral';
   if(remaining<2*86400000)return 'red';
-  return remaining<=10*86400000?'yellow':'green';
+  return remaining<=10*86400000?'yellow':'blue';
 }
-function clientExpiryBadgeClass(color){return {green:'active',yellow:'pending',red:'blocked',neutral:'off'}[color]||'off';}
+function clientExpiryBadgeClass(color){return {blue:'active',yellow:'pending',red:'blocked',neutral:'off'}[color]||'off';}
 function clientRemainingText(expiry){
   if(!expiry)return 'SIN ACTIVAR';
   const ms=Date.parse(expiry);if(!Number.isFinite(ms))return 'FECHA INVÁLIDA';
