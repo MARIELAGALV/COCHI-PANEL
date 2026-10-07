@@ -11,7 +11,7 @@ const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
 const puppeteer = require('puppeteer-core');
 
-const VERSION = '1.1.19';
+const VERSION = '1.1.20';
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const ROOT = __dirname;
@@ -907,27 +907,30 @@ function homeBannerForClient(req){
   return b;
 }
 
-function normalizeAppTheme(raw){
-  const x=raw&&typeof raw==='object'?raw:{};
-  const clean=(v,fallback)=>{const z=String(v||fallback).trim().toUpperCase();return /^#[0-9A-F]{6}$/.test(z)?z:fallback;};
-  const preset=['blue','red','green','violet','orange','dark','custom'].includes(String(x.preset||'').toLowerCase())?String(x.preset).toLowerCase():'blue';
-  return {
-    preset,
-    primary:clean(x.primary,'#00CFFF'),
-    selection:clean(x.selection,'#1E90FF'),
-    background:clean(x.background,'#0A0F1B'),
-    button:clean(x.button,'#162338'),
-    border:clean(x.border,'#1E3D6B'),
-    text:clean(x.text,'#FFFFFF'),
-    secondary:clean(x.secondary,'#B0B0B0')
-  };
+const EXPIRY_APP_THEMES={
+  green:{preset:'green',primary:'#48E6AD',selection:'#14B85B',background:'#07140D',button:'#10281A',border:'#245F3B',text:'#FFFFFF',secondary:'#B5CEBE'},
+  yellow:{preset:'custom',primary:'#FFD471',selection:'#E5B63D',background:'#151207',button:'#2C2410',border:'#6E5A24',text:'#FFFFFF',secondary:'#D2C5A0'},
+  red:{preset:'red',primary:'#FF8FA0',selection:'#E8192E',background:'#12090D',button:'#2A1118',border:'#6A2631',text:'#FFFFFF',secondary:'#D2B8BD'},
+  neutral:{preset:'blue',primary:'#00CFFF',selection:'#1E90FF',background:'#0A0F1B',button:'#162338',border:'#1E3D6B',text:'#FFFFFF',secondary:'#B0B0B0'}
+};
+function clientExpiryColor(expiry){
+  if(!expiry)return 'neutral';
+  const remaining=Date.parse(expiry)-Date.now();
+  if(!Number.isFinite(remaining))return 'neutral';
+  if(remaining<2*86400000)return 'red';
+  return remaining<=10*86400000?'yellow':'green';
 }
-function defaultAppTheme(){return normalizeAppTheme({});}
-function publishedAppThemeSetting(){
-  try{return normalizeAppTheme(JSON.parse(getSetting('app_theme_published_json','{}')))}catch{return defaultAppTheme()}
+function appThemeForClient(client){
+  // The commercial expiry is shared by the customer's devices. Token and demo
+  // expiries must not change the paid customer's appearance.
+  return {...EXPIRY_APP_THEMES[clientExpiryColor(client?.expires_at)]};
 }
-function draftAppThemeSetting(){
-  try{return normalizeAppTheme(JSON.parse(getSetting('app_theme_draft_json',getSetting('app_theme_published_json','{}'))))}catch{return publishedAppThemeSetting()}
+function automaticAppThemeInfo(){
+  return {automatic:true,mode:'client-expiry',rules:[
+    {color:'green',label:'Más de 10 días',theme:{...EXPIRY_APP_THEMES.green}},
+    {color:'yellow',label:'De 2 a 10 días',theme:{...EXPIRY_APP_THEMES.yellow}},
+    {color:'red',label:'Menos de 2 días o vencido',theme:{...EXPIRY_APP_THEMES.red}}
+  ],defaults:{...EXPIRY_APP_THEMES.neutral}};
 }
 function boolSetting(key,fallback=false){return getSetting(key,fallback?'1':'0')==='1';}
 // v0.9.69 — migración de límites por cliente a base global + ampliaciones acumuladas.
@@ -3967,7 +3970,7 @@ async function route(req,res){
       src[r.source_key]={label:r.label,url:r.enabled?`${endpoint}?access_token=${encodeURIComponent(sessionToken)}`:'',enabled:Boolean(r.enabled),updatedAt:r.updated_at,managedByBackend:true};
     }
     const adult=effectiveAdult(c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:publishedAppThemeSetting(),contentDelivery:'backend-protected',serverTime:nowIso()},{'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache'});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{allowed:true,accessMode:st.mode,accessExpiresAt:st.expiresAt||null,serviceExpiresAt:st.expiresAt||null,clientExpiresAt:c.expires_at||null,sessionExpiresAt:d.session_expires_at||null,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),client:{name:c.name,expiresAt:c.expires_at,sharedExpiry:true,previewHiddenContent:Boolean(c?.preview_hidden_content),...capacity},...capacity,adultControl:{enabled:adult.enabled,locked:adult.locked,pinConfigured:adult.pinConfigured,maxAttempts:adult.maxAttempts},sources:src,homeBanner:homeBannerForClient(req),appTheme:appThemeForClient(c),contentDelivery:'backend-protected',serverTime:nowIso()},{'Cache-Control':'private, no-cache, no-store, must-revalidate','Pragma':'no-cache'});
   }
   if(p==='/api/client-device/adult/verify'&&m==='POST'){
     let d=clientDeviceFromBearer(req);if(!d)return sendJson(res,401,{error:'Sesión inválida'});d=refreshDeviceState(d);const c=clientRow(d.client_id),st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
@@ -4053,27 +4056,12 @@ async function route(req,res){
 
     if(p==='/api/admin/app-theme'&&m==='GET'){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona Diseño y apariencia'});
-      return sendJson(res,200,{draft:draftAppThemeSetting(),published:publishedAppThemeSetting(),defaults:defaultAppTheme()});
+      return sendJson(res,200,automaticAppThemeInfo());
     }
-    if(p==='/api/admin/app-theme/draft'&&m==='PUT'){
+    if((p==='/api/admin/app-theme/draft'&&m==='PUT')||
+       (['/api/admin/app-theme/publish','/api/admin/app-theme/reset'].includes(p)&&m==='POST')){
       if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona Diseño y apariencia'});
-      const b=await readJson(req),theme=normalizeAppTheme(b.theme||b);
-      setSetting('app_theme_draft_json',JSON.stringify(theme));
-      audit(actor.id,'app_theme_draft_saved','settings',null,JSON.stringify(theme));
-      return sendJson(res,200,{ok:true,theme,published:false});
-    }
-    if(p==='/api/admin/app-theme/publish'&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN puede publicar el diseño'});
-      const b=await readJson(req),theme=normalizeAppTheme(b.theme||draftAppThemeSetting());
-      setSetting('app_theme_draft_json',JSON.stringify(theme));
-      setSetting('app_theme_published_json',JSON.stringify(theme));
-      audit(actor.id,'app_theme_published','settings',null,JSON.stringify(theme));
-      return sendJson(res,200,{ok:true,theme,published:true});
-    }
-    if(p==='/api/admin/app-theme/reset'&&m==='POST'){
-      if(actor.role_level!==1)return sendJson(res,403,{error:'Solo ADMINISTRACIÓN gestiona Diseño y apariencia'});
-      const theme=defaultAppTheme();setSetting('app_theme_draft_json',JSON.stringify(theme));
-      return sendJson(res,200,{ok:true,theme,published:false});
+      return sendJson(res,409,{error:'Los colores son automáticos según el vencimiento de cada cliente. Recargá el panel para ver las reglas.',automatic:true,reason:'automatic_expiry_theme'});
     }
 
     if(p==='/api/admin/stream-resolver'&&m==='POST'){

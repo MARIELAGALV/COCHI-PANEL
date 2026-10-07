@@ -8,11 +8,15 @@ const { once } = require('node:events');
 
 // Execute the real backend against an isolated SQLite database and local HTTP.
 // Browser resolution and background jobs are outside these device API tests.
-async function backendFixture(t) {
+async function backendFixture(t, { now } = {}) {
   const root = path.resolve(__dirname, '../..');
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cochi-device-test-'));
   const timer = () => ({ unref() {} });
   const errors = [];
+  const ClockDate = now === undefined ? Date : class extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  };
   const context = vm.createContext({
     require(name) {
       if (name === 'puppeteer-core') {
@@ -23,7 +27,7 @@ async function backendFixture(t) {
     __dirname: root,
     process: { env: { COCHI_DATA_DIR: data, HOST: '127.0.0.1', PORT: '0' }, on() {} },
     console: { log() {}, warn() {}, error(...args) { errors.push(...args); } },
-    Buffer, URL, URLSearchParams, AbortController, AbortSignal, TextEncoder, TextDecoder,
+    Buffer, URL, URLSearchParams, AbortController, AbortSignal, TextEncoder, TextDecoder, Date: ClockDate,
     fetch, setTimeout: timer, setInterval: timer, clearTimeout() {}, clearInterval() {},
   });
   const source = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
