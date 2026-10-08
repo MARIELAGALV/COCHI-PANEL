@@ -669,6 +669,46 @@ function encryptManagedContent(input){
   });
 }
 function githubToken(){return String(process.env.COCHI_GITHUB_TOKEN||'').trim();}
+
+function blafMigrationAuthValid(req,method,route,bodyText=''){
+  const token=githubToken();if(!token)return false;
+  const timestamp=String(req.headers['x-cochi-blaf-timestamp']||'').trim();
+  const signature=String(req.headers['x-cochi-blaf-signature']||'').trim().toLowerCase();
+  const declaredBodyHash=String(req.headers['x-cochi-blaf-body-sha256']||'').trim().toLowerCase();
+  const ts=Number(timestamp);
+  if(!Number.isFinite(ts)||Math.abs(Date.now()-ts)>5*60*1000)return false;
+  const bodyHash=crypto.createHash('sha256').update(String(bodyText||''),'utf8').digest('hex');
+  if(declaredBodyHash!==bodyHash)return false;
+  const canonical=`${timestamp}\n${String(method||'GET').toUpperCase()}\n${route}\n${bodyHash}`;
+  const expected=crypto.createHmac('sha256',token).update(canonical,'utf8').digest('hex');
+  try{
+    const a=Buffer.from(signature,'hex'),b=Buffer.from(expected,'hex');
+    return a.length===b.length&&a.length===32&&crypto.timingSafeEqual(a,b);
+  }catch{return false}
+}
+function blafMovieMigrationStats(json){
+  let total=0,mp4=0,mkv=0,other=0;const items=[];
+  for(let gi=0;gi<(Array.isArray(json)?json.length:0);gi++){
+    const group=json[gi]||{},samples=Array.isArray(group.samples)?group.samples:[];
+    for(let si=0;si<samples.length;si++){
+      const item=samples[si]||{},uri=String(item.uri||item.url||'').trim();total++;
+      let pathname='';try{pathname=new URL(uri).pathname.toLowerCase()}catch{pathname=uri.split(/[?#]/)[0].toLowerCase()}
+      if(pathname.endsWith('.mp4')){mp4++;continue}
+      if(pathname.endsWith('.mkv')){
+        mkv++;
+        const source=parseGithubWritableSource(uri);
+        items.push({
+          categoryIndex:gi,itemIndex:si,category:String(group.name||`Categoría ${gi+1}`),
+          name:String(item.name||item.title||`Película ${si+1}`),icon:String(item.icon||''),
+          uri,source:source||null
+        });
+        continue;
+      }
+      other++;
+    }
+  }
+  return {stats:{total,mp4,mkv,other},items};
+}
 function githubApiHeaders(token,extra={}){return {'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':`CO-CHI-PANEL/${VERSION}`,...extra};}
 function parseGithubWritableSource(raw){
   let u;try{u=new URL(String(raw||''));}catch{return null}
@@ -3992,6 +4032,51 @@ async function route(req,res){
     let buf;try{buf=Buffer.from(data,'base64')}catch{return sendText(res,500,'Imagen ajustada inválida')}
     if(!buf.length)return sendText(res,404,'Imagen ajustada no disponible');
     res.writeHead(200,{'Content-Type':String(meta.mime||'image/jpeg'),'Content-Length':buf.length,'Cache-Control':'public, max-age=86400, immutable','X-Content-Type-Options':'nosniff','Access-Control-Allow-Origin':'*'});return res.end(buf);
+  }
+
+
+  // BLAF UPLOADER v1.0.54 — API acotada para migración de PELÍCULAS MKV→MP4.
+  // Se autentica por HMAC con COCHI_GITHUB_TOKEN: el token real nunca viaja desde BLAF.
+  if(p==='/api/blaf/migration/movies'&&m==='GET'){
+    if(!rateLimit(req,res,'blaf_movie_migration_scan',30,10*60*1000))return;
+    if(!blafMigrationAuthValid(req,m,p,''))return sendJson(res,401,{error:'BLAF no autorizado para migración CO-CHI'});
+    try{
+      const json=loadManagedEditable('movies'),scan=blafMovieMigrationStats(json);
+      return sendJson(res,200,{ok:true,...scan,updatedAt:db.prepare('SELECT updated_at FROM managed_content WHERE source_key=?').get('movies')?.updated_at||null});
+    }catch(e){return sendJson(res,500,{error:'No se pudo analizar Películas: '+String(e?.message||e)})}
+  }
+  if(p==='/api/blaf/migration/movies/replace'&&m==='POST'){
+    if(!rateLimit(req,res,'blaf_movie_migration_replace',20,10*60*1000))return;
+    let b;try{b=await readJson(req)}catch(e){return sendJson(res,400,{error:'JSON de migración inválido'})}
+    const bodyText=JSON.stringify(b||{});
+    if(!blafMigrationAuthValid(req,m,p,bodyText))return sendJson(res,401,{error:'BLAF no autorizado para modificar Películas'});
+    const gi=Number(b.categoryIndex),si=Number(b.itemIndex),name=String(b.name||'').trim(),oldUri=String(b.oldUri||'').trim(),newUri=String(b.newUri||'').trim();
+    if(!Number.isInteger(gi)||gi<0||!Number.isInteger(si)||si<0)return sendJson(res,400,{error:'Índice de película inválido'});
+    if(!/^https?:\/\//i.test(oldUri)||!/\.mkv(?:$|[?#])/i.test(oldUri))return sendJson(res,400,{error:'La URL anterior no es un MKV HTTP/HTTPS válido'});
+    if(!/^https:\/\//i.test(newUri)||!/\.mp4(?:$|[?#])/i.test(newUri))return sendJson(res,400,{error:'La URL nueva debe ser un MP4 HTTPS válido'});
+    try{
+      const json=loadManagedEditable('movies');if(!Array.isArray(json))throw new Error('Catálogo de películas inválido');
+      let target=json[gi]?.samples?.[si]||null,actual=String(target?.uri||target?.url||'').trim(),foundGi=gi,foundSi=si;
+      if(!target||actual!==oldUri){
+        const matches=[];
+        for(let g=0;g<json.length;g++)for(let s=0;s<(Array.isArray(json[g]?.samples)?json[g].samples.length:0);s++){
+          const x=json[g].samples[s],u=String(x?.uri||x?.url||'').trim();
+          if(u===oldUri&&(!name||String(x?.name||x?.title||'').trim()===name))matches.push({g,s,x});
+        }
+        if(matches.length!==1)return sendJson(res,409,{error:'CATÁLOGO CAMBIÓ: la URL MKV ya no coincide de forma única. No se modificó nada.',matches:matches.length});
+        target=matches[0].x;foundGi=matches[0].g;foundSi=matches[0].s;actual=String(target?.uri||target?.url||'').trim();
+      }
+      if(actual!==oldUri)return sendJson(res,409,{error:'CATÁLOGO CAMBIÓ: la película ya no apunta al MKV esperado. No se modificó nada.'});
+      const oldSnapshot=JSON.parse(JSON.stringify(target));
+      if(String(target.uri||'').trim()===oldUri||target.uri!==undefined)target.uri=newUri;
+      if(String(target.url||'').trim()===oldUri)target.url=newUri;
+      if(Array.isArray(target.playbackSources)){
+        for(const src of target.playbackSources)if(src&&String(src.url||'').trim()===oldUri)src.url=newUri;
+      }
+      const saved=await saveOriginalAndPublish('movies',json,rootAdminId(),'blaf_movie_migration_original_and_app');
+      audit(rootAdminId(),'blaf_movie_migration_uri_replaced','content',null,`${name||target.name||''}; ${oldUri} -> ${newUri}; [${foundGi},${foundSi}]`);
+      return sendJson(res,200,{ok:true,name:String(target.name||name||''),category:String(json[foundGi]?.name||''),categoryIndex:foundGi,itemIndex:foundSi,oldUri,newUri,backup:oldSnapshot,stats:saved.stats,remote:saved.remote});
+    }catch(e){return sendJson(res,500,{error:'No se pudo publicar el reemplazo MP4: '+String(e?.message||e)})}
   }
 
 
