@@ -347,7 +347,7 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
       <section id="view-content" class="view admin-only">
         <div class="neon-card panel-card content-manager">
           <div class="card-head"><div><h3>Manager de Contenido</h3><p class="muted">Importá las listas actuales y trabajá con los datos desencriptados. Al guardar, CO-CHI PANEL vuelve a cifrar automáticamente el JSON que consume la app.</p></div></div>
-          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">ACTUALIZAR DESDE FUENTE</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentApplyBtn" class="primary" title="Guarda la edición y la publica para CO-CHI en una sola acción">GUARDAR Y PUBLICAR</button></div>
+          <div class="content-toolbar"><label>Contenido<select id="contentKey"><option value="tv1">TV1</option><option value="tv2">TV2</option><option value="movies">Películas</option><option value="series">Series</option></select></label><button id="contentLoadBtn" class="ghost">CARGAR GUARDADO</button><button id="contentImportBtn" class="ghost">ACTUALIZAR DESDE FUENTE</button><button id="contentFormatBtn" class="ghost">FORMATEAR JSON</button><button id="contentExportBtn" class="ghost" title="Descarga una copia legible en tu PC. No modifica ni publica el contenido.">DESCARGAR DESENCRIPTADO</button><button id="contentApplyBtn" class="primary" title="Guarda la edición y la publica para CO-CHI en una sola acción">GUARDAR Y PUBLICAR</button></div>
           <div class="content-security-note"><strong>MODO ADMIN DESENCRIPTADO</strong><span>Lo que ves y editás aquí es legible. La URL pública del PANEL entrega el contenido cifrado para CO-CHI.</span></div>
           <div class="content-source-card">
             <div class="content-source-head"><div><h4>Origen del JSON</h4><p class="muted small">Acá podés ver o cambiar la URL/repo desde donde se importa TV1, TV2, Películas o Series.</p></div><span id="contentSourceLabel" class="badge active">TV1</span></div>
@@ -473,6 +473,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=1.1.23-blue-base-1"></script>
+  <script src="/app.js?v=1.1.24-export-clear-1"></script>
 </body>
 </html>
