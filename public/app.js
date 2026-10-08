@@ -2336,6 +2336,24 @@ $('#contentFormatBtn')?.addEventListener('click',()=>{
   if(!confirm(`Confirmación final: ¿querés formatear ${key} ahora?`))return;
   try{const x=contentPlain();setContentPlain(x);msg($('#contentMsg'),`JSON ${key} válido y formateado.`,true);}catch(e){msg($('#contentMsg'),'JSON inválido: '+e.message);}
 });
+$('#contentExportBtn')?.addEventListener('click',()=>{
+  try{
+    const key=String($('#contentKey')?.value||'movies').toLowerCase();
+    const json=contentPlain();
+    const names={tv1:'TV1_DESENCRIPTADO.json',tv2:'TV2_DESENCRIPTADO.json',movies:'MOVIESCOCHI_DESENCRIPTADO.json',series:'SERIESCOCHI_DESENCRIPTADO.json'};
+    const text=JSON.stringify(json,null,2)+'\\n';
+    const blob=new Blob([text],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=names[key]||('COCHI_'+key.toUpperCase()+'_DESENCRIPTADO.json');
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const stats=Array.isArray(json)?json.reduce((acc,g)=>{acc.categories++;acc.items+=Array.isArray(g?.samples)?g.samples.length:0;return acc;},{categories:0,items:0}):{categories:0,items:0};
+    const textOk=`JSON DESENCRIPTADO DESCARGADO · ${key.toUpperCase()} · ${stats.categories} categorías · ${stats.items} contenidos`;
+    msg($('#contentMsg'),textOk,true);toast(textOk,'ok');
+  }catch(e){
+    const textErr=e instanceof SyntaxError?'JSON inválido: '+e.message:'No se pudo descargar el JSON: '+e.message;
+    msg($('#contentMsg'),textErr);toast(textErr,'bad');
+  }
+});
 $('#contentImportBtn')?.addEventListener('click',async()=>{
   try{
     const key=$('#contentKey').value;
