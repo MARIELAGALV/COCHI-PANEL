@@ -2341,7 +2341,7 @@ $('#contentExportBtn')?.addEventListener('click',()=>{
     const key=String($('#contentKey')?.value||'movies').toLowerCase();
     const json=contentPlain();
     const names={tv1:'TV1_DESENCRIPTADO.json',tv2:'TV2_DESENCRIPTADO.json',movies:'MOVIESCOCHI_DESENCRIPTADO.json',series:'SERIESCOCHI_DESENCRIPTADO.json'};
-    const text=JSON.stringify(json,null,2)+'\\n';
+    const text=JSON.stringify(json,null,2)+'\n';
     const blob=new Blob([text],{type:'application/json;charset=utf-8'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download=names[key]||('COCHI_'+key.toUpperCase()+'_DESENCRIPTADO.json');
