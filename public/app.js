@@ -1383,20 +1383,33 @@ function editCategory(index=null){
   };
 }
 function inferSeasonEpisodeFromTemplate(value){
+  // Primero usamos los datos estructurados del capítulo si existen. Esto evita
+  // confundir números del repo/release o del nombre de archivo con el episodio.
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    const n=Number(value.number);
+    if(Number.isInteger(n)&&n>0){
+      const season=inferSeasonFromEpisodeEntry(value)||1;
+      return {season,episode:n};
+    }
+    const name=String(value.name||'').trim();
+    let nm=name.match(/^(\d+)\s*[-x]\s*(\d+)$/i);
+    if(nm)return {season:Number(nm[1])||1,episode:Number(nm[2])||1};
+    if(/^\d+$/.test(name))return {season:1,episode:Number(name)||1};
+  }
   let text='';
   try{text=JSON.stringify(value);}catch{text=String(value||'');}
   const patterns=[
-    /Temporada\s*0?(\d+)\s*[-–—:]?\s*(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i,
+    /Temporada\s*0?(\d+)\s*[-–—:]?\s*(?:Cap(?:í|i)?tulo|Episodio)[\s._-]*0?(\d+)/i,
     /S0?(\d+)E0?(\d+)/i,
     /(?:^|[^0-9])0?(\d+)[xX]0?(\d+)(?=[^0-9]|$)/,
-    /(?:^|[^A-Za-z0-9])T0?(\d+)[^0-9]+(?:Cap(?:í|i)?tulo|Episodio)?\s*0?(\d+)/i
+    /(?:^|[^A-Za-z0-9])T0?(\d+)[^0-9]+(?:Cap(?:í|i)?tulo|Episodio)?[\s._-]*0?(\d+)/i
   ];
   for(const re of patterns){const m=text.match(re);if(m)return {season:Number(m[1])||1,episode:Number(m[2])||1};}
-  const ep=text.match(/(?:Cap(?:í|i)?tulo|Episodio)\s*0?(\d+)/i);
+  const ep=text.match(/(?:Cap(?:í|i)?tulo|Episodio)[\s._-]*0?(\d+)/i);
   if(ep)return {season:1,episode:Number(ep[1])||1};
-  // Archivos simples como PY01.mp4 / EP09.mkv: tomamos solo el número final
-  // inmediatamente anterior a la extensión, sin tocar IDs numéricos del path.
-  const fileEp=text.match(/[A-Za-z_-]+0?(\d+)(?=\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))/i);
+  // Último número inmediatamente anterior a una extensión de video/stream.
+  // Admite nombres como PY01.mp4 y GRUPO.DE.ESTUDIO.EPISODIO.01.mp4.
+  const fileEp=text.match(/(\d+)(?=\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))/i);
   return {season:1,episode:fileEp?(Number(fileEp[1])||1):1};
 }
 function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeason=1,sourceEpisode=1){
@@ -1411,14 +1424,15 @@ function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeaso
   // Patrones de archivos/URLs: 01x13, 1x13, S01E13 / s01e13.
   out=out.replace(new RegExp(`(^|[^0-9])0?${ss}[xX]0?${se}(?=[^0-9]|$)`,'g'),(_,pre)=>`${pre}${ts2}x${te2}`);
   out=out.replace(new RegExp(`S0?${ss}E0?${se}`,'gi'),m=>`${m[0]==='s'?'s':'S'}${ts2}${m.includes('e')?'e':'E'}${te2}`);
-  // Si el texto solo trae capítulo/episodio, actualizamos el episodio.
-  out=out.replace(new RegExp(`(cap(?:í|i)?tulo\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
-  out=out.replace(new RegExp(`(episodio\\s*)0?${se}(?=\\D|$)`,'gi'),(_,pre)=>`${pre}${targetEpisode}`);
-  // URLs/archivos simples: PY01.mp4 -> PY09.mp4. Solo cambia el número final
-  // si coincide con el capítulo origen y está justo antes de una extensión de video/stream.
-  out=out.replace(new RegExp(`([A-Za-z_-]+)0?${se}(?=\\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))`,'gi'),(_,pre)=>{
-    const width=String(sourceEpisode).length<2?2:String(sourceEpisode).length;
-    return pre+String(targetEpisode).padStart(width,'0');
+  // Si el texto trae capítulo/episodio, actualizamos el número conservando
+  // el ancho original: EPISODIO.01 -> EPISODIO.02, EPISODIO_001 -> EPISODIO_002.
+  out=out.replace(new RegExp(`(cap(?:í|i)?tulo[\\s._-]*)(0*${se})(?=\\D|$)`,'gi'),(_,pre,num)=>`${pre}${String(targetEpisode).padStart(num.length,'0')}`);
+  out=out.replace(new RegExp(`(episodio[\\s._-]*)(0*${se})(?=\\D|$)`,'gi'),(_,pre,num)=>`${pre}${String(targetEpisode).padStart(num.length,'0')}`);
+  // Última protección para URLs/archivos: reemplaza únicamente el número final
+  // inmediatamente anterior a la extensión, nunca números del repo/release/path.
+  out=out.replace(/(\d+)(?=\.(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)(?:[?"#]|$))/gi,(num)=>{
+    if(Number(num)!==Number(sourceEpisode))return num;
+    return String(targetEpisode).padStart(num.length,'0');
   });
   return out;
 }
