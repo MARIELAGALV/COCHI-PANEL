@@ -1436,12 +1436,51 @@ function replaceEpisodeSequenceDeep(value,targetSeason,targetEpisode,sourceSeaso
   });
   return out;
 }
-function buildSeasonFromTemplate(template,season,count,firstEpisode=1){
-  const source=inferSeasonEpisodeFromTemplate(template);
+function primaryEpisodeUrl(item){
+  if(!item||typeof item!=='object')return '';
+  const direct=String(item.uri||item.url||'').trim();
+  if(direct)return direct;
+  const src=Array.isArray(item.playbackSources)?item.playbackSources.find(x=>x&&String(x.url||'').trim()):null;
+  return String(src?.url||'').trim();
+}
+function suggestEpisodeUrlPattern(template){
+  const url=primaryEpisodeUrl(template);if(!url)return '';
+  const source=inferSeasonEpisodeFromTemplate(template),se=Number(source.episode)||1;
+  const ext='(?:mp4|mkv|m4v|webm|mov|ts|m3u8|mpd)';
+  // Preferimos el número final inmediatamente anterior a la extensión.
+  const last=new RegExp(`0*${se}(?=\\.${ext}(?:[?"#]|$))`,'i');
+  if(last.test(url))return url.replace(last,'{EP}');
+  // También aceptamos identificadores explícitos de episodio en medio del nombre.
+  const explicit=new RegExp(`((?:episodio|cap(?:í|i)?tulo)[\\s._-]*)0*${se}(?=\\D|$)`,'i');
+  if(explicit.test(url))return url.replace(explicit,(_,pre)=>pre+'{EP}');
+  return '';
+}
+function manualEpisodeUrl(pattern,episode,digits=2){
+  const p=String(pattern||'').trim();
+  if(!p)return '';
+  if(!/\{EP\}/i.test(p))throw new Error('En el patrón manual escribí {EP} exactamente donde cambia el número del capítulo.');
+  const d=Math.max(0,Math.min(4,Number(digits)||0));
+  const n=d?String(episode).padStart(d,'0'):String(episode);
+  return p.replace(/\{EP\}/gi,n);
+}
+function applyManualEpisodeUrl(item,url){
+  if(!url)return item;
+  if(item.uri!==undefined||item.url===undefined)item.uri=url;
+  else item.url=url;
+  if(Array.isArray(item.playbackSources)&&item.playbackSources.length){
+    const first=item.playbackSources.find(x=>x&&Object.prototype.hasOwnProperty.call(x,'url'))||item.playbackSources[0];
+    if(first)first.url=url;
+  }
+  return item;
+}
+function buildSeasonFromTemplate(template,season,count,firstEpisode=1,options={}){
+  const source=inferSeasonEpisodeFromTemplate(template),mode=String(options.mode||'auto');
+  const manualPattern=String(options.pattern||'').trim(),digits=Number(options.digits)||0;
   const out=[];
   for(let i=0;i<count;i++){
     const ep=firstEpisode+i;
     const item=replaceEpisodeSequenceDeep(structuredClone(template),season,ep,source.season,source.episode);
+    if(mode==='manual')applyManualEpisodeUrl(item,manualEpisodeUrl(manualPattern,ep,digits));
     // Estructura compatible con las series que CO-CHI ya separa correctamente (ej. SILO):
     // T1 usa nombres 1,2,3...; T2+ usa 2-1,2-2 / 3-1,3-2...
     item.name=season===1?String(ep):`${season}-${ep}`;
@@ -1652,9 +1691,15 @@ function editContentItem(groupIndex,itemIndex=null){
     </div>
     ${isSeries?`<div class="content-editor-series-grid"><div class="series-bulk-box">
       <h4>CARGA RÁPIDA DE TEMPORADA</h4>
-      <p class="muted small">Pegá o revisá el JSON del primer capítulo que querés agregar. Podés sumar capítulos a una temporada existente: el PANEL propone automáticamente el capítulo siguiente y <b>nunca reemplaza los ya cargados</b>. Mantiene T1 = 1, 2, 3...; T2 = 2-1, 2-2...; T3 = 3-1, 3-2... y avanza URLs como <b>01x01</b>, <b>S01E01</b> y archivos simples como <b>PY01.mp4</b>.</p>
+      <p class="muted small">Pegá o revisá el JSON del primer capítulo que querés agregar. El PANEL intenta reconocer la numeración automáticamente. Si el nombre del archivo usa un formato distinto, elegí <b>Manual</b> y marcá con <b>{EP}</b> el lugar exacto donde debe ir el número correlativo. <b>Nunca reemplaza capítulos ya cargados.</b></p>
       <div class="form-row"><label>Temporada<input id="ciSeasonNumber" type="number" min="1" value="1"></label><label>Cantidad de capítulos<input id="ciSeasonCount" type="number" min="1" value="${Array.isArray(cur.temp)&&cur.temp.length?cur.temp.length:1}"></label><label>Primer capítulo<input id="ciFirstEpisode" type="number" min="1" value="1"></label></div>
       <label>Plantilla del primer capítulo<textarea id="ciSeasonTemplate" class="content-item-json" spellcheck="false">${esc(JSON.stringify(existingFirst,null,2))}</textarea></label>
+      <div class="form-row">
+        <label>Numeración correlativa<select id="ciSeasonNumberMode"><option value="auto">Automática</option><option value="manual">Manual · indicar patrón</option></select></label>
+        <label id="ciSeasonDigitsWrap">Formato del número<select id="ciSeasonDigits"><option value="0">1, 2, 3...</option><option value="2" selected>01, 02, 03...</option><option value="3">001, 002, 003...</option><option value="4">0001, 0002...</option></select></label>
+      </div>
+      <label id="ciSeasonPatternWrap">Patrón correlativo de la URL<input id="ciSeasonPattern" value="${esc(suggestEpisodeUrlPattern(existingFirst))}" placeholder="https://.../EPISODIO.{EP}.mp4"><span class="muted tiny">Ejemplo: <b>GRUPO.DE.ESTUDIO.EPISODIO.{EP}.mp4</b>. {EP} será 01, 02, 03... según el formato elegido.</span></label>
+      <div id="ciSeasonPatternPreview" class="muted tiny"></div>
       <div class="reorder-actions"><button id="ciGenerateSeason" type="button" class="primary">GENERAR TEMPORADA</button></div>
       <div id="ciSeasonMsg" class="msg"></div>
     </div>
@@ -1730,13 +1775,45 @@ function editContentItem(groupIndex,itemIndex=null){
     $('#ciSeasonNumber').addEventListener('change',suggestNextEpisode);
     // Si ya existe T1, al abrir el editor proponemos automáticamente el capítulo siguiente.
     suggestNextEpisode();
+    const refreshSeasonPatternUi=()=>{
+      const mode=String($('#ciSeasonNumberMode')?.value||'auto');
+      const manual=mode==='manual';
+      if($('#ciSeasonPatternWrap'))$('#ciSeasonPatternWrap').style.display=manual?'grid':'none';
+      if($('#ciSeasonDigitsWrap'))$('#ciSeasonDigitsWrap').style.display=manual?'grid':'none';
+      const preview=$('#ciSeasonPatternPreview');if(!preview)return;
+      if(!manual){preview.textContent='Modo automático: el PANEL detectará la numeración en la URL del primer capítulo.';return;}
+      try{
+        const first=Math.max(1,Number($('#ciFirstEpisode')?.value)||1),digits=Number($('#ciSeasonDigits')?.value)||0,pattern=$('#ciSeasonPattern')?.value||'';
+        if(!/\{EP\}/i.test(pattern)){preview.textContent='Escribí {EP} en el lugar exacto del número correlativo.';return;}
+        const examples=[first,first+1,first+2].map(ep=>manualEpisodeUrl(pattern,ep,digits));
+        preview.textContent='Vista previa: '+examples.join('  ·  ');
+      }catch(e){preview.textContent=e.message;}
+    };
+    $('#ciSeasonNumberMode')?.addEventListener('change',refreshSeasonPatternUi);
+    $('#ciSeasonDigits')?.addEventListener('change',refreshSeasonPatternUi);
+    $('#ciSeasonPattern')?.addEventListener('input',refreshSeasonPatternUi);
+    $('#ciFirstEpisode')?.addEventListener('input',refreshSeasonPatternUi);
+    $('#ciSeasonTemplate')?.addEventListener('input',()=>{
+      if(String($('#ciSeasonNumberMode')?.value||'auto')!=='manual'){
+        try{const t=JSON.parse($('#ciSeasonTemplate').value.trim()||'{}'),p=suggestEpisodeUrlPattern(t);if(p&&$('#ciSeasonPattern'))$('#ciSeasonPattern').value=p;}catch{}
+      }
+      refreshSeasonPatternUi();
+    });
+    refreshSeasonPatternUi();
     $('#ciGenerateSeason').onclick=()=>{
       try{
         const season=Math.max(1,Number($('#ciSeasonNumber').value)||1);
         const count=Math.max(1,Number($('#ciSeasonCount').value)||1);
         const firstEpisode=Math.max(1,Number($('#ciFirstEpisode').value)||1);
         const template=JSON.parse($('#ciSeasonTemplate').value.trim()||'{}');
-        const generated=buildSeasonFromTemplate(template,season,count,firstEpisode);
+        const mode=String($('#ciSeasonNumberMode')?.value||'auto'),pattern=String($('#ciSeasonPattern')?.value||'').trim(),digits=Number($('#ciSeasonDigits')?.value)||0;
+        if(mode==='manual'&&!/\{EP\}/i.test(pattern))throw new Error('Numeración manual: escribí {EP} en el lugar exacto donde cambia el número del capítulo.');
+        const generated=buildSeasonFromTemplate(template,season,count,firstEpisode,{mode,pattern,digits});
+        if(generated.length>1){
+          const urls=generated.map(primaryEpisodeUrl).filter(Boolean),unique=new Set(urls);
+          if(urls.length!==generated.length)throw new Error('Hay capítulos sin URL. Revisá la plantilla del primer capítulo.');
+          if(unique.size!==urls.length)throw new Error('La numeración produjo URLs repetidas. Elegí “Manual” y marcá el número correlativo con {EP} antes de generar.');
+        }
         const extraText=$('#ciExtras').value.trim(),extra=extraText?JSON.parse(extraText):{};
         const existing=Array.isArray(extra.temp)?extra.temp:[];
         const existingEpisodes=new Set(
