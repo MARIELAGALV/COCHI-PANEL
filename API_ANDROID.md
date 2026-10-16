@@ -78,3 +78,9 @@ Para Android TV la prioridad recomendada al procesar la respuesta de `POST /api/
 4. Solo un dispositivo sin vincular puede mostrar la pantalla de código. La revocación explícita/credencial inválida se gestiona por separado de vencimiento, sin vincular automáticamente.
 
 La API incluye campos aditivos `deviceLinked`, `serviceExpired`, `clientExpiresAt` y `serviceExpiresAt` tanto en `/status` como en rechazos de `/session` para que la APK pueda distinguir acceso de vínculo. La `/session` sigue devolviendo HTTP 403 al vencer y el contenido continúa bloqueado. **La presentación visual requiere también que la APK implemente esta prioridad**; verificar en un Android TV real.
+
+## DEMO separado de la suscripción comercial (octubre 2026)
+
+Una cuenta con fecha `clientExpiresAt` continúa en modo `paid` hasta su vencimiento exacto, incluso a menos de una hora o de un minuto. El token de sesión puede durar menos que un día; la APK debe leer `accessMode` en lugar de inferir el tipo de servicio por `sessionExpiresAt` ni `expiresAt` del token.
+
+Después del vencimiento comercial, `allowed=false`, `reason=client_expired` y `serviceExpired=true`, sin volver a solicitar vinculación ni conceder un DEMO aunque demos globales estén habilitados. Los demos solo se conceden a clientes sin fecha comercial registrada. Una renovación permite nuevamente el acceso pago del mismo dispositivo. Demos históricos no cambian el estado comercial.

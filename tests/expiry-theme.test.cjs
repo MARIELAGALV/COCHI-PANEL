@@ -178,3 +178,78 @@ test('unlinked and never subscribed devices remain pending, not falsely active',
  assert.equal(waitingStatus.body.serviceExpired,false);
  assert.equal(waitingStatus.body.reason,'client_no_service');
 });
+
+test('one hour remaining keeps paid entitlement and cannot create a demo',async t=>{
+ const f=await transferFixture(t),c=f.client(f.root.id,later(59)),d=await f.device(c);
+ f.db.prepare("INSERT OR REPLACE INTO settings(setting_key,setting_value,updated_at) VALUES ('demos_enabled','1',?)").run(new Date().toISOString());
+ const status=await f.status(d.uid,d.registration);
+ assert.equal(status.status,200);
+ assert.equal(status.body.allowed,true);
+ assert.equal(status.body.accessMode,'paid');
+ assert.equal(status.body.clientExpiresAt,c.expiry);
+ assert.equal(status.body.demo.active,false);
+ const login=await f.session(d);
+ assert.equal(login.status,200);
+ assert.equal(login.body.accessMode,'paid');
+ assert.equal((await f.config(login.body.token)).body.accessMode,'paid');
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM device_demos').get().n,0);
+ const row=(await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id);
+ assert.equal(row.display_status_code,'active');
+ assert.equal(row.demo_active_count,0);
+});
+
+test('an expired commercial subscription never automatically becomes demo, and renews without relinking',async t=>{
+ const f=await transferFixture(t),c=f.client(f.root.id,later(59)),d=await f.device(c);
+ f.db.prepare("INSERT OR REPLACE INTO settings(setting_key,setting_value,updated_at) VALUES ('demos_enabled','1',?)").run(new Date().toISOString());
+ const corrected=await f.admin('PUT',`/api/admin/clients/${c.id}/expiry`,{expiresAt:later(-1)});
+ assert.equal(corrected.status,200);
+ for(let i=0;i<3;i++){
+  const status=await f.status(d.uid,d.registration);
+  assert.equal(status.status,200);
+  assert.equal(status.body.allowed,false);
+  assert.equal(status.body.status,'active');
+  assert.equal(status.body.reason,'client_expired');
+  assert.equal(status.body.accessMode,null);
+  assert.equal(status.body.serviceExpired,true);
+  assert.equal((await f.session(d)).status,403);
+ }
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM device_demos').get().n,0);
+ const row=(await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id);
+ assert.equal(row.display_status_code,'expired');
+ const renewal=await f.admin('POST',`/api/admin/clients/${c.id}/renew`,{});
+ assert.equal(renewal.status,200);
+ const restored=await f.status(d.uid,d.registration);
+ assert.equal(restored.body.allowed,true);
+ assert.equal(restored.body.accessMode,'paid');
+ assert.equal(restored.body.activationCode,d.code);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_devices').get().n,1);
+});
+
+test('legacy demo cannot override an existing paid expiry',async t=>{
+ const f=await transferFixture(t),c=f.client(f.root.id,later(59)),d=await f.device(c);
+ f.demo(d,c,later(120));
+ const status=await f.status(d.uid,d.registration);
+ assert.equal(status.body.allowed,true);
+ assert.equal(status.body.accessMode,'paid');
+ const active=(await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id);
+ assert.equal(active.display_status_code,'active');
+ assert.equal(active.demo_active_count,0);
+ f.db.prepare('UPDATE clients SET expires_at=? WHERE id=?').run(later(-1),c.id);
+ const expired=await f.status(d.uid,d.registration);
+ assert.equal(expired.body.allowed,false);
+ assert.equal(expired.body.reason,'client_expired');
+ assert.equal(expired.body.accessMode,null);
+ assert.equal(expired.body.serviceExpired,true);
+ assert.equal((await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id).display_status_code,'expired');
+});
+
+test('a never-subscribed customer can still use its first automatic demo',async t=>{
+ const f=await transferFixture(t),c=f.client(f.root.id,null),d=await f.device(c,{status:'pending'});
+ f.db.prepare("INSERT OR REPLACE INTO settings(setting_key,setting_value,updated_at) VALUES ('demos_enabled','1',?)").run(new Date().toISOString());
+ const result=await f.status(d.uid,d.registration);
+ assert.equal(result.status,200);
+ assert.equal(result.body.allowed,true);
+ assert.equal(result.body.accessMode,'demo');
+ assert.equal(result.body.demo.active,true);
+ assert.equal((await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id).display_status_code,'demo_active');
+});

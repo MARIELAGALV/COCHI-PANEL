@@ -1630,6 +1630,9 @@ function grantConfiguredDemoToDevice(d,c,{grantedByAccountId=rootAdminId()}={}){
   if(!boolSetting('demos_enabled',false))return {granted:false,reason:'demos_disabled'};
   if(!c.active)return {granted:false,reason:'client_disabled'};
   if(d.status==='blocked')return {granted:false,reason:'device_blocked'};
+  // Una cuenta con fecha comercial (vigente o vencida) NO puede obtener un
+  // demo automático ni reutilizar uno previo cuando termine su suscripción.
+  if(c.expires_at)return {granted:false,reason:'commercial_service_exists'};
   if(clientAccessState(c).ok)return {granted:false,reason:'paid_service_active'};
 
   // v0.9.37: si el demo ya existe y todavía está vigente, la vinculación debe
@@ -1656,6 +1659,7 @@ function grantConfiguredDemoToDevice(d,c,{grantedByAccountId=rootAdminId()}={}){
 function ensureAutomaticDemoForLinkedDevice(d){
   if(!d||!d.client_id||d.status==='blocked')return {granted:false,reason:'not_eligible'};
   const c=clientRow(d.client_id);if(!c)return {granted:false,reason:'client_not_found'};
+  if(c.expires_at)return {granted:false,reason:'commercial_service_exists'};
   if(clientAccessState(c).ok)return {granted:false,reason:'paid_service_active'};
   const di=demoInfo(d.id);if(di.active)return {granted:true,reason:'demo_already_active',expiresAt:di.expiresAt,existing:true};
   if(!boolSetting('demos_enabled',false))return {granted:false,reason:'demos_disabled'};
@@ -1692,6 +1696,9 @@ function deviceAccessState(d,c){
   if(d.status==='blocked')return {ok:false,reason:'device_blocked'};
   if(!c)return {ok:false,reason:'device_not_linked'};
   const paid=clientAccessState(c);if(paid.ok)return paid;
+  // El vencimiento comercial es autoritativo; nunca pasar a DEMO.
+  // Un demo previo no vuelve a habilitar un servicio pago vencido.
+  if(c.expires_at)return {ok:false,reason:paid.reason,mode:null,expiresAt:c.expires_at};
   const di=demoInfo(d.id);
   if(di.active&&c.active){const owner=accountAccessState(accountRaw(c.owner_account_id));if(owner.ok)return {ok:true,reason:'ok',mode:'demo',expiresAt:di.expiresAt,demo:di};}
   // Un servicio comercial vencido debe informarse como tal, incluso si el
@@ -1736,15 +1743,15 @@ function clientStatusSummary(c){
   refreshClientDevices(c.id);
   const linked=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status IN ('pending','active')").get(c.id).n);
   const activeDevices=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status='active'").get(c.id).n);
-  const demoActive=Number(db.prepare(`SELECT COUNT(*) n FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id WHERE dd.client_id=? AND cd.status<>'blocked' AND dd.expires_at>?`).get(c.id,nowIso()).n);
+  const demoActive=c.expires_at?0:Number(db.prepare(`SELECT COUNT(*) n FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id WHERE dd.client_id=? AND cd.status<>'blocked' AND dd.expires_at>?`).get(c.id,nowIso()).n);
   const demoUsed=Number(db.prepare('SELECT COUNT(*) n FROM device_demos WHERE client_id=?').get(c.id).n);
   const paid=clientAccessState(c);
   let code='no_service',label='SIN SERVICIO';
   if(!c.active){code='blocked';label='BLOQUEADO';}
   else if(paid.ok&&linked===0){code='pending_device';label='PENDIENTE DE DISPOSITIVO';}
-  else if(paid.ok&&activeDevices>0){code='active';label='ACTIVO';}
-  else if(demoActive>0){code='demo_active';label='DEMO ACTIVO';}
+  else if(paid.ok){code='active';label='ACTIVO';}
   else if(c.expires_at&&Date.parse(c.expires_at)<=Date.now()){code='expired';label='VENCIDO';}
+  else if(demoActive>0){code='demo_active';label='DEMO ACTIVO';}
   else if(demoUsed>0){code='demo_expired';label='DEMO VENCIDO';}
   else if(linked===0){code='no_code';label='SIN CÓDIGO';}
   else if(String(paid.reason||'').startsWith('owner_')){code='blocked';label='BLOQUEADO';}
@@ -4465,6 +4472,7 @@ async function route(req,res){
       try{
         db.prepare('UPDATE clients SET expires_at=?,active=1,updated_at=? WHERE id=?').run(fixed,t,c.id);
         db.prepare('DELETE FROM client_sessions WHERE device_id IN (SELECT id FROM client_devices WHERE client_id=?)').run(c.id);
+        db.prepare('UPDATE device_demos SET expires_at=? WHERE client_id=? AND expires_at>?').run(t,c.id,t);
         audit(actor.id,'client_expiry_corrected','client',c.id,`${previous||'NULL'} -> ${fixed}`);
         db.exec('COMMIT');
       }catch(e){db.exec('ROLLBACK');throw e;}
@@ -4483,6 +4491,7 @@ async function route(req,res){
         if(owner.role_level!==1)db.prepare('UPDATE accounts SET credits=credits-?,updated_at=? WHERE id=?').run(renewCost,now,owner.id);
         db.prepare('UPDATE clients SET expires_at=?,active=1,updated_at=? WHERE id=?').run(newExp,now,c.id);
         db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE client_id=? AND status='pending'").run(now,c.id);
+        db.prepare('UPDATE device_demos SET expires_at=? WHERE client_id=? AND expires_at>?').run(now,c.id,now);
         db.prepare('INSERT INTO client_service_ledger(client_id,charged_account_id,created_by_account_id,credits_spent,previous_expiry,new_expiry,action,created_at) VALUES (?,?,?,?,?,?,?,?)').run(c.id,owner.id,actor.id,renewCost,prev,newExp,action,now);
         db.exec('COMMIT');
       }catch(e){db.exec('ROLLBACK');throw e;}
