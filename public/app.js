@@ -474,7 +474,7 @@ async function openPanelDevices(a){
 
 function clientStatusBadge(c){
   const expired=Boolean(c?.expires_at)&&Number.isFinite(Date.parse(c.expires_at))&&Date.parse(c.expires_at)<=panelNowMs();
-  if(expired&&!Number(c?.demo_active_count||0))return '<span class="badge blocked">VENCIDO</span>';
+  if(expired)return '<span class="badge blocked">VENCIDO</span>';
   const code=c.display_status_code||'no_service';
   const cls=['active','demo_active'].includes(code)?'active':['blocked','expired','demo_expired'].includes(code)?'blocked':'pending';
   return `<span class="badge ${cls}">${esc(c.display_status||'SIN SERVICIO')}</span>`;

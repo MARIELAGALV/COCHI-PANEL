@@ -66,3 +66,25 @@ Campos de visibilidad:
 ```
 
 En Android móvil, cuando `enabled` y `showOnMobileHome` sean verdaderos, el banner debe mostrarse debajo de `CUENTA ACTIVA`. Las imágenes adicionales de `extraMediaUrls` respetan `rotationSeconds`. Si `showOnMobileHome` es falso, el inicio móvil no debe renderizar el banner. Los clientes antiguos que no conocen estos campos continúan funcionando porque ambos valores se normalizan a `true` por defecto.
+
+## Vinculación y cuenta vencida (corrección de octubre 2026)
+
+**La vinculación no vence con el servicio.** Un cliente con `clientExpiresAt` pasado conserva sus dispositivos vinculados y sus `deviceSecret` anteriores. El backend ya no reduce un dispositivo a `status=pending` únicamente porque haya vencido la suscripción o demo; en clientes anteriormente afectados, `/api/client-device/status` recupera `status=active` como estado de vinculación **sin autorizar contenidos**. `allowed=false` bloquea reproducción y `reason=client_expired` indica el vencimiento comercial.
+
+Para Android TV la prioridad recomendada al procesar la respuesta de `POST /api/client-device/status` es:
+1. `allowed=true` → mostrar app/reproductor.
+2. `deviceLinked=true` y `serviceExpired=true` o `reason=client_expired` → **pantalla Cuenta vencida** con nombre de cliente, fecha `clientExpiresAt`, mensaje «Tu servicio ha vencido. Contactá a tu proveedor para renovarlo» y botón **Comprobar renovación** (invoca `/status`). Nunca solicitar código nuevo ni borrar `deviceUid/deviceSecret`.
+3. `reason=demo_expired` → pantalla **Demo vencido** sin reactivar nuevo demo ni volver a vincular.
+4. Solo un dispositivo sin vincular puede mostrar la pantalla de código. La revocación explícita/credencial inválida se gestiona por separado de vencimiento, sin vincular automáticamente.
+
+La API incluye campos aditivos `deviceLinked`, `serviceExpired`, `clientExpiresAt` y `serviceExpiresAt` tanto en `/status` como en rechazos de `/session` para que la APK pueda distinguir acceso de vínculo. La `/session` sigue devolviendo HTTP 403 al vencer y el contenido continúa bloqueado. **La presentación visual requiere también que la APK implemente esta prioridad**; verificar en un Android TV real.
+
+## DEMO separado de la suscripción comercial (octubre 2026)
+
+Una cuenta con fecha `clientExpiresAt` continúa en modo `paid` hasta su vencimiento exacto, incluso a menos de una hora o de un minuto. El token de sesión puede durar menos que un día; la APK debe leer `accessMode` en lugar de inferir el tipo de servicio por `sessionExpiresAt` ni `expiresAt` del token.
+
+Después del vencimiento comercial, `allowed=false`, `reason=client_expired` y `serviceExpired=true`, sin volver a solicitar vinculación ni conceder un DEMO aunque demos globales estén habilitados. Los demos solo se conceden a clientes sin fecha comercial registrada. Una renovación permite nuevamente el acceso pago del mismo dispositivo. Demos históricos no cambian el estado comercial.
+
+### Paleta por vigencia en las respuestas a Android
+
+`/api/client-device/status` devuelve `appTheme` también si `allowed=false`, para que la pantalla de cuenta vencida conserve el color rojo. El error HTTP 403 de `/api/client-device/session` también entrega `appTheme` sin habilitar reproducción. Valores por fecha exacta del servidor: más de 10 días azul, de 2 a 10 días amarillo, menos de 2 días (incluido vencido) rojo. La APK debe pintar la pantalla de vencimiento y la pantalla previa de acuerdo con esa paleta. No inferir DEMO por cercanía del vencimiento.

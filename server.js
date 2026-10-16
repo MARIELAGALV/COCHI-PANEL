@@ -1630,6 +1630,9 @@ function grantConfiguredDemoToDevice(d,c,{grantedByAccountId=rootAdminId()}={}){
   if(!boolSetting('demos_enabled',false))return {granted:false,reason:'demos_disabled'};
   if(!c.active)return {granted:false,reason:'client_disabled'};
   if(d.status==='blocked')return {granted:false,reason:'device_blocked'};
+  // Una cuenta con fecha comercial (vigente o vencida) NO puede obtener un
+  // demo automático ni reutilizar uno previo cuando termine su suscripción.
+  if(c.expires_at)return {granted:false,reason:'commercial_service_exists'};
   if(clientAccessState(c).ok)return {granted:false,reason:'paid_service_active'};
 
   // v0.9.37: si el demo ya existe y todavía está vigente, la vinculación debe
@@ -1656,6 +1659,7 @@ function grantConfiguredDemoToDevice(d,c,{grantedByAccountId=rootAdminId()}={}){
 function ensureAutomaticDemoForLinkedDevice(d){
   if(!d||!d.client_id||d.status==='blocked')return {granted:false,reason:'not_eligible'};
   const c=clientRow(d.client_id);if(!c)return {granted:false,reason:'client_not_found'};
+  if(c.expires_at)return {granted:false,reason:'commercial_service_exists'};
   if(clientAccessState(c).ok)return {granted:false,reason:'paid_service_active'};
   const di=demoInfo(d.id);if(di.active)return {granted:true,reason:'demo_already_active',expiresAt:di.expiresAt,existing:true};
   if(!boolSetting('demos_enabled',false))return {granted:false,reason:'demos_disabled'};
@@ -1692,9 +1696,15 @@ function deviceAccessState(d,c){
   if(d.status==='blocked')return {ok:false,reason:'device_blocked'};
   if(!c)return {ok:false,reason:'device_not_linked'};
   const paid=clientAccessState(c);if(paid.ok)return paid;
+  // El vencimiento comercial es autoritativo; nunca pasar a DEMO.
+  // Un demo previo no vuelve a habilitar un servicio pago vencido.
+  if(c.expires_at)return {ok:false,reason:paid.reason,mode:null,expiresAt:c.expires_at};
   const di=demoInfo(d.id);
   if(di.active&&c.active){const owner=accountAccessState(accountRaw(c.owner_account_id));if(owner.ok)return {ok:true,reason:'ok',mode:'demo',expiresAt:di.expiresAt,demo:di};}
-  return {ok:false,reason:di.used?'demo_expired':paid.reason,mode:di.used?'demo':null,expiresAt:di.expiresAt||null,demo:di};
+  // Un servicio comercial vencido debe informarse como tal, incluso si el
+  // dispositivo utilizó un demo antiguo. Esto es distinto de perder el vínculo.
+  const reason=paid.reason==='client_expired'?'client_expired':di.used?'demo_expired':paid.reason;
+  return {ok:false,reason,mode:di.used?'demo':null,expiresAt:di.expiresAt||null,demo:di};
 }
 // A transfer changes the customer link, never the device credential or session.
 // Only a new, empty customer can inherit paid time; existing customers keep their service.
@@ -1718,7 +1728,13 @@ function clientDeviceTransferPlan(d,source,target){
 }
 function refreshDeviceState(d){
   if(!d||d.status==='blocked'||!d.client_id)return d;
-  const c=clientRow(d.client_id);const access=deviceAccessState(d,c);const desired=access.ok?'active':'pending';
+  const c=clientRow(d.client_id),access=deviceAccessState(d,c);
+  // Vinculación del dispositivo y vigencia del servicio son estados distintos.
+  // Un equipo vinculado a un cliente vencido sigue registrado y no necesita
+  // un nuevo código. También repara dispositivos que quedaron 'pending'
+  // por el comportamiento anterior, sin otorgarles permiso de reproducción.
+  const serviceExpired=access.reason==='client_expired'||access.reason==='demo_expired';
+  const desired=access.ok||serviceExpired?'active':'pending';
   if(d.status!==desired){db.prepare('UPDATE client_devices SET status=?,updated_at=? WHERE id=?').run(desired,nowIso(),d.id);d={...d,status:desired};}
   return d;
 }
@@ -1727,15 +1743,15 @@ function clientStatusSummary(c){
   refreshClientDevices(c.id);
   const linked=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status IN ('pending','active')").get(c.id).n);
   const activeDevices=Number(db.prepare("SELECT COUNT(*) n FROM client_devices WHERE client_id=? AND status='active'").get(c.id).n);
-  const demoActive=Number(db.prepare(`SELECT COUNT(*) n FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id WHERE dd.client_id=? AND cd.status<>'blocked' AND dd.expires_at>?`).get(c.id,nowIso()).n);
+  const demoActive=c.expires_at?0:Number(db.prepare(`SELECT COUNT(*) n FROM device_demos dd JOIN client_devices cd ON cd.id=dd.device_id WHERE dd.client_id=? AND cd.status<>'blocked' AND dd.expires_at>?`).get(c.id,nowIso()).n);
   const demoUsed=Number(db.prepare('SELECT COUNT(*) n FROM device_demos WHERE client_id=?').get(c.id).n);
   const paid=clientAccessState(c);
   let code='no_service',label='SIN SERVICIO';
   if(!c.active){code='blocked';label='BLOQUEADO';}
   else if(paid.ok&&linked===0){code='pending_device';label='PENDIENTE DE DISPOSITIVO';}
-  else if(paid.ok&&activeDevices>0){code='active';label='ACTIVO';}
-  else if(demoActive>0){code='demo_active';label='DEMO ACTIVO';}
+  else if(paid.ok){code='active';label='ACTIVO';}
   else if(c.expires_at&&Date.parse(c.expires_at)<=Date.now()){code='expired';label='VENCIDO';}
+  else if(demoActive>0){code='demo_active';label='DEMO ACTIVO';}
   else if(demoUsed>0){code='demo_expired';label='DEMO VENCIDO';}
   else if(linked===0){code='no_code';label='SIN CÓDIGO';}
   else if(String(paid.reason||'').startsWith('owner_')){code='blocked';label='BLOQUEADO';}
@@ -3991,11 +4007,11 @@ async function route(req,res){
   if(p==='/api/client-device/status'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
     const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||null,sharedExpiry:true,serverTime:nowIso(),allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,deviceLinked:!!c,serviceExpired:!st.ok&&['client_expired','demo_expired'].includes(st.reason),clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||c?.expires_at||null,appTheme:appThemeForClient(c),sharedExpiry:true,serverTime:nowIso(),allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
   }
   if(p==='/api/client-device/session'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
-    const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason,status:d.status,deviceLinked:!!c,serviceExpired:['client_expired','demo_expired'].includes(st.reason),clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||c?.expires_at||null,appTheme:appThemeForClient(c)});
     db.prepare('DELETE FROM client_sessions WHERE device_id=? OR expires_at<=?').run(d.id,nowIso());const token=randomToken();let exp=addDays(nowIso(),1);if(st.expiresAt&&Date.parse(st.expiresAt)<Date.parse(exp))exp=st.expiresAt;
     db.prepare('INSERT INTO client_sessions(device_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)').run(d.id,sha(token),exp,nowIso());
     // `expiresAt` se conserva por compatibilidad y SIEMPRE significa vencimiento de la sesión/token.
@@ -4456,6 +4472,7 @@ async function route(req,res){
       try{
         db.prepare('UPDATE clients SET expires_at=?,active=1,updated_at=? WHERE id=?').run(fixed,t,c.id);
         db.prepare('DELETE FROM client_sessions WHERE device_id IN (SELECT id FROM client_devices WHERE client_id=?)').run(c.id);
+        db.prepare('UPDATE device_demos SET expires_at=? WHERE client_id=? AND expires_at>?').run(t,c.id,t);
         audit(actor.id,'client_expiry_corrected','client',c.id,`${previous||'NULL'} -> ${fixed}`);
         db.exec('COMMIT');
       }catch(e){db.exec('ROLLBACK');throw e;}
@@ -4474,6 +4491,7 @@ async function route(req,res){
         if(owner.role_level!==1)db.prepare('UPDATE accounts SET credits=credits-?,updated_at=? WHERE id=?').run(renewCost,now,owner.id);
         db.prepare('UPDATE clients SET expires_at=?,active=1,updated_at=? WHERE id=?').run(newExp,now,c.id);
         db.prepare("UPDATE client_devices SET status='active',updated_at=? WHERE client_id=? AND status='pending'").run(now,c.id);
+        db.prepare('UPDATE device_demos SET expires_at=? WHERE client_id=? AND expires_at>?').run(now,c.id,now);
         db.prepare('INSERT INTO client_service_ledger(client_id,charged_account_id,created_by_account_id,credits_spent,previous_expiry,new_expiry,action,created_at) VALUES (?,?,?,?,?,?,?,?)').run(c.id,owner.id,actor.id,renewCost,prev,newExp,action,now);
         db.exec('COMMIT');
       }catch(e){db.exec('ROLLBACK');throw e;}
