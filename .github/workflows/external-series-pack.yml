@@ -1,0 +1,21 @@
+name: Encrypted external series pack tests
+on:
+  push:
+    paths:
+      - 'tools/external-series-pack.mjs'
+      - 'tests/external-series-pack.test.mjs'
+      - '.github/workflows/external-series-pack.yml'
+  pull_request:
+    paths:
+      - 'tools/external-series-pack.mjs'
+      - 'tests/external-series-pack.test.mjs'
+      - '.github/workflows/external-series-pack.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/external-series-pack.test.mjs
