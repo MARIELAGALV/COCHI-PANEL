@@ -253,3 +253,27 @@ test('a never-subscribed customer can still use its first automatic demo',async 
  assert.equal(result.body.demo.active,true);
  assert.equal((await f.admin('GET','/api/admin/clients')).body.clients.find(x=>x.id===c.id).display_status_code,'demo_active');
 });
+
+test('status always provides the exact paid blue, yellow and red palette including after expiration',async t=>{
+ const f=await transferFixture(t),c=f.client(),d=await f.device(c);
+ const day=24*60*60*1000;
+ for(const [remaining,expected] of [[11*day,'blue'],[7*day,'custom'],[1*day,'red'],[-60000,'red']]){
+  const expiry=new Date(Date.now()+remaining).toISOString();
+  f.db.prepare('UPDATE clients SET expires_at=? WHERE id=?').run(expiry,c.id);
+  const s=await f.status(d.uid,d.registration);
+  assert.equal(s.status,200);
+  assert.equal(s.body.appTheme.preset,expected);
+  assert.equal(s.body.clientExpiresAt,expiry);
+  assert.equal(s.body.serviceExpiresAt,expiry);
+  assert.equal(s.body.status,'active');
+  assert.equal(s.body.deviceLinked,true);
+  assert.equal(s.body.allowed,remaining>0);
+  if(remaining<0){
+   assert.equal(s.body.serviceExpired,true);
+   assert.equal(s.body.reason,'client_expired');
+   const blocked=await f.session(d);
+   assert.equal(blocked.status,403);
+   assert.equal(blocked.body.appTheme.preset,'red');
+  }else assert.equal(s.body.accessMode,'paid');
+ }
+});

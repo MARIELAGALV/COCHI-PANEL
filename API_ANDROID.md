@@ -84,3 +84,7 @@ La API incluye campos aditivos `deviceLinked`, `serviceExpired`, `clientExpiresA
 Una cuenta con fecha `clientExpiresAt` continúa en modo `paid` hasta su vencimiento exacto, incluso a menos de una hora o de un minuto. El token de sesión puede durar menos que un día; la APK debe leer `accessMode` en lugar de inferir el tipo de servicio por `sessionExpiresAt` ni `expiresAt` del token.
 
 Después del vencimiento comercial, `allowed=false`, `reason=client_expired` y `serviceExpired=true`, sin volver a solicitar vinculación ni conceder un DEMO aunque demos globales estén habilitados. Los demos solo se conceden a clientes sin fecha comercial registrada. Una renovación permite nuevamente el acceso pago del mismo dispositivo. Demos históricos no cambian el estado comercial.
+
+### Paleta por vigencia en las respuestas a Android
+
+`/api/client-device/status` devuelve `appTheme` también si `allowed=false`, para que la pantalla de cuenta vencida conserve el color rojo. El error HTTP 403 de `/api/client-device/session` también entrega `appTheme` sin habilitar reproducción. Valores por fecha exacta del servidor: más de 10 días azul, de 2 a 10 días amarillo, menos de 2 días (incluido vencido) rojo. La APK debe pintar la pantalla de vencimiento y la pantalla previa de acuerdo con esa paleta. No inferir DEMO por cercanía del vencimiento.
