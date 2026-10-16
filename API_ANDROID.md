@@ -66,3 +66,15 @@ Campos de visibilidad:
 ```
 
 En Android móvil, cuando `enabled` y `showOnMobileHome` sean verdaderos, el banner debe mostrarse debajo de `CUENTA ACTIVA`. Las imágenes adicionales de `extraMediaUrls` respetan `rotationSeconds`. Si `showOnMobileHome` es falso, el inicio móvil no debe renderizar el banner. Los clientes antiguos que no conocen estos campos continúan funcionando porque ambos valores se normalizan a `true` por defecto.
+
+## Vinculación y cuenta vencida (corrección de octubre 2026)
+
+**La vinculación no vence con el servicio.** Un cliente con `clientExpiresAt` pasado conserva sus dispositivos vinculados y sus `deviceSecret` anteriores. El backend ya no reduce un dispositivo a `status=pending` únicamente porque haya vencido la suscripción o demo; en clientes anteriormente afectados, `/api/client-device/status` recupera `status=active` como estado de vinculación **sin autorizar contenidos**. `allowed=false` bloquea reproducción y `reason=client_expired` indica el vencimiento comercial.
+
+Para Android TV la prioridad recomendada al procesar la respuesta de `POST /api/client-device/status` es:
+1. `allowed=true` → mostrar app/reproductor.
+2. `deviceLinked=true` y `serviceExpired=true` o `reason=client_expired` → **pantalla Cuenta vencida** con nombre de cliente, fecha `clientExpiresAt`, mensaje «Tu servicio ha vencido. Contactá a tu proveedor para renovarlo» y botón **Comprobar renovación** (invoca `/status`). Nunca solicitar código nuevo ni borrar `deviceUid/deviceSecret`.
+3. `reason=demo_expired` → pantalla **Demo vencido** sin reactivar nuevo demo ni volver a vincular.
+4. Solo un dispositivo sin vincular puede mostrar la pantalla de código. La revocación explícita/credencial inválida se gestiona por separado de vencimiento, sin vincular automáticamente.
+
+La API incluye campos aditivos `deviceLinked`, `serviceExpired`, `clientExpiresAt` y `serviceExpiresAt` tanto en `/status` como en rechazos de `/session` para que la APK pueda distinguir acceso de vínculo. La `/session` sigue devolviendo HTTP 403 al vencer y el contenido continúa bloqueado. **La presentación visual requiere también que la APK implemente esta prioridad**; verificar en un Android TV real.

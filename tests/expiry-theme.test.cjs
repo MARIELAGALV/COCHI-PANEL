@@ -116,3 +116,65 @@ test('sellers cannot read or replace the administration theme rules', async t =>
   assert.equal((await f.as(seller, 'GET', '/api/admin/app-theme')).status, 403);
   assert.equal((await f.as(seller, 'POST', '/api/admin/app-theme/publish', { theme: {} })).status, 403);
 });
+
+
+test('a paid service expiry keeps its linked device, denies playback and renews without another code',async t=>{
+ const f=await transferFixture(t),c=f.client(),d=await f.device(c);
+ const before=f.db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);
+ const initial=await f.session(d);
+ assert.equal(initial.status,200);
+ f.db.prepare('UPDATE clients SET expires_at=? WHERE id=?').run(later(-2),c.id);
+ const expired=await f.status(d.uid,d.registration);
+ assert.equal(expired.status,200);
+ assert.equal(expired.body.allowed,false);
+ assert.equal(expired.body.status,'active','La vinculación no vuelve a PENDING');
+ assert.equal(expired.body.deviceLinked,true);
+ assert.equal(expired.body.serviceExpired,true);
+ assert.equal(expired.body.reason,'client_expired');
+ assert.equal(expired.body.clientId,c.id);
+ assert.equal(expired.body.activationCode,d.code);
+ assert.equal(expired.body.clientExpiresAt,(f.db.prepare('SELECT expires_at FROM clients WHERE id=?').get(c.id)).expires_at);
+ assert.equal((await f.session(d)).status,403,'Vencido no puede reproducir');
+ assert.equal((await f.config(initial.body.token)).status,403,'Token anterior tampoco abre contenidos');
+ assert.equal(f.db.prepare('SELECT client_id FROM client_devices WHERE id=?').get(d.id).client_id,c.id);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_devices').get().n,1,'No se crea dispositivo nuevo');
+ const renewal=await f.admin('POST',`/api/admin/clients/${c.id}/renew`,{});
+ assert.equal(renewal.status,200,JSON.stringify(renewal.body));
+ const renewed=await f.status(d.uid,d.registration);
+ assert.equal(renewed.status,200);
+ assert.equal(renewed.body.allowed,true);
+ assert.equal(renewed.body.status,'active');
+ assert.equal(renewed.body.deviceLinked,true);
+ assert.equal(renewed.body.activationCode,before.activation_code);
+ assert.equal((await f.session(d)).status,200,'El mismo equipo funciona tras renovar');
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM client_devices').get().n,1);
+});
+
+test('a linked device left pending by older expired-service logic recovers its link',async t=>{
+ const f=await transferFixture(t),c=f.client(f.root.id,later(-15)),d=await f.device(c,{status:'pending'});
+ const status=await f.status(d.uid,d.registration);
+ assert.equal(status.status,200);
+ assert.equal(status.body.status,'active');
+ assert.equal(status.body.allowed,false);
+ assert.equal(status.body.reason,'client_expired');
+ assert.equal(status.body.deviceLinked,true);
+ assert.equal(status.body.activationCode,d.code);
+ assert.equal((await f.session(d)).status,403);
+ const renewed=await f.admin('POST',`/api/admin/clients/${c.id}/renew`,{});
+ assert.equal(renewed.status,200);
+ assert.equal((await f.status(d.uid,d.registration)).body.allowed,true);
+});
+
+test('unlinked and never subscribed devices remain pending, not falsely active',async t=>{
+ const f=await transferFixture(t),unlinked=await f.device(null,{status:'pending'});
+ const unlinkedStatus=await f.status(unlinked.uid,unlinked.registration);
+ assert.equal(unlinkedStatus.body.status,'pending');
+ assert.equal(unlinkedStatus.body.deviceLinked,false);
+ assert.equal(unlinkedStatus.body.allowed,false);
+ const c=f.client(f.root.id,null);
+ const waiting=await f.device(c,{status:'pending'});
+ const waitingStatus=await f.status(waiting.uid,waiting.registration);
+ assert.equal(waitingStatus.body.status,'pending');
+ assert.equal(waitingStatus.body.serviceExpired,false);
+ assert.equal(waitingStatus.body.reason,'client_no_service');
+});

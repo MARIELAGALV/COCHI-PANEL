@@ -1694,7 +1694,10 @@ function deviceAccessState(d,c){
   const paid=clientAccessState(c);if(paid.ok)return paid;
   const di=demoInfo(d.id);
   if(di.active&&c.active){const owner=accountAccessState(accountRaw(c.owner_account_id));if(owner.ok)return {ok:true,reason:'ok',mode:'demo',expiresAt:di.expiresAt,demo:di};}
-  return {ok:false,reason:di.used?'demo_expired':paid.reason,mode:di.used?'demo':null,expiresAt:di.expiresAt||null,demo:di};
+  // Un servicio comercial vencido debe informarse como tal, incluso si el
+  // dispositivo utilizó un demo antiguo. Esto es distinto de perder el vínculo.
+  const reason=paid.reason==='client_expired'?'client_expired':di.used?'demo_expired':paid.reason;
+  return {ok:false,reason,mode:di.used?'demo':null,expiresAt:di.expiresAt||null,demo:di};
 }
 // A transfer changes the customer link, never the device credential or session.
 // Only a new, empty customer can inherit paid time; existing customers keep their service.
@@ -1718,7 +1721,13 @@ function clientDeviceTransferPlan(d,source,target){
 }
 function refreshDeviceState(d){
   if(!d||d.status==='blocked'||!d.client_id)return d;
-  const c=clientRow(d.client_id);const access=deviceAccessState(d,c);const desired=access.ok?'active':'pending';
+  const c=clientRow(d.client_id),access=deviceAccessState(d,c);
+  // Vinculación del dispositivo y vigencia del servicio son estados distintos.
+  // Un equipo vinculado a un cliente vencido sigue registrado y no necesita
+  // un nuevo código. También repara dispositivos que quedaron 'pending'
+  // por el comportamiento anterior, sin otorgarles permiso de reproducción.
+  const serviceExpired=access.reason==='client_expired'||access.reason==='demo_expired';
+  const desired=access.ok||serviceExpired?'active':'pending';
   if(d.status!==desired){db.prepare('UPDATE client_devices SET status=?,updated_at=? WHERE id=?').run(desired,nowIso(),d.id);d={...d,status:desired};}
   return d;
 }
@@ -3991,11 +4000,11 @@ async function route(req,res){
   if(p==='/api/client-device/status'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
     const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);
-    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||null,sharedExpiry:true,serverTime:nowIso(),allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
+    const capacity=clientDeviceCapacity(c,d);return sendJson(res,200,{activationCode:d.activation_code,status:d.status,deviceLinked:!!c,serviceExpired:!st.ok&&['client_expired','demo_expired'].includes(st.reason),clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||c?.expires_at||null,sharedExpiry:true,serverTime:nowIso(),allowed:st.ok,reason:st.reason,accessMode:st.mode||null,accessExpiresAt:st.expiresAt||null,...capacity,demo:demoInfo(d.id)});
   }
   if(p==='/api/client-device/session'&&m==='POST'){
     const b=await readJson(req);let d=clientDeviceByCred(String(b.deviceUid||''),String(b.deviceSecret||''));if(!d)return sendJson(res,401,{error:'Dispositivo no reconocido'});
-    const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason});
+    const autoDemo=ensureAutomaticDemoForLinkedDevice(d);if(autoDemo.granted)d=db.prepare('SELECT * FROM client_devices WHERE id=?').get(d.id);d=refreshDeviceState(d);db.prepare('UPDATE client_devices SET last_seen_at=?,updated_at=? WHERE id=?').run(nowIso(),nowIso(),d.id);const c=d.client_id?clientRow(d.client_id):null;const st=deviceAccessState(d,c);if(!st.ok)return sendJson(res,403,{allowed:false,reason:st.reason,status:d.status,deviceLinked:!!c,serviceExpired:['client_expired','demo_expired'].includes(st.reason),clientId:c?.id||null,clientName:c?.name||null,clientExpiresAt:c?.expires_at||null,serviceExpiresAt:st.expiresAt||c?.expires_at||null});
     db.prepare('DELETE FROM client_sessions WHERE device_id=? OR expires_at<=?').run(d.id,nowIso());const token=randomToken();let exp=addDays(nowIso(),1);if(st.expiresAt&&Date.parse(st.expiresAt)<Date.parse(exp))exp=st.expiresAt;
     db.prepare('INSERT INTO client_sessions(device_id,token_hash,expires_at,created_at) VALUES (?,?,?,?)').run(d.id,sha(token),exp,nowIso());
     // `expiresAt` se conserva por compatibilidad y SIEMPRE significa vencimiento de la sesión/token.
