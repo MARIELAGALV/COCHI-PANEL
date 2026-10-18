@@ -22,11 +22,11 @@
 .cochi-modern-nav .cochi-nav-items .nav-btn{width:100%;text-align:left}
 </style><style>
 .cochi-mobile-home{display:none}
-@media(max-width:700px){
+@media(max-width:1100px){
  #appView.app{display:block!important;min-width:0}
- #appView .sidebar{display:none!important}
- #appView .main{width:100%!important;max-width:100%!important;margin:0!important;padding:12px!important;min-width:0}
- .cochi-mobile-home{display:block;padding:12px 4px 18px}
+ #appView .sidebar{display:none!important;visibility:hidden!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important}
+ #appView .main{display:block!important;width:100%!important;max-width:100%!important;margin:0!important;padding:12px!important;min-width:0}
+ #appView .main>.cochi-mobile-home{display:block!important;padding:12px 4px 18px}
  .cochi-mobile-heading{display:grid;gap:4px;margin:8px 0 14px;color:#f1f9ff}
  .cochi-mobile-heading strong{font-size:19px}.cochi-mobile-heading span{font-size:12px;color:#98b9d6}
  .cochi-mobile-search input{width:100%;box-sizing:border-box;border-radius:13px;padding:14px;background:#102b47;color:white;border:1px solid #2a668f;font-size:16px}
@@ -35,11 +35,11 @@
  .cochi-mobile-tile:focus-visible{outline:2px solid #6fd5ff;outline-offset:2px}
  .cochi-mobile-tile b{font-size:14px;line-height:1.3}.cochi-mobile-tile small{color:#a9c7df;font-size:11px}
  .cochi-mobile-back{border:1px solid #3676a3;background:#153c60;color:#fff;border-radius:10px;padding:9px 12px;margin-bottom:8px}
- .cochi-mobile-home.cochi-mobile-hidden{display:none}
- #appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.topbar,#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.view{display:none!important}
- #appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.cochi-mobile-back{display:none!important}
- .cochi-mobile-heading{line-height:1.35;overflow-wrap:anywhere}
- #appView .cochi-mobile-home{width:100%;box-sizing:border-box}
+ #appView .main>.cochi-mobile-home.cochi-mobile-hidden{display:none!important}
+#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.topbar,#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.view{display:none!important}
+#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.cochi-mobile-back{display:none!important}
+ #appView .cochi-mobile-heading{line-height:1.35;overflow-wrap:anywhere}
+ #appView .cochi-mobile-home{width:100%;box-sizing:border-box;max-width:100%;clear:both}
  #appView .cochi-mobile-grid{width:100%;box-sizing:border-box}
 }
 </style></head>
@@ -513,11 +513,11 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
  const groups=[['👥','Clientes y fichas','accounts','Gestión comercial'],['📱','Dispositivos','devices','Equipos y activaciones'],['💳','Créditos','credits','Saldos y movimientos'],['★','Promociones y demos','promotions','Promociones y pruebas'],['▤','Contenido','content','Canales, películas y series'],['⌁','Fuentes y JSON','sources','Catálogos y enlaces'],['⌕','Resolver stream','resolver','Reproducción'],['🔒','Adultos','adults','Acceso parental'],['🛡','Seguridad','security','Permisos y protección'],['🎨','Diseño','appearance','Apariencia del panel'],['◇','Fichas PANEL','accounts','Administración de paneles'],['⏱','Demos','demos','Accesos de prueba']];
  const home=document.getElementById('cochiMobileHome'),grid=document.getElementById('cochiMobileGrid'),search=document.getElementById('cochiMobileSearch');if(!home||!grid)return;
  function allowed(id){const btn=document.querySelector('.sidebar .nav-btn[data-view="'+id+'"]');return !!btn&&!btn.classList.contains('hidden')&&!btn.closest('.admin-only.hidden,.root-admin-only.hidden')&&(!btn.classList.contains('admin-only')||!document.querySelector('#appView .admin-only.hidden'));}
- function draw(){const q=(search.value||'').toLocaleLowerCase('es');grid.replaceChildren();groups.filter(x=>allowed(x[2])&&(x[1]+' '+x[3]).toLocaleLowerCase('es').includes(q)).forEach(x=>{const b=document.createElement('button');b.type='button';b.className='cochi-mobile-tile';const title=document.createElement('b'),desc=document.createElement('small');title.textContent=x[0]+' '+x[1];desc.textContent=x[3];b.append(title,desc);b.onclick=()=>{document.querySelector('.sidebar .nav-btn[data-view="'+x[2]+'"]').click();home.classList.add('cochi-mobile-hidden');};grid.append(b)});}
+ function draw(){if(!document.querySelector('#appView:not(.hidden)'))return;const q=(search.value||'').toLocaleLowerCase('es');grid.replaceChildren();groups.filter(x=>allowed(x[2])&&(x[1]+' '+x[3]).toLocaleLowerCase('es').includes(q)).forEach(x=>{const b=document.createElement('button');b.type='button';b.className='cochi-mobile-tile';const title=document.createElement('b'),desc=document.createElement('small');title.textContent=x[0]+' '+x[1];desc.textContent=x[3];b.append(title,desc);b.onclick=()=>{document.querySelector('.sidebar .nav-btn[data-view="'+x[2]+'"]').click();home.classList.add('cochi-mobile-hidden');};grid.append(b)});}
  search.addEventListener('input',draw);
  const observer=new MutationObserver(()=>{if(!home.classList.contains('cochi-mobile-hidden'))draw()});observer.observe(document.querySelector('.sidebar'),{subtree:true,attributes:true,attributeFilter:['class']});
  const back=document.createElement('button');back.className='cochi-mobile-back';back.type='button';back.textContent='← Menú principal';back.onclick=()=>{home.classList.remove('cochi-mobile-hidden');draw();window.scrollTo({top:0,behavior:'smooth'})};document.querySelector('#appView .main')?.prepend(back);
- const mq=window.matchMedia('(max-width:700px)');function sync(){back.style.display=mq.matches&&home.classList.contains('cochi-mobile-hidden')?'block':'none';if(mq.matches&&!home.classList.contains('cochi-mobile-hidden'))draw()};new MutationObserver(sync).observe(home,{attributes:true,attributeFilter:['class']});mq.addEventListener?.('change',sync);sync();
+ const mq=window.matchMedia('(max-width:1100px)');function sync(){back.style.display=mq.matches&&home.classList.contains('cochi-mobile-hidden')?'block':'none';if(mq.matches&&!home.classList.contains('cochi-mobile-hidden'))draw()};new MutationObserver(sync).observe(home,{attributes:true,attributeFilter:['class']});mq.addEventListener?.('change',sync);sync();
 })();
 </script></body>
 </html>
