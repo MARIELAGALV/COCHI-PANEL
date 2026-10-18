@@ -45,47 +45,6 @@
  #view-accounts .toolbar>#newAdminMobileBtn.hidden{display:none!important}
 }
 
-/* Unified card dashboard on desktop and mobile. Original sidebar retained in DOM for permissions/routing. */
-#appView.app{display:block!important;min-width:0}
-#appView .sidebar{display:none!important}
-#appView .main{width:100%!important;max-width:100%!important;min-width:0;margin:0 auto!important;padding:clamp(12px,2.5vw,30px)!important}
-#appView .main>.cochi-mobile-home{display:block!important;padding:12px 4px 20px}
-#appView .cochi-mobile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
-#appView .cochi-mobile-tile{min-width:0;min-height:120px;border-radius:16px;background:linear-gradient(135deg,#113c6a,#102940);border:1px solid #2d6d9a;padding:16px;color:#f3faff;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:12px;cursor:pointer}
-#appView .cochi-mobile-tile b{font-size:clamp(14px,1.4vw,18px);line-height:1.35}
-#appView .cochi-mobile-tile small{color:#b0cce0;font-size:12px}
-#appView .cochi-mobile-tile:hover{border-color:#39bdf8;background:#174979}
-#appView .cochi-mobile-home.cochi-mobile-hidden{display:none!important}
-#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.topbar,
-#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.view{display:none!important}
-#appView .cochi-mobile-back,#appView .cochi-card-return{border:1px solid #3676a3;background:#153c60;color:white;border-radius:11px;padding:11px 14px;margin:8px 0;cursor:pointer}
-#appView .cochi-card-return[hidden]{display:none!important}
-#appView .cochi-mobile-heading{display:grid;gap:5px;margin:10px 0;color:#fff}
-#appView .cochi-mobile-search input{width:100%;box-sizing:border-box;background:#091f34;color:white;border:1px solid #2a668f;border-radius:12px;padding:13px;font-size:16px}
-@media(min-width:850px){#appView .cochi-mobile-grid{grid-template-columns:repeat(4,minmax(0,1fr))}#appView .main{max-width:1500px!important}}
-
-/* Fichas PANEL: creation controls always first and side by side on every viewport. */
-#view-accounts>.toolbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;align-items:stretch}
-#view-accounts>.toolbar>#newAccountBtn,#view-accounts>.toolbar>#newAdminMobileBtn{grid-row:1!important;min-width:0!important;max-width:none!important;width:100%!important;min-height:58px!important;display:flex;align-items:center;justify-content:center;text-align:center;white-space:normal!important;overflow-wrap:anywhere;padding:10px!important;font-size:clamp(12px,1.3vw,15px)!important;border-radius:12px}
-#view-accounts>.toolbar>#newAccountBtn{grid-column:1!important}
-#view-accounts>.toolbar>#newAdminMobileBtn{grid-column:2!important}
-#view-accounts>.toolbar>#newAdminMobileBtn.hidden{display:none!important}
-#view-accounts>.toolbar>.table-search{grid-column:1/-1!important;grid-row:2!important;width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box}
-#view-accounts>.toolbar>.muted{grid-column:1/-1!important;grid-row:3!important}
-@media(min-width:1101px){#newAdminMobileBtn:not(.hidden){display:flex!important}}
-
-/* Honor application role-based hidden state before layout overrides. */
-#view-accounts>.toolbar>#newAccountBtn.hidden,
-#view-accounts>.toolbar>#newAdminMobileBtn.hidden,
-#view-accounts>.toolbar>#newAdminMobileBtn.root-admin-only.hidden{display:none!important}
-#appView .cochi-mobile-back[hidden]{display:none!important}
-
-/* Readable role creation controls, desktop and mobile. */
-#roleCreationCard{padding:clamp(18px,2.5vw,28px)!important}
-#roleCreationCard .cochi-role-options{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px!important;margin:20px 0!important}
-#roleCreationCard .cochi-role-options .switch-row{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:14px!important;min-height:72px!important;padding:15px 18px!important;background:#102e4c!important;border:2px solid #3776a0!important;border-radius:14px!important;font-size:clamp(15px,1.4vw,18px)!important;font-weight:650!important;line-height:1.45!important;cursor:pointer!important;white-space:normal!important}
-#roleCreationCard .cochi-role-options .switch-row:has(input:checked){background:#114b76!important;border-color:#36d4ff!important;box-shadow:inset 0 0 0 1px #36d4ff}
-#roleCreationCard .cochi-role-options input[type=checkbox]{appearance:auto!important;display:inline-block!important;opacity:1!important;position:static!important;transform:none!important;flex:0 0 25px!important;width:25px!important;height:25px!important;margin:0!important;accent-color:#36d4ff!important;cursor:pointer}
-#roleCreationCard .cochi-role-options .small{font-size:13px!important;font-weight:400!important}
-#roleCreationCard #roleSettingsForm button[type=submit]{min-height:48px!important;font-size:15px!important;padding:12px 20px!important}
-@media(max-width:620px){#roleCreationCard .cochi-role-options{grid-template-columns:1fr!important}}
+/* Restored original side navigation across screen sizes. */
+#appView .cochi-mobile-home{display:none!important}
+@media(max-width:1100px){#appView.app{display:flex!important;flex-direction:column!important}#appView .sidebar{display:block!important;visibility:visible!important;position:relative!important;width:100%!important;height:auto!important;overflow:visible!important;max-width:none!important;padding:12px!important;box-sizing:border-box}#appView .main{display:block!important;width:100%!important;max-width:100%!important;padding:12px!important}#appView .cochi-mobile-back{display:none!important}}
