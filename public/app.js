@@ -261,11 +261,12 @@ $('#accountSearch')?.addEventListener('input',renderAccounts);
 
 $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
 $('#newAdminBtn')?.addEventListener('click',()=>openAccountModal(null,1));
+$('#newAdminMobileBtn')?.addEventListener('click',()=>openAccountModal(null,1));
 function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
 function updateAdminManagementCard(){
   const card=$('#adminManagementCard'),count=$('#secondaryAdminCount'),stateEl=$('#adminManagementState'),btn=$('#newAdminBtn');
   if(!card)return;
-  const root=Boolean(state.me?.is_root_admin);card.classList.toggle('hidden',!root);if(!root)return;
+  const root=Boolean(state.me?.is_root_admin);card.classList.add('hidden');if(!root)return;
   const admins=(state.accounts||[]).filter(x=>Number(x.role_level)===1&&!x.is_root_admin);
   if(count)count.textContent=String(admins.length);
   const enabled=(state.roleSettings?.enabledRoleLevels||[]).map(Number).includes(1);
@@ -349,11 +350,11 @@ const controlSection=a&&!root&&!adminIdentityLocked?`
     : adminIdentityLocked?'<div class="protected-note">🔒 Esta cuenta ADMINISTRACIÓN es independiente. Desde este usuario solo se pueden editar sus datos básicos; su categoría, propietario y estado están protegidos.</div>':'';
   const roleValue=a?.role_level||(forcedRole!==null?Number(forcedRole):null);
   const roleField=creatingAdmin
-    ? `<label>Categoría<input value="ADMINISTRACIÓN" disabled></label>`
+    ? `<label>Tipo de administrador<select id="adminKind"><option value="independent">Administrador independiente</option><option value="principal" disabled>Administrador principal (cuenta única protegida)</option></select></label>
     : `<label>Categoría<select id="aRole" ${(a&&!admin)||root||adminIdentityLocked?'disabled':''}>${allowedRoleOptions(roleValue)}</select></label>`;
   const parentField=a&&admin&&!root&&!adminIdentityLocked?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:'';
   const activeField=a&&!root&&!adminIdentityLocked?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:'';
-  openModal(`<h3>${a?'Editar ficha PANEL':creatingAdmin?'Nuevo administrador independiente':'Nueva ficha PANEL'}</h3>${creatingAdmin?'<div class="protected-note">🔐 Se creará una cuenta ADMINISTRACIÓN con código propio. Sus inicios de sesión y dispositivos quedan separados de la ADMINISTRACIÓN principal.</div>':''}${protectedNote}${accountSummary}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row">${roleField}<label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${parentField}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${activeField}${controlSection}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
+  openModal(`<h3>${a?'Editar ficha PANEL':creatingAdmin?'Nuevo administrador independiente':'Nueva ficha PANEL'}</h3>${creatingAdmin?'<div class="protected-note">🔐 Elegí el tipo de administrador. La cuenta principal es única y está protegida; las nuevas cuentas se crean como administradores independientes, con código, sesiones y dispositivos propios.</div>':''}${protectedNote}${accountSummary}<form id="accountForm"><label>Nombre<input id="aName" required value="${esc(a?.name||'')}"></label><div class="form-row">${roleField}<label>Contacto<input id="aContact" value="${esc(a?.contact||'')}"></label></div>${parentField}<label>Notas<textarea id="aNotes" rows="3">${esc(a?.notes||'')}</textarea></label>${activeField}${controlSection}<div class="modal-actions"><button type="button" class="ghost" data-close>Cancelar</button><button class="primary" type="submit">Guardar</button></div><div id="accountMsg" class="msg"></div></form>`);
 
   $('#accountForm').addEventListener('submit',async e=>{
     e.preventDefault();
