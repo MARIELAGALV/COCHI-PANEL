@@ -33,3 +33,14 @@
 
 @media(min-width:1101px){#newAdminMobileBtn{display:none!important}}
 @media(max-width:1100px){#view-accounts .toolbar{display:flex;flex-wrap:wrap;gap:10px}#view-accounts .toolbar .primary{flex:1 1 220px;white-space:normal}#view-accounts .toolbar .table-search{width:100%;max-width:100%;min-width:0;order:3}#view-accounts .toolbar .muted{order:4}#adminManagementCard .card-head{display:block}#adminManagementCard .card-head>div>p{display:none}#adminManagementCard #newAdminBtn{display:none}#view-accounts .table-wrap{overflow:visible}#view-accounts table,#view-accounts tbody{display:block;width:100%}#view-accounts thead{display:none}#view-accounts tr{display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:14px;background:rgba(12,40,65,.7);border:1px solid rgba(75,170,215,.25);border-radius:12px}#view-accounts td{display:block;width:auto!important;max-width:100%;padding:4px!important;border:0!important;white-space:normal!important;overflow-wrap:anywhere}#view-accounts td:first-child{font-weight:700}#view-accounts .table-card{padding:10px!important}#view-accounts td button{max-width:100%;white-space:normal}.cochi-admin-info{margin-top:12px}.cochi-admin-info summary{cursor:pointer;color:#9fd6fa;font-weight:700;padding:12px;border:1px solid rgba(75,170,215,.3);border-radius:10px}.cochi-admin-info[open] summary{margin-bottom:12px}}
+
+/* Accesos de creación compactos, en dos columnas para el panel web móvil */
+@media(max-width:1100px){
+ #view-accounts .toolbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;column-gap:10px;row-gap:12px;align-items:stretch}
+ #view-accounts .toolbar>#newAccountBtn,#view-accounts .toolbar>#newAdminMobileBtn{display:flex;align-items:center;justify-content:center;min-width:0!important;width:100%!important;max-width:100%!important;min-height:66px;padding:10px 7px!important;margin:0!important;font-size:13px!important;line-height:1.25!important;text-align:center;white-space:normal!important;border-radius:12px;overflow-wrap:anywhere}
+ #view-accounts .toolbar>#newAccountBtn{grid-column:1;grid-row:1}
+ #view-accounts .toolbar>#newAdminMobileBtn{grid-column:2;grid-row:1}
+ #view-accounts .toolbar>.table-search{grid-column:1/-1;grid-row:2;order:unset!important;box-sizing:border-box}
+ #view-accounts .toolbar>.muted{grid-column:1/-1;grid-row:3;order:unset!important}
+ #view-accounts .toolbar>#newAdminMobileBtn.hidden{display:none!important}
+}
