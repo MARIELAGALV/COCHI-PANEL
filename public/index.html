@@ -94,6 +94,11 @@
       </section>
 
       <section id="view-accounts" class="view">
+        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
+        <div class="neon-card table-card"><div class="table-wrap"><table>
+          <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
+        </table></div></div>
+
         <div class="neon-card panel-card control-card root-admin-only" id="adminManagementCard">
           <div class="card-head"><div><h3>Administradores independientes</h3><p class="muted">Creá otra cuenta ADMINISTRACIÓN con su propio código de acceso. Sus sesiones y sus 2 dispositivos quedan separados de tu cuenta principal.</p></div><button id="newAdminBtn" class="primary" type="button">+ NUEVO ADMINISTRADOR</button></div>
           <div class="rule-grid rule-grid-compact">
@@ -117,10 +122,6 @@
             <div id="roleSettingsMsg" class="msg"></div>
           </form>
         </div>
-        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
-        <div class="neon-card table-card"><div class="table-wrap"><table>
-          <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
-        </table></div></div>
       </section>
 
       <section id="view-clients" class="view">
