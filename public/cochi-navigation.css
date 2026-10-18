@@ -73,3 +73,9 @@
 #view-accounts>.toolbar>.table-search{grid-column:1/-1!important;grid-row:2!important;width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box}
 #view-accounts>.toolbar>.muted{grid-column:1/-1!important;grid-row:3!important}
 @media(min-width:1101px){#newAdminMobileBtn:not(.hidden){display:flex!important}}
+
+/* Honor application role-based hidden state before layout overrides. */
+#view-accounts>.toolbar>#newAccountBtn.hidden,
+#view-accounts>.toolbar>#newAdminMobileBtn.hidden,
+#view-accounts>.toolbar>#newAdminMobileBtn.root-admin-only.hidden{display:none!important}
+#appView .cochi-mobile-back[hidden]{display:none!important}
