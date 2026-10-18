@@ -215,7 +215,7 @@ async function loadDashboard(){
   const cards=[
     ['category','◈','Categoría',d.role,'Tu nivel dentro de CO-CHI'],
     ['credits','¤','Créditos',d.creditsUnlimited?'—':d.credits,d.creditsUnlimited?'Sin límite':'Saldo disponible'],
-    ['accounts','◇','Fichas PANEL',d.directAccounts,state.me.role_level===1?'Total visible':'Directas'],
+    ['accounts','◇','Fichas PANEL',d.directAccounts,'Creadas directamente'],
     ['clients','👤','Clientes',d.directClients,state.me.role_level===1?'Total visible':'Directos']
   ];
   $('#dashboardCards').innerHTML=cards.map(([key,icon,l,v,s])=>`<div class="metric dashboard-metric metric-${key}${key==='credits'||key==='accounts'?' metric-compact':''}"><div class="metric-top"><span class="metric-icon">${esc(icon)}</span><span class="metric-label">${esc(l)}</span></div><div class="value">${esc(v)}</div><div class="metric-subtitle">${esc(s)}</div></div>`).join('');
