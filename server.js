@@ -4416,7 +4416,8 @@ async function route(req,res){
     }
 
     if(p==='/api/admin/clients'&&m==='GET'){
-      let rows=actor.role_level===1?db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id ORDER BY c.id DESC`).all():db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY c.id DESC`).all(actor.id);
+      const globalScope=actor.role_level===1&&url.searchParams.get('scope')!=='mine';
+      let rows=globalScope?db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id ORDER BY c.id DESC`).all():db.prepare(`SELECT c.*,a.name owner_name,a.role_level owner_role FROM clients c JOIN accounts a ON a.id=c.owner_account_id WHERE c.owner_account_id=? ORDER BY c.id DESC`).all(actor.id);
       rows=rows.map(c=>({...c,active:Boolean(c.active),preview_hidden_content:Boolean(c.preview_hidden_content),days_remaining:daysRemaining(c.expires_at),renew_available:!c.expires_at||daysRemaining(c.expires_at)<=RENEW_WINDOW_DAYS,shared_expiry:true,...clientStatusSummary(c)}));
       return sendJson(res,200,{clients:rows,serverTime:nowIso(),sharedExpiry:true});
     }
