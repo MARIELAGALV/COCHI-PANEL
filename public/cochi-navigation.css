@@ -116,3 +116,15 @@
  #appView>.sidebar nav.cochi-modern-nav .nav-btn span{display:none!important}
  #appView>.main{padding-bottom:148px!important}
 }
+
+/* Fix details-based navigation: display:contents on <details> hides nested icons in Android WebView. */
+@media(max-width:660px){
+ #appView>.sidebar nav.cochi-modern-nav{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:5px!important;width:max-content!important;min-width:max-content!important}
+ #appView>.sidebar nav.cochi-modern-nav>details.cochi-nav-section{display:flex!important;flex:0 0 auto!important;flex-direction:row!important;align-items:center!important;width:auto!important;min-width:0!important;max-width:none!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;overflow:visible!important}
+ #appView>.sidebar nav.cochi-modern-nav>details.cochi-nav-section>summary{display:none!important}
+ #appView>.sidebar nav.cochi-modern-nav>details.cochi-nav-section>.cochi-nav-items{display:flex!important;flex:0 0 auto!important;flex-flow:row nowrap!important;align-items:center!important;gap:5px!important;width:max-content!important;min-width:0!important;max-width:none!important;padding:0!important;margin:0!important}
+ #appView>.sidebar nav.cochi-modern-nav .cochi-nav-items .nav-group{display:flex!important;flex-flow:row nowrap!important;align-items:center!important;width:auto!important;min-width:0!important}
+ #appView>.sidebar nav.cochi-modern-nav .cochi-nav-items .nav-submenu{display:flex!important;flex-flow:row nowrap!important;align-items:center!important;width:auto!important}
+ #appView>.sidebar nav.cochi-modern-nav .cochi-nav-items .nav-group-toggle{display:none!important}
+ #appView>.sidebar nav.cochi-modern-nav .nav-btn.hidden,#appView>.sidebar nav.cochi-modern-nav .admin-only.hidden{display:none!important}
+}
