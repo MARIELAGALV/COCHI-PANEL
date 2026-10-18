@@ -11,7 +11,7 @@
   <link rel="icon" href="/icon-192.png">
   <title>CO-CHI PANEL</title>
   <link rel="stylesheet" href="/styles.css?v=1.1.23-blue-base-1">
-<link rel="stylesheet" href="/cochi-navigation.css?v=20261018-bottom-lowered7"></head>
+<link rel="stylesheet" href="/cochi-navigation.css?v=20261018-client-scopes"></head>
 <body>
   <div class="bg-glow bg-one"></div><div class="bg-glow bg-two"></div>
 
@@ -126,6 +126,7 @@
       </section>
 
       <section id="view-clients" class="view">
+        <div class="cochi-client-scopes root-admin-only" id="clientScopeTabs" role="group" aria-label="Vista de clientes"><button id="clientScopeMine" type="button" class="primary" aria-pressed="true">MIS CLIENTES <span id="clientMineCount"></span></button><button id="clientScopeGlobal" type="button" class="ghost" aria-pressed="false">CLIENTES GLOBALES <span id="clientGlobalCount"></span></button></div>
         <div class="toolbar"><button id="newClientBtn" class="primary">+ NUEVO CLIENTE FINAL</button><input id="clientSearch" class="table-search" type="search" placeholder="Buscar cliente por nombre, propietario o estado…" autocomplete="off"><span class="muted small">Sección exclusiva de clientes finales. No aparecen en Fichas PANEL y no ingresan al PANEL.</span></div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Cliente</th><th>Propietario</th><th>Vencimiento</th><th>Tiempo restante</th><th>Dispositivos</th><th>Estado</th><th></th></tr></thead><tbody id="clientsBody"></tbody>
@@ -477,6 +478,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=20261018-direct-clients"></script>
+  <script src="/app.js?v=20261018-client-scopes"></script>
 </body>
 </html>
