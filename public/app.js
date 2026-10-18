@@ -263,6 +263,7 @@ $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
 $('#newAdminBtn')?.addEventListener('click',()=>openAccountModal(null,1));
 $('#newAdminTopBtn')?.addEventListener('click',()=>openAccountModal(null,1));
 $('#newIndependentAdminTopBtn')?.addEventListener('click',()=>openAccountModal(null,1));
+$('#toggleRoleCreationBtn')?.addEventListener('click',()=>{const panel=$('#roleCreationCard'),btn=$('#toggleRoleCreationBtn');if(!panel||!btn)return;panel.hidden=!panel.hidden;btn.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)panel.scrollIntoView({block:'nearest',behavior:'smooth'});});
 function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
 function updateAdminManagementCard(){
   const card=$('#adminManagementCard'),count=$('#secondaryAdminCount'),stateEl=$('#adminManagementState'),btn=$('#newAdminBtn');
