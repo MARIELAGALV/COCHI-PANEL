@@ -355,7 +355,7 @@ const controlSection=a&&!root&&!adminIdentityLocked?`
     : adminIdentityLocked?'<div class="protected-note">🔒 Esta cuenta ADMINISTRACIÓN es independiente. Desde este usuario solo se pueden editar sus datos básicos; su categoría, propietario y estado están protegidos.</div>':'';
   const roleValue=a?.role_level||(forcedRole!==null?Number(forcedRole):null);
   const roleField=creatingAdmin
-    ? `<label>Tipo de administrador<select id="adminKind"><option value="independent">Administrador independiente</option><option value="principal" disabled>Administrador principal (cuenta única protegida)</option></select></label>
+    ? `<label>Tipo de administrador<select id="adminKind"><option value="independent">Administrador independiente</option><option value="principal" disabled>Administrador principal (cuenta única protegida)</option></select></label>`
     : `<label>Categoría<select id="aRole" ${(a&&!admin)||root||adminIdentityLocked?'disabled':''}>${allowedRoleOptions(roleValue)}</select></label>`;
   const parentField=a&&admin&&!root&&!adminIdentityLocked?`<label>Propietario<select id="aParent"><option value="">Sin propietario</option>${state.accounts.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${a.parent_id===x.id?'selected':''}>${esc(x.name)} — ${esc(x.role_name)}</option>`).join('')}</select></label>`:'';
   const activeField=a&&!root&&!adminIdentityLocked?`<label class="switch-row"><input id="aActive" type="checkbox" ${a.active?'checked':''}> Ficha habilitada</label>`:'';
