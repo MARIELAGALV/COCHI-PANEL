@@ -289,13 +289,16 @@ function renderRoleCreationSettings(){
 }
 $('#roleSettingsForm')?.addEventListener('submit',async e=>{
   e.preventDefault();
-  const enabledRoleLevels=$$('.role-create-toggle:checked').map(x=>Number(x.value));
+  const enabledRoleLevels=$('.role-create-toggle:checked').map(x=>Number(x.value));
+  const submit=$('#roleSettingsForm button[type="submit"]');if(submit)submit.disabled=true;
   try{
     const r=await api('/api/admin/role-settings',{method:'PUT',body:{enabledRoleLevels}});
-    state.roleSettings.enabledRoleLevels=r.enabledRoleLevels||[];
-    msg($('#roleSettingsMsg'),'Categorías de creación guardadas.',true);
+    state.roleSettings.enabledRoleLevels=Array.isArray(r.enabledRoleLevels)?r.enabledRoleLevels:enabledRoleLevels;
+    renderRoleCreationSettings();
+    msg($('#roleSettingsMsg'),'Categorías guardadas correctamente.',true);
     await loadAccounts();
   }catch(err){msg($('#roleSettingsMsg'),err.message);}
+  finally{if(submit)submit.disabled=false;}
 });
 function allowedRoleOptions(current=null){
   let levels=currentCreatableRoleLevels();
