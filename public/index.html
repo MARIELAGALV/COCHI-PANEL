@@ -94,7 +94,20 @@
       </section>
 
       <section id="view-accounts" class="view">
-        <div class="toolbar"><button id="newAccountBtn" class="primary" type="button">＋ FICHA PANEL</button><button id="newAdminTopBtn" class="primary root-admin-only" type="button">＋ NUEVO ADMINISTRADOR</button><button id="newIndependentAdminTopBtn" class="primary root-admin-only" type="button">＋ ADMINISTRADOR INDEPENDIENTE</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
+        <div class="toolbar"><button id="newAccountBtn" class="primary" type="button">＋ FICHA PANEL</button><button id="newAdminTopBtn" class="primary root-admin-only" type="button">＋ NUEVO ADMINISTRADOR</button><button id="newIndependentAdminTopBtn" class="primary root-admin-only" type="button">＋ ADMINISTRADOR INDEPENDIENTE</button><button id="toggleRoleCreationBtn" class="primary admin-only" type="button" aria-expanded="false" aria-controls="roleCreationCard">⚙ CATEGORÍAS HABILITADAS</button></div><div class="cochi-account-search-row"><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
+        <div class="neon-card panel-card control-card admin-only" id="roleCreationCard" hidden>
+          <div class="card-head"><div><h3>Categorías habilitadas para crear</h3><p class="muted">Tildá únicamente las categorías PANEL que querés permitir crear. Destildar una categoría no borra ni bloquea las cuentas existentes.</p></div></div>
+          <form id="roleSettingsForm">
+            <div class="rule-grid">
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="1"> Administración <span class="muted small">(solo principal crea nuevas cuentas)</span></label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="2"> Distribuidor</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="3"> Revendedor</label>
+              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="4"> Vendedor</label>
+            </div>
+            <div class="panel-control-actions mt10"><button class="primary" type="submit">GUARDAR CATEGORÍAS</button><span id="roleCreationState" class="muted small"></span></div>
+            <div id="roleSettingsMsg" class="msg"></div>
+          </form>
+        </div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
         </table></div></div>
@@ -109,19 +122,7 @@
           </div>
           </details><div id="adminManagementState" class="muted small mt10"></div>
         </div>
-        <div class="neon-card panel-card control-card admin-only" id="roleCreationCard">
-          <div class="card-head"><div><h3>Categorías habilitadas para crear</h3><p class="muted">Tildá únicamente las categorías PANEL que querés permitir crear. Destildar una categoría no borra ni bloquea las cuentas existentes.</p></div></div>
-          <form id="roleSettingsForm">
-            <div class="rule-grid">
-              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="1"> Administración <span class="muted small">(solo principal crea nuevas cuentas)</span></label>
-              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="2"> Distribuidor</label>
-              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="3"> Revendedor</label>
-              <label class="switch-row"><input type="checkbox" class="role-create-toggle" value="4"> Vendedor</label>
-            </div>
-            <div class="panel-control-actions mt10"><button class="primary" type="submit">GUARDAR CATEGORÍAS</button><span id="roleCreationState" class="muted small"></span></div>
-            <div id="roleSettingsMsg" class="msg"></div>
-          </form>
-        </div>
+
       </section>
 
       <section id="view-clients" class="view">
@@ -476,6 +477,6 @@ User-Agent: ..."></textarea></label><label class="check-line"><input id="rescueE
   </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"><div id="modal" class="modal neon-card"></div></div>
-  <script src="/app.js?v=20261018-three-actions-sidebar"></script>
+  <script src="/app.js?v=20261018-categories-top"></script>
 </body>
 </html>
