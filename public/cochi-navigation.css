@@ -44,3 +44,22 @@
  #view-accounts .toolbar>.muted{grid-column:1/-1;grid-row:3;order:unset!important}
  #view-accounts .toolbar>#newAdminMobileBtn.hidden{display:none!important}
 }
+
+/* Unified card dashboard on desktop and mobile. Original sidebar retained in DOM for permissions/routing. */
+#appView.app{display:block!important;min-width:0}
+#appView .sidebar{display:none!important}
+#appView .main{width:100%!important;max-width:100%!important;min-width:0;margin:0 auto!important;padding:clamp(12px,2.5vw,30px)!important}
+#appView .main>.cochi-mobile-home{display:block!important;padding:12px 4px 20px}
+#appView .cochi-mobile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+#appView .cochi-mobile-tile{min-width:0;min-height:120px;border-radius:16px;background:linear-gradient(135deg,#113c6a,#102940);border:1px solid #2d6d9a;padding:16px;color:#f3faff;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:12px;cursor:pointer}
+#appView .cochi-mobile-tile b{font-size:clamp(14px,1.4vw,18px);line-height:1.35}
+#appView .cochi-mobile-tile small{color:#b0cce0;font-size:12px}
+#appView .cochi-mobile-tile:hover{border-color:#39bdf8;background:#174979}
+#appView .cochi-mobile-home.cochi-mobile-hidden{display:none!important}
+#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.topbar,
+#appView .main:has(.cochi-mobile-home:not(.cochi-mobile-hidden))>.view{display:none!important}
+#appView .cochi-mobile-back,#appView .cochi-card-return{border:1px solid #3676a3;background:#153c60;color:white;border-radius:11px;padding:11px 14px;margin:8px 0;cursor:pointer}
+#appView .cochi-card-return[hidden]{display:none!important}
+#appView .cochi-mobile-heading{display:grid;gap:5px;margin:10px 0;color:#fff}
+#appView .cochi-mobile-search input{width:100%;box-sizing:border-box;background:#091f34;color:white;border:1px solid #2a668f;border-radius:12px;padding:13px;font-size:16px}
+@media(min-width:850px){#appView .cochi-mobile-grid{grid-template-columns:repeat(4,minmax(0,1fr))}#appView .main{max-width:1500px!important}}
