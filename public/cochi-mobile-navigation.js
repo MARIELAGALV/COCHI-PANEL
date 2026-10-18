@@ -20,7 +20,7 @@
  }
  const back=document.createElement('button');back.type='button';back.className='cochi-card-return';back.textContent='← Volver a categorías';back.addEventListener('click',()=>{selected=-1;if(search)search.value='';draw()});home.insertBefore(back,grid);
  const main=document.querySelector('#appView .main');const returnBtn=document.createElement('button');returnBtn.type='button';returnBtn.className='cochi-mobile-back';returnBtn.textContent='← Volver al inicio';returnBtn.addEventListener('click',()=>{home.classList.remove('cochi-mobile-hidden');selected=-1;draw();sync();window.scrollTo({top:0,behavior:'smooth'})});main?.prepend(returnBtn);
- function sync(){const dashboard=document.querySelector('#view-dashboard');const activeDashboard=dashboard?.classList.contains('active');returnBtn.style.display=home.classList.contains('cochi-mobile-hidden')&&!activeDashboard?'block':home.classList.contains('cochi-mobile-hidden')?'block':'none'}
+ function sync(){returnBtn.hidden=!home.classList.contains('cochi-mobile-hidden');returnBtn.style.display=returnBtn.hidden?'none':'block'}
  search?.addEventListener('input',draw);
  const sidebar=document.querySelector('.sidebar');if(sidebar)new MutationObserver(()=>{if(!home.classList.contains('cochi-mobile-hidden'))draw()}).observe(sidebar,{subtree:true,attributes:true,attributeFilter:['class']});
  const app=document.getElementById('appView');if(app)new MutationObserver(()=>{if(!app.classList.contains('hidden')&&!home.classList.contains('cochi-mobile-hidden'))draw()}).observe(app,{attributes:true,attributeFilter:['class']});
