@@ -81,3 +81,12 @@
  #appView .sidebar .cochi-nav-items .nav-btn{display:block!important;width:100%!important;white-space:normal!important;box-sizing:border-box!important}
  #appView>.main{display:block!important;flex:none!important;width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;margin:0!important;padding:12px!important}
 }
+
+/* Override inherited five-column bottom navigation on phones. */
+@media(max-width:1100px){
+ #appView .sidebar nav.cochi-modern-nav{display:block!important;grid-template-columns:none!important;grid-auto-flow:row!important;margin-top:12px!important}
+ #appView .sidebar nav.cochi-modern-nav>.nav-btn{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;text-align:left!important}
+ #appView .sidebar nav.cochi-modern-nav .cochi-nav-items{display:block!important;grid-template-columns:none!important}
+ #appView .sidebar nav.cochi-modern-nav .cochi-nav-items .nav-btn{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;text-align:left!important;padding:12px!important;min-height:43px!important}
+ #appView .sidebar nav.cochi-modern-nav .nav-btn span{display:inline!important;visibility:visible!important;opacity:1!important;font-size:14px!important;white-space:normal!important}
+}
