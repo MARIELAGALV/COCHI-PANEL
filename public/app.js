@@ -216,7 +216,7 @@ async function loadDashboard(){
     ['category','◈','Categoría',d.role,'Tu nivel dentro de CO-CHI'],
     ['credits','¤','Créditos',d.creditsUnlimited?'—':d.credits,d.creditsUnlimited?'Sin límite':'Saldo disponible'],
     ['accounts','◇','Fichas PANEL',d.directAccounts,'Creadas directamente'],
-    ['clients','👤','Clientes',d.directClients,state.me.role_level===1?'Total visible':'Directos']
+    ['clients','👤','Clientes',d.directClients,'Directos']
   ];
   $('#dashboardCards').innerHTML=cards.map(([key,icon,l,v,s])=>`<div class="metric dashboard-metric metric-${key}${key==='credits'||key==='accounts'?' metric-compact':''}"><div class="metric-top"><span class="metric-icon">${esc(icon)}</span><span class="metric-label">${esc(l)}</span></div><div class="value">${esc(v)}</div><div class="metric-subtitle">${esc(s)}</div></div>`).join('');
   if(d.activePromotion){$('#promoBanner').classList.remove('hidden');$('#promoBanner').innerHTML=`🎁 <b>${esc(d.activePromotion.name)}</b> — +${d.activePromotion.percent}% en cargas recibidas hasta ${esc(fmt(d.activePromotion.endsAt))}. El bonus lo paga el sistema.`;}else $('#promoBanner').classList.add('hidden');
