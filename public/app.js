@@ -517,7 +517,22 @@ function renderClients(){
     return `<tr data-client="${c.id}" data-client-expiry="${esc(c.expires_at||'')}" data-client-expiry-status="${esc(c.display_status_code||'')}" data-client-expiry-color="${clientExpiryColor(c.expires_at,c.display_status_code)}"><td><b>${esc(c.name)}</b>${c.preview_hidden_content?' <span class="badge active">PRUEBA · VE OCULTOS</span>':''}</td><td>${esc(c.owner_name)}</td><td>${esc(clientExpiryCardText(c.expires_at))}</td><td>${remainingLabel}</td><td>${c.device_count}/${c.device_limit||2} <div class="muted small">${linked}/${c.device_limit||2} códigos vinculados</div>${demoLine}</td><td>${stat}</td><td><button class="ghost" data-action="client-edit">Editar</button></td></tr>`;
   }).join(''):`<tr><td colspan="7" class="empty">${q?'No hay clientes que coincidan con la búsqueda.':'No hay clientes finales.'}</td></tr>`;
 }
-async function loadClients(render=true){const d=await api('/api/admin/clients');syncServerClock(d.serverTime);state.clients=d.clients;if(render)renderClients();}
+let clientScope='mine';
+async function loadClients(render=true){
+  const admin=state.me?.role_level===1;
+  const scope=admin?clientScope:'mine';
+  const d=await api('/api/admin/clients?scope='+scope);
+  syncServerClock(d.serverTime);state.clients=d.clients;
+  if(admin){
+    const mine=$('#clientScopeMine'),global=$('#clientScopeGlobal');
+    if(mine&&global){mine.className=scope==='mine'?'primary':'ghost';global.className=scope==='global'?'primary':'ghost';mine.setAttribute('aria-pressed',String(scope==='mine'));global.setAttribute('aria-pressed',String(scope==='global'));}
+    const count=$('#clientMineCount');if(count&&scope==='mine')count.textContent='('+d.clients.length+')';
+    const globalCount=$('#clientGlobalCount');if(globalCount&&scope==='global')globalCount.textContent='('+d.clients.length+')';
+  }
+  if(render)renderClients();
+}
+$('#clientScopeMine')?.addEventListener('click',()=>{if(state.me?.role_level!==1||clientScope==='mine')return;clientScope='mine';loadClients().catch(e=>alert(e.message));});
+$('#clientScopeGlobal')?.addEventListener('click',()=>{if(state.me?.role_level!==1||clientScope==='global')return;clientScope='global';loadClients().catch(e=>alert(e.message));});
 $('#clientSearch')?.addEventListener('input',renderClients);
 // v0.9.104: reloj de vencimientos en tiempo real, calculado localmente con la hora del servidor.
 // No consulta al backend cada segundo: solo actualiza el texto visible.
