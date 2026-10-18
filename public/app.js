@@ -182,7 +182,8 @@ $('#rulesBtn')?.addEventListener('click',()=>{
     <div class="modal-actions"><button class="primary" type="button" data-close>ENTENDIDO</button></div>`);
 });
 function switchView(name){
-  $$('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
+  if(name!=='dashboard')document.getElementById('cochiMobileHome')?.classList.add('cochi-mobile-hidden');
+  $('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
   const contentGroup=$('#contentToolsGroup');
   if(contentGroup&&['content','sources','resolver'].includes(name))contentGroup.classList.remove('collapsed');
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
