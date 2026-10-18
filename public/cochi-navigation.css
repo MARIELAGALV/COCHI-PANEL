@@ -48,3 +48,12 @@
 /* Restored original side navigation across screen sizes. */
 #appView .cochi-mobile-home{display:none!important}
 @media(max-width:1100px){#appView.app{display:flex!important;flex-direction:column!important}#appView .sidebar{display:block!important;visibility:visible!important;position:relative!important;width:100%!important;height:auto!important;overflow:visible!important;max-width:none!important;padding:12px!important;box-sizing:border-box}#appView .main{display:block!important;width:100%!important;max-width:100%!important;padding:12px!important}#appView .cochi-mobile-back{display:none!important}}
+
+/* Account management: top actions, separate search, collapsible category settings. */
+#view-accounts .toolbar{display:flex!important;flex-wrap:wrap!important;align-items:stretch!important;gap:10px!important}
+#view-accounts .toolbar>button{flex:1 1 190px!important;min-height:48px}
+#view-accounts .cochi-account-search-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 16px}
+#view-accounts .cochi-account-search-row #accountSearch{flex:1 1 300px;min-width:0;width:auto;max-width:100%;box-sizing:border-box}
+#view-accounts #roleCreationCard[hidden]{display:none!important}
+#view-accounts #roleCreationCard{margin:0 0 16px}
+@media(max-width:700px){#view-accounts .toolbar>button{flex:1 1 145px!important}#view-accounts .cochi-account-search-row #accountSearch{flex-basis:100%}}
