@@ -128,3 +128,9 @@
  #appView>.sidebar nav.cochi-modern-nav .cochi-nav-items .nav-group-toggle{display:none!important}
  #appView>.sidebar nav.cochi-modern-nav .nav-btn.hidden,#appView>.sidebar nav.cochi-modern-nav .admin-only.hidden{display:none!important}
 }
+
+/* Lower mobile icon bar closer to Android system navigation, without touching functionality. */
+@media(max-width:660px){
+ #appView>.sidebar{bottom:8px!important}
+ #appView>.main{padding-bottom:96px!important}
+}
