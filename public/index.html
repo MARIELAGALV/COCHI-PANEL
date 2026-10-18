@@ -94,20 +94,20 @@
       </section>
 
       <section id="view-accounts" class="view">
-        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
+        <div class="toolbar"><button id="newAccountBtn" class="primary">+ NUEVA FICHA PANEL</button><button id="newAdminMobileBtn" class="primary root-admin-only" type="button" onclick="document.getElementById('newAdminBtn').click()">+ NUEVO ADMINISTRADOR</button><input id="accountSearch" class="table-search" type="search" placeholder="Buscar panel por nombre, contacto, categoría, propietario o estado…" autocomplete="off"><span class="muted small">Las categorías disponibles dependen de la configuración de Administración y de la jerarquía del panel actual.</span></div>
         <div class="neon-card table-card"><div class="table-wrap"><table>
           <thead><tr><th>Ficha PANEL</th><th>Categoría</th><th>Propietario</th><th>Créditos</th><th>Paneles</th><th>Estado</th><th></th></tr></thead><tbody id="accountsBody"></tbody>
         </table></div></div>
 
         <div class="neon-card panel-card control-card root-admin-only" id="adminManagementCard">
           <div class="card-head"><div><h3>Administradores independientes</h3><p class="muted">Creá otra cuenta ADMINISTRACIÓN con su propio código de acceso. Sus sesiones y sus 2 dispositivos quedan separados de tu cuenta principal.</p></div><button id="newAdminBtn" class="primary" type="button">+ NUEVO ADMINISTRADOR</button></div>
-          <div class="rule-grid rule-grid-compact">
+          <details class="cochi-admin-info"><summary>Información y reglas de administradores</summary><div class="rule-grid rule-grid-compact">
             <div class="rule-card"><b>Sesiones separadas</b><span>Cuando el otro administrador inicia sesión, no cierra ni reemplaza la sesión de la ADMINISTRACIÓN principal.</span></div>
             <div class="rule-card"><b>Acceso administrativo</b><span>Puede gestionar clientes, vendedores, contenido y las funciones de ADMINISTRACIÓN con su propia identidad.</span></div>
             <div class="rule-card"><b>Principal protegida</b><span>Un administrador secundario no puede modificar tu cuenta, regenerar tu código ni liberar tus dispositivos.</span></div>
             <div class="rule-card"><b>Administradores creados</b><span><strong id="secondaryAdminCount">0</strong> administrador(es) independiente(s).</span></div>
           </div>
-          <div id="adminManagementState" class="muted small mt10"></div>
+          </details><div id="adminManagementState" class="muted small mt10"></div>
         </div>
         <div class="neon-card panel-card control-card admin-only" id="roleCreationCard">
           <div class="card-head"><div><h3>Categorías habilitadas para crear</h3><p class="muted">Tildá únicamente las categorías PANEL que querés permitir crear. Destildar una categoría no borra ni bloquea las cuentas existentes.</p></div></div>
