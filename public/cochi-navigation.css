@@ -134,3 +134,9 @@
  #appView>.sidebar{bottom:8px!important}
  #appView>.main{padding-bottom:96px!important}
 }
+
+/* Admin-only client scope tabs, above the existing client search and cards. */
+#view-clients .cochi-client-scopes{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+#view-clients .cochi-client-scopes>button{flex:1 1 190px;min-height:48px;white-space:normal}
+#view-clients .cochi-client-scopes.hidden{display:none!important}
+@media(max-width:660px){#view-clients .cochi-client-scopes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#view-clients .cochi-client-scopes>button{min-width:0;padding:10px 7px;font-size:12px}}
