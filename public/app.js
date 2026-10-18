@@ -260,9 +260,9 @@ async function loadAccounts(render=true){
 }
 $('#accountSearch')?.addEventListener('input',renderAccounts);
 
-$('#newAccountBtn').addEventListener('click',()=>openAccountModal());
+$('#newAccountBtn').addEventListener('click',()=>{try{openAccountModal();}catch(err){console.error('Error al abrir ficha PANEL',err);toast('No se pudo abrir el formulario: '+err.message,'error');}});
 $('#newAdminBtn')?.addEventListener('click',()=>openAccountModal(null,1));
-$('#newAdminMobileBtn')?.addEventListener('click',()=>openAccountModal(null,1));
+$('#newAdminMobileBtn')?.addEventListener('click',()=>{try{openAccountModal(null,1);}catch(err){console.error('Error al abrir administrador',err);toast('No se pudo abrir el formulario: '+err.message,'error');}});
 function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
 function updateAdminManagementCard(){
   const card=$('#adminManagementCard'),count=$('#secondaryAdminCount'),stateEl=$('#adminManagementState'),btn=$('#newAdminBtn');
@@ -277,8 +277,9 @@ function updateAdminManagementCard(){
 function updateNewAccountButton(){
   const b=$('#newAccountBtn');if(!b)return;
   const levels=currentCreatableRoleLevels();
-  b.classList.toggle('hidden',levels.length===0);
-  b.disabled=levels.length===0;
+  b.classList.remove('hidden');
+  b.disabled=false;
+  b.title=levels.length?'Crear una ficha PANEL':'Primero habilitá al menos una categoría y guardala';
 }
 function renderRoleCreationSettings(){
   if(state.me?.role_level!==1)return;
