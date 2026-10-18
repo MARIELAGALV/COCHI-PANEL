@@ -63,3 +63,13 @@
 #appView .cochi-mobile-heading{display:grid;gap:5px;margin:10px 0;color:#fff}
 #appView .cochi-mobile-search input{width:100%;box-sizing:border-box;background:#091f34;color:white;border:1px solid #2a668f;border-radius:12px;padding:13px;font-size:16px}
 @media(min-width:850px){#appView .cochi-mobile-grid{grid-template-columns:repeat(4,minmax(0,1fr))}#appView .main{max-width:1500px!important}}
+
+/* Fichas PANEL: creation controls always first and side by side on every viewport. */
+#view-accounts>.toolbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;align-items:stretch}
+#view-accounts>.toolbar>#newAccountBtn,#view-accounts>.toolbar>#newAdminMobileBtn{grid-row:1!important;min-width:0!important;max-width:none!important;width:100%!important;min-height:58px!important;display:flex;align-items:center;justify-content:center;text-align:center;white-space:normal!important;overflow-wrap:anywhere;padding:10px!important;font-size:clamp(12px,1.3vw,15px)!important;border-radius:12px}
+#view-accounts>.toolbar>#newAccountBtn{grid-column:1!important}
+#view-accounts>.toolbar>#newAdminMobileBtn{grid-column:2!important}
+#view-accounts>.toolbar>#newAdminMobileBtn.hidden{display:none!important}
+#view-accounts>.toolbar>.table-search{grid-column:1/-1!important;grid-row:2!important;width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box}
+#view-accounts>.toolbar>.muted{grid-column:1/-1!important;grid-row:3!important}
+@media(min-width:1101px){#newAdminMobileBtn:not(.hidden){display:flex!important}}
