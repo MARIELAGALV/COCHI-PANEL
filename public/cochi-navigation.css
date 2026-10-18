@@ -105,3 +105,14 @@
  #appView .sidebar nav.cochi-modern-nav .nav-group{display:contents!important}
  #appView>.main{padding-bottom:94px!important}
 }
+
+/* Mobile APK bottom bar: keep visible navigation icons in one horizontal row. */
+@media(max-width:660px){
+ #appView>.sidebar{bottom:52px!important;max-height:66px!important;height:66px!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain!important;touch-action:pan-x!important}
+ #appView>.sidebar nav.cochi-modern-nav{display:flex!important;flex-flow:row nowrap!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;min-width:max-content!important;width:max-content!important;white-space:nowrap!important}
+ #appView>.sidebar nav.cochi-modern-nav>.cochi-nav-section{display:contents!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important}
+ #appView>.sidebar nav.cochi-modern-nav>.cochi-nav-section>.cochi-nav-items{display:contents!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important}
+ #appView>.sidebar nav.cochi-modern-nav .nav-btn{display:inline-flex!important;flex:0 0 50px!important;width:50px!important;min-width:50px!important;max-width:50px!important;height:46px!important;margin:0!important;padding:8px!important;align-items:center!important;justify-content:center!important}
+ #appView>.sidebar nav.cochi-modern-nav .nav-btn span{display:none!important}
+ #appView>.main{padding-bottom:148px!important}
+}
