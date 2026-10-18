@@ -261,6 +261,8 @@ $('#accountSearch')?.addEventListener('input',renderAccounts);
 
 $('#newAccountBtn').addEventListener('click',()=>openAccountModal());
 $('#newAdminBtn')?.addEventListener('click',()=>openAccountModal(null,1));
+$('#newAdminTopBtn')?.addEventListener('click',()=>openAccountModal(null,1));
+$('#newIndependentAdminTopBtn')?.addEventListener('click',()=>openAccountModal(null,1));
 function currentCreatableRoleLevels(){return Array.isArray(state.roleSettings?.creatableRoleLevels)?state.roleSettings.creatableRoleLevels.map(Number):[];}
 function updateAdminManagementCard(){
   const card=$('#adminManagementCard'),count=$('#secondaryAdminCount'),stateEl=$('#adminManagementState'),btn=$('#newAdminBtn');
