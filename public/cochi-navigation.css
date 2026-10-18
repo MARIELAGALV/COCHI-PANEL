@@ -68,3 +68,16 @@
  #view-accounts #roleCreationCard .rule-grid{display:grid!important;grid-template-columns:1fr!important;gap:8px!important}
  #view-accounts #roleCreationCard .switch-row{min-height:44px!important;display:flex!important;align-items:center!important;gap:9px!important}
 }
+
+/* APK/mobile sidebar restoration: remove legacy tile home and narrow horizontal nav. */
+#cochiMobileHome{display:none!important}
+@media(max-width:1100px){
+ #appView.app{display:flex!important;flex-direction:column!important;min-width:0!important;overflow-x:hidden!important}
+ #appView>.sidebar{display:block!important;position:relative!important;visibility:visible!important;width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;overflow:visible!important;box-sizing:border-box!important;padding:12px!important;flex:none!important}
+ #appView .sidebar .cochi-modern-nav{display:block!important;width:100%!important;min-width:0!important;overflow:visible!important}
+ #appView .sidebar .cochi-modern-nav>.nav-btn,#appView .sidebar .cochi-nav-section{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;margin:7px 0!important}
+ #appView .sidebar .cochi-nav-section>summary{display:block!important;white-space:normal!important;overflow-wrap:anywhere!important}
+ #appView .sidebar .cochi-nav-items{display:block!important;width:100%!important;box-sizing:border-box!important}
+ #appView .sidebar .cochi-nav-items .nav-btn{display:block!important;width:100%!important;white-space:normal!important;box-sizing:border-box!important}
+ #appView>.main{display:block!important;flex:none!important;width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;margin:0!important;padding:12px!important}
+}
