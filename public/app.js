@@ -1164,7 +1164,37 @@ function contentPlain(){
   const raw=$('#contentJson').value.trim();if(!raw)return [];
   return panelNormalizeJsonInput(JSON.parse(raw),$('#contentKey')?.value||'tv1');
 }
-function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(x,null,2):'';renderContentVisual();}
+// Orden visual canónico de Series: categoría > portada/nombre de serie > capítulos.
+// Solo cambia el orden de las propiedades, nunca borra valores ni modifica la reproducción.
+function contentSeriesDisplayOrder(value){
+  const reordered=(obj,keys)=>{
+    if(!obj||typeof obj!=='object'||Array.isArray(obj))return obj;
+    const out={};
+    for(const key of keys)if(Object.prototype.hasOwnProperty.call(obj,key))out[key]=obj[key];
+    // Campos adicionales se conservan antes del array final, para que el cierre
+    // de capítulo/serie/categoría sea siempre visible y consecutivo.
+    const trailingArray=keys[keys.length-1];
+    const saved=Object.prototype.hasOwnProperty.call(out,trailingArray)?out[trailingArray]:undefined;
+    if(saved!==undefined)delete out[trailingArray];
+    for(const key of Object.keys(obj))if(!Object.prototype.hasOwnProperty.call(out,key)&&key!==trailingArray)out[key]=obj[key];
+    if(saved!==undefined)out[trailingArray]=saved;
+    return out;
+  };
+  if(!Array.isArray(value))return value;
+  return value.map(cat=>{
+    if(!cat||!Array.isArray(cat.samples))return cat;
+    const samples=cat.samples.map(item=>{
+      if(!item||!Array.isArray(item.temp))return item;
+      const episodes=item.temp.map(ep=>reordered(ep,['icon','name','uri']));
+      return reordered({...item,temp:episodes},['icon','name','temp']);
+    });
+    return reordered({...cat,samples},['name','samples']);
+  });
+}
+function contentDisplayValue(x){
+  return $('#contentKey')?.value==='series'?contentSeriesDisplayOrder(x):x;
+}
+function setContentPlain(x){$('#contentJson').value=x?JSON.stringify(contentDisplayValue(x),null,2):'';renderContentVisual();}
 function contentItemName(x){return x?.name||x?.title||x?.nombre||'(sin nombre)';}
 function contentItemMeta(x){const bits=[];if(x?.uri||x?.url)bits.push(x.uri||x.url);if(Array.isArray(x?.temp))bits.push(`${x.temp.length} capítulos/entradas`);return bits.join(' · ');}
 function contentItemHidden(x){return x?._cochiHidden===true;}
@@ -2450,7 +2480,7 @@ $('#contentExportBtn')?.addEventListener('click',()=>{
     const key=String($('#contentKey')?.value||'movies').toLowerCase();
     const json=contentPlain();
     const names={tv1:'TV1_DESENCRIPTADO.json',tv2:'TV2_DESENCRIPTADO.json',movies:'MOVIESCOCHI_DESENCRIPTADO.json',series:'SERIESCOCHI_DESENCRIPTADO.json'};
-    const text=JSON.stringify(json,null,2)+'\n';
+    const text=JSON.stringify(contentDisplayValue(json),null,2)+'\n';
     const blob=new Blob([text],{type:'application/json;charset=utf-8'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download=names[key]||('COCHI_'+key.toUpperCase()+'_DESENCRIPTADO.json');
