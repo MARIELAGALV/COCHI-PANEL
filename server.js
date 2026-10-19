@@ -2606,7 +2606,7 @@ function applySelectedPlaybackSource(item,{stripConfig=false}={}){
   return x;
 }
 function publishedContentView(key,json,{includeHidden=false}={}){
-  if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return json;
+  if(!['tv1','tv2','movies','series','peliculas'].includes(String(key||''))||!Array.isArray(json))return json;
   const nowMs=Date.now();
   return json.filter(group=>{
     if(!group||typeof group!=='object')return true;
@@ -2631,7 +2631,7 @@ function publishedContentView(key,json,{includeHidden=false}={}){
   });
 }
 function hiddenPreviewPayload(key){
-  if(!['tv1','tv2'].includes(String(key||'')))return null;
+  if(!['tv1','tv2','movies','series','peliculas'].includes(String(key||'')))return null;
   const row=db.prepare('SELECT json_text,updated_at FROM managed_content WHERE source_key=?').get(key);
   if(!row?.json_text)return null;
   const clear=decryptManagedContent(JSON.parse(row.json_text));
@@ -2639,10 +2639,10 @@ function hiddenPreviewPayload(key){
   return {json_text:JSON.stringify(encryptManagedContent(view)),updated_at:row.updated_at||nowIso()};
 }
 function hiddenContentCount(key,json){
-  if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;
+  if(!['tv1','tv2','movies','series','peliculas'].includes(String(key||''))||!Array.isArray(json))return 0;
   let n=0;for(const g of json){const samples=Array.isArray(g?.samples)?g.samples:[];if(g?._cochiHidden===true){n+=samples.length;continue;}for(const x of samples)if(x?._cochiHidden===true)n++;}return n;
 }
-function hiddenCategoryCount(key,json){if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return 0;return json.filter(g=>g?._cochiHidden===true).length;}
+function hiddenCategoryCount(key,json){if(!['tv1','tv2','movies','series','peliculas'].includes(String(key||''))||!Array.isArray(json))return 0;return json.filter(g=>g?._cochiHidden===true).length;}
 function scheduledContentCount(key,json){if(!['tv1','tv2'].includes(String(key||''))||!Array.isArray(json))return {channels:0,categories:0};let channels=0,categories=0;for(const g of json){if(contentObjectScheduled(g))categories++;for(const x of (Array.isArray(g?.samples)?g.samples:[]))if(contentObjectScheduled(x))channels++;}return {channels,categories};}
 function encodePublishedContent(key,json){const view=publishedContentView(key,json),encoded=encodeEditableContent(view),scheduled=scheduledContentCount(key,json);return {...encoded,hidden:hiddenContentCount(key,json),hiddenCategories:hiddenCategoryCount(key,json),scheduledChannels:scheduled.channels,scheduledCategories:scheduled.categories};}
 function processAutoHideTimers(){
@@ -3791,7 +3791,7 @@ async function route(req,res){
     const src=db.prepare('SELECT enabled FROM sources WHERE source_key=?').get(publicContent[1]);if(!src||!src.enabled)return sendJson(res,404,{error:'Fuente deshabilitada'});
     if(['tv1','tv2'].includes(publicContent[1]))processAutoHideTimers();
     let r=db.prepare('SELECT json_text,updated_at FROM published_content WHERE source_key=?').get(publicContent[1]);if(!r||!r.json_text)return sendJson(res,404,{error:'Contenido todavía no publicado'});
-    const previewHidden=Boolean(c?.preview_hidden_content)&&['tv1','tv2'].includes(publicContent[1]);
+    const previewHidden=Boolean(c?.preview_hidden_content)&&['tv1','tv2','movies','series','peliculas'].includes(publicContent[1]);
     if(previewHidden){try{r=hiddenPreviewPayload(publicContent[1])||r}catch(e){console.warn('[CO-CHI PREVIEW] '+publicContent[1]+' fallback normal: '+String(e?.message||e));}}
     try{
       const sec=playbackSecurityState();
