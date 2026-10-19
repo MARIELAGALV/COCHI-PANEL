@@ -1171,7 +1171,13 @@ function contentSeriesDisplayOrder(value){
     if(!obj||typeof obj!=='object'||Array.isArray(obj))return obj;
     const out={};
     for(const key of keys)if(Object.prototype.hasOwnProperty.call(obj,key))out[key]=obj[key];
-    for(const key of Object.keys(obj))if(!Object.prototype.hasOwnProperty.call(out,key))out[key]=obj[key];
+    // Campos adicionales se conservan antes del array final, para que el cierre
+    // de capítulo/serie/categoría sea siempre visible y consecutivo.
+    const trailingArray=keys[keys.length-1];
+    const saved=Object.prototype.hasOwnProperty.call(out,trailingArray)?out[trailingArray]:undefined;
+    if(saved!==undefined)delete out[trailingArray];
+    for(const key of Object.keys(obj))if(!Object.prototype.hasOwnProperty.call(out,key)&&key!==trailingArray)out[key]=obj[key];
+    if(saved!==undefined)out[trailingArray]=saved;
     return out;
   };
   if(!Array.isArray(value))return value;
@@ -1182,7 +1188,7 @@ function contentSeriesDisplayOrder(value){
       const episodes=item.temp.map(ep=>reordered(ep,['icon','name','uri']));
       return reordered({...item,temp:episodes},['icon','name','temp']);
     });
-    return {...cat,samples};
+    return reordered({...cat,samples},['name','samples']);
   });
 }
 function contentDisplayValue(x){
