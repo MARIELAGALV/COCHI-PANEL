@@ -140,3 +140,30 @@
 #view-clients .cochi-client-scopes>button{flex:1 1 190px;min-height:48px;white-space:normal}
 #view-clients .cochi-client-scopes.hidden{display:none!important}
 @media(max-width:660px){#view-clients .cochi-client-scopes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#view-clients .cochi-client-scopes>button{min-width:0;padding:10px 7px;font-size:12px}}
+
+/* Corrección del menú lateral para Edge y Chrome */
+@media (min-width: 1101px) {
+  #appView > .sidebar {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+
+  #appView > .sidebar nav.cochi-modern-nav {
+    overflow: visible !important;
+    min-height: max-content !important;
+    max-height: none !important;
+    flex: 0 0 auto !important;
+  }
+
+  #appView > .sidebar nav.cochi-modern-nav
+  > details.cochi-nav-section[open] {
+    overflow: visible;
+  }
+
+  #appView > .sidebar .sidebar-bottom {
+    margin-top: 20px;
+    flex-shrink: 0;
+  }
+}
