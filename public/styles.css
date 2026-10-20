@@ -752,3 +752,28 @@ body[data-view="devices"] #view-devices .actions button{
   .bulk-ua-actions button{width:100%}
   .bulk-ua-preview-list{max-height:520px}
 }
+
+/* CO-CHI: nombres completos en el editor visual */
+
+/* Películas sin carátula */
+.content-item:not(.content-item-tv):not(:has(> img)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Mostrar títulos completos */
+.content-item-main strong {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+/* Mostrar información sin recortes */
+.content-item-main span {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+  max-width: none !important;
+}
